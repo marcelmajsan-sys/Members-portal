@@ -1,9 +1,8 @@
-import { SendEmailCommand, SendRawEmailCommand } from "@aws-sdk/client-ses";
 import crypto from "node:crypto";
 import type React from "react";
-import { sesClient } from "./ses-client.js";
+import { resend } from "./resend-client.js";
 
-const FROM_ADDRESS = process.env.EMAIL_FROM ?? "noreply@ecommerce.hr";
+const FROM_ADDRESS = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
 const isDev = process.env.NODE_ENV !== "production";
 const API_BASE = process.env.API_BASE_URL ?? "https://api.ecommerce.hr";
 
@@ -36,8 +35,8 @@ export function setEmailLogger(fn: typeof emailLogger) {
 }
 
 /**
- * Send a raw HTML email. In development mode the email is logged to the
- * console instead of being dispatched through SES.
+ * Send a raw HTML email via Resend. In development mode the email is logged to
+ * the console instead of being dispatched.
  */
 export async function sendEmail(
   to: string,
@@ -63,55 +62,28 @@ export async function sendEmail(
     }
     console.log(trackedHtml);
     console.log("───────────────────");
-  } else if (options?.attachments?.length) {
-    // Use SendRawEmailCommand for emails with attachments
-    const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    let rawMessage = [
-      `From: ${FROM_ADDRESS}`,
-      `To: ${to}`,
-      `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
-      `MIME-Version: 1.0`,
-      `Content-Type: multipart/mixed; boundary="${boundary}"`,
-      '',
-      `--${boundary}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      `Content-Transfer-Encoding: 7bit`,
-      '',
-      trackedHtml,
-    ].join('\r\n');
-
-    for (const att of options.attachments) {
-      rawMessage += [
-        '',
-        `--${boundary}`,
-        `Content-Type: ${att.contentType}; name="${att.filename}"`,
-        `Content-Disposition: attachment; filename="${att.filename}"`,
-        `Content-Transfer-Encoding: base64`,
-        '',
-        att.content,
-      ].join('\r\n');
-    }
-
-    rawMessage += `\r\n--${boundary}--`;
-
-    const command = new SendRawEmailCommand({
-      RawMessage: { Data: new TextEncoder().encode(rawMessage) },
-    });
-
-    await sesClient.send(command);
   } else {
-    const command = new SendEmailCommand({
-      Source: FROM_ADDRESS,
-      Destination: { ToAddresses: [to] },
-      Message: {
-        Subject: { Data: subject, Charset: "UTF-8" },
-        Body: {
-          Html: { Data: trackedHtml, Charset: "UTF-8" },
-        },
-      },
+    const { error } = await resend.emails.send({
+      from: FROM_ADDRESS,
+      to: [to],
+      subject,
+      html: trackedHtml,
+      ...(options?.attachments?.length
+        ? {
+            attachments: options.attachments.map((att) => ({
+              filename: att.filename,
+              content: Buffer.from(att.content, "base64"),
+              contentType: att.contentType,
+            })),
+          }
+        : {}),
     });
 
-    await sesClient.send(command);
+    if (error) {
+      throw new Error(
+        `Resend send failed: ${error.message ?? JSON.stringify(error)}`,
+      );
+    }
   }
 
   // Log email to DB if logger is set
