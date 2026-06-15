@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -15,8 +15,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
   if (isAuthenticated) {
-    router.replace('/dashboard');
     return null;
   }
 
