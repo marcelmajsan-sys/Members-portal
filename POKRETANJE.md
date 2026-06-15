@@ -1,6 +1,16 @@
-# Pokretanje (lokalno) — eCommerce HR OS (tvoja kopija)
+# Pokretanje — eCommerce HR OS (tvoja kopija)
 
-Projekt je migriran s AWS-a na **Supabase** (baza) + **Vercel** (hosting, kasnije) + **Resend** (email, kasnije).
+Projekt je migriran s AWS-a na **Supabase** (baza) + **Vercel** (hosting) + **Resend** (email).
+
+## 🌐 Live (produkcija)
+
+| Što | URL |
+|-----|-----|
+| Admin panel | https://members-portal-os-marcelmajsan-8321s-projects.vercel.app |
+| API | https://members-portal-api-marcelmajsan-8321s-projects.vercel.app |
+| Prijava | `marcel@ecommerce.hr` / `admin123` |
+
+**Auto-deploy:** svaki `git push` na granu `main` automatski rebuilda i deploya oba projekta na Vercel. Nema više ručnog deploya.
 
 ## Prvi put / nakon restarta računala
 
@@ -36,11 +46,15 @@ Projekt je migriran s AWS-a na **Supabase** (baza) + **Vercel** (hosting, kasnij
   pnpm --filter @ecommerce-hr/db exec prisma db push
   ```
 
-## Što još NIJE napravljeno (sljedeći koraci)
+## Status
 
-- [ ] **Email (Resend)** — trenutno se emailovi ispisuju u konzolu. Treba prepisati `packages/email` sa SES-a na Resend + upisati `RESEND_API_KEY` u `.env`.
-- [ ] **Deploy na Vercel** — spojiti tvoj Vercel račun, postaviti env varijable (`DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `NEXT_PUBLIC_API_URL`), deploy API-ja i admin panela.
-- [ ] **Worker (Redis/BullMQ)** — pozadinski poslovi (obnove, automatizacija). Opcionalno, kasnije preko Vercel Cron.
+- [x] **Baza (Supabase)** — tablice kreirane + seed
+- [x] **Deploy na Vercel** — API + admin panel online
+- [x] **Email (Resend)** — šalje s `noreply@ecommerce.hr` (verificirana domena)
+- [x] **Auto-deploy** — `git push` na `main` automatski deploya
+- [ ] **AI sažetak člana** — treba `ANTHROPIC_API_KEY` (env na Vercel API projektu)
+- [ ] **PDF ponude** — provjeriti generiranje (pdfkit u serverless bundle-u)
+- [ ] **Worker (Redis/BullMQ)** — pozadinski poslovi; opcionalno, kasnije preko Vercel Cron
 
 ## Tajne (NE dijeliti)
 
