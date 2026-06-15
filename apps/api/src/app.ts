@@ -13,7 +13,9 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Security headers
-app.use(helmet());
+// helmet 8 ima ESM default export — cast na any izbjegava lažnu grešku kad Vercel
+// runtime kompajlira funkciju bez esModuleInterop (helmet je u runtime-u callable).
+app.use((helmet as any)());
 
 // CORS
 app.use(

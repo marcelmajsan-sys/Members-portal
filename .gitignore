@@ -34,3 +34,8 @@ packages/db/prisma/*.db
 # Test coverage
 coverage/
 .vercel
+
+.vercel
+
+# Vercel API bundle (generated)
+apps/api/src/app.bundled.mjs
