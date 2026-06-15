@@ -16,9 +16,10 @@ export async function ask(
 ): Promise<string> {
   const anthropic = getClient();
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    // Opus 4.8 — najnoviji model. Napomena: temperature/top_p/top_k se NE smiju
+    // slati (Opus 4.8 ih odbija s greškom 400); ponašanje se vodi promptom.
+    model: 'claude-opus-4-8',
     max_tokens: options?.maxTokens ?? 4096,
-    temperature: options?.temperature ?? 0.3,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   });

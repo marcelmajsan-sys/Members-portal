@@ -9,6 +9,7 @@ import { getDashboardStats, getDashboardAnalytics, getRecentActivity } from '../
 import { createNotification } from '../services/notification.service.js';
 import { emitEvent } from '../lib/event-bus.js';
 import { sendEmail } from '@ecommerce-hr/email';
+import { ask } from '@ecommerce-hr/ai';
 import { prisma } from '@ecommerce-hr/db';
 import type { MemberTier, MemberType, MemberStatus } from '@ecommerce-hr/db';
 import type { AuthRequest } from '../middleware/auth.js';
@@ -1116,24 +1117,10 @@ router.get('/members/:id/ai-summary', validateParams(idParamSchema), async (req,
 
 Napiši sažetak:`;
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) { errorResponse(res, 'CONFIG_ERROR', 'ANTHROPIC_API_KEY nije postavljen', 500); return; }
+    if (!process.env.ANTHROPIC_API_KEY) { errorResponse(res, 'CONFIG_ERROR', 'ANTHROPIC_API_KEY nije postavljen', 500); return; }
 
-    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, temperature: 0.3, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] }),
-    });
-
-    if (!anthropicRes.ok) {
-      const errBody = await anthropicRes.text();
-      errorResponse(res, 'AI_ERROR', `Anthropic API error: ${anthropicRes.status} ${errBody}`, 500);
-      return;
-    }
-
-    const data = await anthropicRes.json() as { content: Array<{ type: string; text?: string }> };
-    const block = data.content[0];
-    const summary = block.type === 'text' && block.text ? block.text : 'Sažetak nije dostupan';
+    // Poziv ide preko službenog Anthropic SDK-a (packages/ai → ask()), model claude-opus-4-8.
+    const summary = await ask(systemPrompt, userMessage, { maxTokens: 500 });
 
     successResponse(res, { summary });
   } catch (err) {
