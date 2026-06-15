@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "eCommerce HR",
+    "slug": "ecommerce-hr",
+    "version": "1.0.0",
+    "scheme": "ecommerce-hr",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B365D"
+    },
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#1B365D"
+        }
+      ]
+    ],
+    "ios": {
+      "bundleIdentifier": "hr.ecommerce.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "hr.ecommerce.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B365D"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "90d7e4f1-4398-43b2-a744-b61fcb7b48a9"
+      },
+      "router": {
+        "origin": false
+      }
+    },
+    "owner": "buda_cl"
+  }
+}

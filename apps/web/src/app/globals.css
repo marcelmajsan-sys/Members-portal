@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand Colors - New Design */
+  --color-primary: #1B365D;
+  --color-primary-light: #2A4A7A;
+  --color-primary-dark: #0F1F3D;
+  --color-accent: #E8A838;
+  --color-accent-light: #F0C060;
+  --color-accent-dark: #D49520;
+
+  /* Neutrals */
+  --color-text-dark: #1A1A2E;
+  --color-text-heading: #1B365D;
+  --color-text-body: #4A5568;
+  --color-text-secondary: #64748B;
+  --color-text-muted: #94A3B8;
+
+  /* Backgrounds */
+  --color-bg-light: #F8FAFC;
+  --color-bg-section: #F1F5F9;
+  --color-bg-dark: #1B365D;
+  --color-bg-card: #FFFFFF;
+
+  /* Functional */
+  --color-border: #E2E8F0;
+  --color-border-light: #F1F5F9;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
+
+  /* Footer */
+  --color-footer-bg: #0F1F3D;
+
+  /* Typography - uses CSS variables set by next/font in layout.tsx */
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-heading: var(--font-jakarta), system-ui, sans-serif;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--color-text-body);
+  font-family: var(--font-sans);
+}
+
+/* Custom gradient utilities */
+.gradient-primary {
+  background: linear-gradient(135deg, #1B365D 0%, #2A4A7A 100%);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, #E8A838 0%, #F0C060 100%);
+}
+
+.gradient-hero {
+  background: linear-gradient(135deg, #1B365D 0%, #2A4A7A 50%, #1B365D 100%);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #E8A838, #F0C060);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

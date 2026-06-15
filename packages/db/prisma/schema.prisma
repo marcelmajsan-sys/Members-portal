@@ -1,0 +1,656 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  OPERATOR
+  MEMBER
+  PARTNER
+}
+
+enum MemberType {
+  WEB_TRADER
+  SERVICE_PROVIDER
+  PHYSICAL
+}
+
+enum MemberTier {
+  FREE
+  STANDARD
+  PREMIUM
+}
+
+enum MemberStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ACTION
+  REMINDER
+}
+
+enum CertificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum SequenceStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          UserRole
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  refreshTokens RefreshToken[]
+  pushTokens    PushToken[]
+  member        Member?
+  notifications Notification[]
+  assignedTasks Task[]         @relation("TaskAssignee")
+  createdTasks  Task[]         @relation("TaskCreator")
+  taskComments  TaskComment[]
+  memberNotes   MemberNote[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   // ios | android
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  oib       String   @unique @db.Char(11)
+  address   String
+  city      String
+  zip       String
+  country   String   @default("HR")
+  website   String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members Member[]
+}
+
+model Member {
+  id           String       @id @default(cuid())
+  userId       String       @unique
+  companyId    String
+  memberType   MemberType
+  memberTier   MemberTier   @default(STANDARD)
+  status       MemberStatus @default(PENDING)
+  memberNumber String?      @unique
+  joinedAt     DateTime?
+  expiresAt    DateTime?
+  notes          String?
+  hasCertificate Boolean      @default(false)
+  hasAcademy     Boolean      @default(false)
+  safeShopStatus    String?
+  magazinDobrePrice Boolean      @default(false)
+  promoKonferencija Boolean      @default(false)
+  promoMeetup       Boolean      @default(false)
+  promoMagazin      Boolean      @default(false)
+  promoWeb          Boolean      @default(false)
+  promoOstalo       String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company        Company               @relation(fields: [companyId], references: [id])
+  payments       Payment[]
+  invoices       Invoice[]
+  enrollments    AcademyEnrollment[]
+  certifications SafeShopCertification[]
+  certificates   AcademyCertificate[]
+  starterShops   StarterShop[]
+  legalQueries   LegalQuery[]
+  memberNotes    MemberNote[]
+  emailLogs      EmailLog[]
+  memberProducts MemberProduct[]
+  priceAlerts    PriceAlert[]
+  offers         Offer[]
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  memberId        String
+  amount          Decimal
+  currency        String        @default("EUR")
+  status          PaymentStatus @default(PENDING)
+  stripePaymentId String?
+  description     String
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  memberId      String
+  invoiceNumber String        @unique
+  amount        Decimal
+  currency      String        @default("EUR")
+  status        InvoiceStatus @default(DRAFT)
+  issuedAt      DateTime
+  dueAt         DateTime
+  paidAt        DateTime?
+  items         Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id])
+}
+
+model Sequence {
+  id           String         @id @default(cuid())
+  name         String
+  description  String?
+  triggerEvent String
+  steps        Json
+  status       SequenceStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  logs AutomationLog[]
+}
+
+model AutomationLog {
+  id         String   @id @default(cuid())
+  sequenceId String
+  event      String
+  payload    Json?
+  result     Json?
+  success    Boolean  @default(true)
+  error      String?
+  executedAt DateTime @default(now())
+
+  sequence Sequence @relation(fields: [sequenceId], references: [id])
+}
+
+model Task {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  status       TaskStatus   @default(TODO)
+  priority     TaskPriority @default(MEDIUM)
+  assignedToId String?
+  createdById  String?
+  dueAt        DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assignedTo User?         @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdBy  User?         @relation("TaskCreator", fields: [createdById], references: [id])
+  comments   TaskComment[]
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(INFO)
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  actionUrl String?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Partner {
+  id           String   @id @default(cuid())
+  name         String
+  contactEmail String
+  contactPhone String?
+  website      String?
+  logoUrl      String?
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  obligations  PartnerObligation[]
+  sponsorships ConferenceSponsor[]
+}
+
+model PartnerObligation {
+  id          String    @id @default(cuid())
+  partnerId   String
+  title       String
+  description String?
+  dueAt       DateTime?
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  partner Partner @relation(fields: [partnerId], references: [id])
+}
+
+model AcademyModule {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String
+  content     Json
+  order       Int
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments AcademyEnrollment[]
+  exams       AcademyExam[]
+}
+
+model AcademyEnrollment {
+  id          String    @id @default(cuid())
+  memberId    String
+  moduleId    String
+  progress    Int       @default(0)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  member Member        @relation(fields: [memberId], references: [id])
+  module AcademyModule @relation(fields: [moduleId], references: [id])
+
+  @@unique([memberId, moduleId])
+}
+
+model AcademyExam {
+  id           String   @id @default(cuid())
+  moduleId     String
+  title        String
+  questions    Json
+  passingScore Int      @default(70)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  module       AcademyModule        @relation(fields: [moduleId], references: [id])
+  certificates AcademyCertificate[]
+}
+
+model AcademyCertificate {
+  id             String   @id @default(cuid())
+  examId         String
+  memberId       String
+  score          Int
+  issuedAt       DateTime @default(now())
+  certificateUrl String?
+
+  exam   AcademyExam @relation(fields: [examId], references: [id])
+  member Member      @relation(fields: [memberId], references: [id])
+}
+
+model SafeShopCertification {
+  id              String              @id @default(cuid())
+  memberId        String
+  status          CertificationStatus @default(PENDING)
+  applicationData Json?
+  reviewNotes     String?
+  certifiedAt     DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  member  Member           @relation(fields: [memberId], references: [id])
+  reviews SafeShopReview[]
+}
+
+model SafeShopReview {
+  id              String   @id @default(cuid())
+  certificationId String
+  reviewerNotes   String?
+  score           Int?
+  reviewedAt      DateTime @default(now())
+
+  certification SafeShopCertification @relation(fields: [certificationId], references: [id])
+}
+
+model Competitor {
+  id           String   @id @default(cuid())
+  name         String
+  website      String   @unique
+  industry     String?
+  categoryUrls String[] @default([])
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  scans          CompetitorScan[]
+  priceSnapshots PriceSnapshot[]
+  priceAlerts    PriceAlert[]
+  scanSchedules  ScanSchedule[]
+}
+
+model CompetitorScan {
+  id           String   @id @default(cuid())
+  competitorId String
+  metrics      Json
+  scannedAt    DateTime @default(now())
+
+  competitor Competitor @relation(fields: [competitorId], references: [id])
+}
+
+model PriceSnapshot {
+  id           String   @id @default(cuid())
+  competitorId String
+  categoryUrl  String
+  products     Json     // Array of { name, price, currency, url }
+  diff         Json?    // { added, removed, priceChanges }
+  scannedAt    DateTime @default(now())
+
+  competitor  Competitor   @relation(fields: [competitorId], references: [id])
+  priceAlerts PriceAlert[]
+}
+
+model MarketIntelligence {
+  id          String   @id @default(cuid())
+  title       String
+  category    String
+  content     Json
+  source      String?
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model BenchmarkData {
+  id        String   @id @default(cuid())
+  category  String
+  metric    String
+  value     Decimal
+  period    String
+  region    String   @default("HR")
+  createdAt DateTime @default(now())
+}
+
+model AuditReport {
+  id              String   @id @default(cuid())
+  websiteUrl      String
+  scores          Json
+  recommendations Json
+  createdAt       DateTime @default(now())
+}
+
+model MemberNote {
+  id        String   @id @default(cuid())
+  memberId  String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+}
+
+model EmailLog {
+  id           String    @id @default(cuid())
+  trackingId   String?   @unique @default(cuid())
+  memberId     String?
+  to           String
+  subject      String
+  body         String?
+  templateName String?
+  status       String    @default("sent")
+  sentAt       DateTime  @default(now())
+  openedAt     DateTime?
+  clickedAt    DateTime?
+  metadata     Json?
+
+  member Member? @relation(fields: [memberId], references: [id])
+}
+
+model StarterShop {
+  id           String   @id @default(cuid())
+  memberId     String?
+  businessName String
+  status       String   @default("draft")
+  config       Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  member Member? @relation(fields: [memberId], references: [id])
+}
+
+model LegalQuery {
+  id         String    @id @default(cuid())
+  memberId   String?
+  question   String
+  answer     String?
+  category   String?
+  createdAt  DateTime  @default(now())
+  answeredAt DateTime?
+
+  member Member? @relation(fields: [memberId], references: [id])
+}
+
+model Conference {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  location    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sponsors ConferenceSponsor[]
+  speakers ConferenceSpeaker[]
+}
+
+model ConferenceSponsor {
+  id           String   @id @default(cuid())
+  conferenceId String
+  partnerId    String?
+  tier         String
+  amount       Decimal?
+  createdAt    DateTime @default(now())
+
+  conference Conference @relation(fields: [conferenceId], references: [id])
+  partner    Partner?   @relation(fields: [partnerId], references: [id])
+}
+
+model ConferenceSpeaker {
+  id           String    @id @default(cuid())
+  conferenceId String
+  name         String
+  title        String?
+  bio          String?
+  photoUrl     String?
+  topic        String?
+  scheduledAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  conference Conference @relation(fields: [conferenceId], references: [id])
+}
+
+model MemberProduct {
+  id         String   @id @default(cuid())
+  memberId   String
+  name       String
+  price      Decimal
+  currency   String   @default("EUR")
+  category   String?
+  productUrl String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, name])
+}
+
+model PriceAlert {
+  id             String   @id @default(cuid())
+  memberId       String?
+  competitorId   String
+  snapshotId     String
+  alertType      String   // PRICE_DROP, PRICE_INCREASE, NEW_PRODUCT, UNDERCUT
+  productName    String
+  competitorName String
+  oldPrice       Decimal?
+  newPrice       Decimal?
+  changePercent  Float?
+  memberPrice    Decimal?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  member     Member?       @relation(fields: [memberId], references: [id])
+  competitor Competitor    @relation(fields: [competitorId], references: [id])
+  snapshot   PriceSnapshot @relation(fields: [snapshotId], references: [id])
+}
+
+enum OfferStatus {
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  NO_RESPONSE
+}
+
+model Offer {
+  id          String      @id @default(cuid())
+  offerNumber String      @unique
+  memberId    String
+  amount      Decimal
+  currency    String      @default("EUR")
+  items       Json
+  status      OfferStatus @default(SENT)
+  step        Int         @default(1) // 1 = prva obavijest, 2 = druga obavijest
+  validUntil  DateTime
+  respondedAt DateTime?
+  pdfData     Bytes?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id])
+}
+
+model ScanSchedule {
+  id           String    @id @default(cuid())
+  competitorId String
+  categoryUrl  String
+  frequency    String    @default("WEEKLY")
+  lastRunAt    DateTime?
+  nextRunAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  competitor Competitor @relation(fields: [competitorId], references: [id])
+
+  @@unique([competitorId, categoryUrl])
+}
+
+model CalendarEvent {
+  id                  String   @id @default(cuid())
+  title               String
+  description         String?
+  date                DateTime
+  endDate             DateTime?
+  location            String?
+  isAutomationTrigger Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  subject   String
+  body      String   @db.Text
+  ctaLabel  String?
+  ctaUrl    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
