@@ -25,7 +25,7 @@ export function errorResponse(
 export function paginatedResponse<T>(
   res: Response,
   data: T,
-  meta: { page: number; limit: number; total: number },
+  meta: { page: number; limit: number; total: number; totalPages?: number },
 ): void {
   const response: ApiResponse<T> = {
     success: true,

@@ -452,7 +452,7 @@ export async function createOffer(
       items,
       step,
       validUntil,
-      pdfData: pdfBuffer,
+      pdfData: new Uint8Array(pdfBuffer),
       updatedAt: now,
     },
     include: { member: { include: { user: true, company: true } } },

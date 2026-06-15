@@ -45,7 +45,7 @@ router.get('/dashboard/activity', async (_req: AuthRequest, res) => {
 router.get('/dashboard/renewals', async (req, res) => {
   const month = req.query.month as string;
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-    errorResponse(res, 'Invalid month format (YYYY-MM)', 400);
+    errorResponse(res, 'INVALID_INPUT', 'Invalid month format (YYYY-MM)', 400);
     return;
   }
   const [year, mon] = month.split('-').map(Number);
@@ -1063,7 +1063,7 @@ router.post('/renewal-check', requireRole('OWNER'), async (_req: AuthRequest, re
 // GET /members/:id/ai-summary — AI member summary
 router.get('/members/:id/ai-summary', validateParams(idParamSchema), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const member = await prisma.member.findUnique({
       where: { id },
