@@ -19,7 +19,7 @@ const ASSOCIATION = {
   email: 'udruga@ecommerce.hr',
   mb: '04398122',
   rno: '0331489',
-  web: 'www.ecommercehrvatska.hr',
+  web: 'www.ecommerce.hr',
 };
 
 const TYPE_LABELS: Record<string, string> = {
