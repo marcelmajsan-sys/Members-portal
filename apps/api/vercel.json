@@ -4,5 +4,8 @@
   "outputDirectory": ".",
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
+  ],
+  "crons": [
+    { "path": "/api/cron/fetch-inbound", "schedule": "0 * * * *" }
   ]
 }

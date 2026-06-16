@@ -108,7 +108,7 @@ export default function MemberDetailPage() {
   const [notes, setNotes] = useState<Array<{ id: string; content: string; createdAt: string; author: { id: string; firstName: string; lastName: string } }>>([]);
   const [newNote, setNewNote] = useState('');
   const [notesLoading, setNotesLoading] = useState(false);
-  const [emails, setEmails] = useState<Array<{ id: string; subject: string; body: string | null; templateName: string | null; sentAt: string; openedAt: string | null; clickedAt: string | null }>>([]);
+  const [emails, setEmails] = useState<Array<{ id: string; subject: string; body: string | null; templateName: string | null; sentAt: string; openedAt: string | null; clickedAt: string | null; status?: string | null }>>([]);
   const [previewEmail, setPreviewEmail] = useState<{ subject: string; body: string; sentAt: string } | null>(null);
   const [offerStep, setOfferStep] = useState(0);
   const [aiSummary, setAiSummary] = useState('');
@@ -1306,16 +1306,23 @@ export default function MemberDetailPage() {
         {/* Email History */}
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="font-semibold text-gray-900">Povijest emailova</h2>
+            <h2 className="font-semibold text-gray-900">Komunikacija (poslano i primljeno)</h2>
           </div>
           <div className="divide-y divide-gray-50">
             {emails.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-gray-400">Nema poslanih emailova</p>
+              <p className="px-5 py-8 text-center text-sm text-gray-400">Nema emailova</p>
             ) : (
-              emails.map((e) => (
-                <div key={e.id} className={`px-5 py-3${e.body ? ' cursor-pointer hover:bg-gray-50 transition-colors' : ''}`} onClick={() => e.body && setPreviewEmail({ subject: e.subject, body: e.body, sentAt: e.sentAt })}>
+              emails.map((e) => {
+                const inbound = e.status === 'received';
+                return (
+                <div key={e.id} className={`px-5 py-3${inbound ? ' border-l-4 border-emerald-400 bg-emerald-50/30' : ''}${e.body ? ' cursor-pointer hover:bg-gray-50 transition-colors' : ''}`} onClick={() => e.body && setPreviewEmail({ subject: e.subject, body: e.body, sentAt: e.sentAt })}>
                   <p className="text-sm font-medium text-gray-900">{e.subject}{e.body && <span className="ml-1 text-xs text-gray-400">↗</span>}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {inbound && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                        ↩ Odgovor člana
+                      </span>
+                    )}
                     {e.templateName && (
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
                         {e.templateName === 'renewal_confirmation' ? 'Potvrda produženja' :
@@ -1344,7 +1351,8 @@ export default function MemberDetailPage() {
                     </span>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
