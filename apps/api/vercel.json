@@ -2,6 +2,9 @@
   "installCommand": "cd ../.. && pnpm install && pnpm --filter @ecommerce-hr/db generate",
   "buildCommand": "node build-vercel.mjs",
   "outputDirectory": ".",
+  "functions": {
+    "api/index.ts": { "maxDuration": 60 }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
   ],
