@@ -1,5 +1,8 @@
 {
   "framework": "nextjs",
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm turbo build --filter=@ecommerce-hr/os"
+  "buildCommand": "cd ../.. && pnpm turbo build --filter=@ecommerce-hr/os",
+  "redirects": [
+    { "source": "/", "destination": "/admin", "permanent": false }
+  ]
 }
