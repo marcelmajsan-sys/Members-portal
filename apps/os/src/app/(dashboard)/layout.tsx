@@ -248,7 +248,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <div className="flex h-16 items-center gap-3 border-b border-white/10 px-5">
           <Image
-            src="/logo-icon.png"
+            src="/admin/logo-icon.png"
             alt="eCommerce HR"
             width={32}
             height={32}

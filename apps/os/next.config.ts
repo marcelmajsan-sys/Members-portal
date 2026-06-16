@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@ecommerce-hr/shared'],
   // Admin panel se poslužuje pod /admin (npr. members.ecommerce.hr/admin).
   basePath: '/admin',
-  // Bez optimizera — Next ispravno prefiksira basePath na <img src>, pa logo radi pod /admin.
+  // Bez optimizera: <img src> se renderira doslovno (basePath se NE dodaje automatski),
+  // zato logo putanje eksplicitno uključuju /admin (npr. src="/admin/logo.png").
   images: { unoptimized: true },
 };
 
