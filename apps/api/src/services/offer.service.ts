@@ -3,13 +3,8 @@ import type { MemberType, MemberTier } from '@ecommerce-hr/db';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import bwipjs from 'bwip-js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getMembershipPrice, TIER_LABELS } from '../config/membership.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { robotoRegularBase64, robotoBoldBase64, logoBase64 } from '../assets/embedded-assets.js';
 import { logger } from '../utils/logger.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -61,28 +56,10 @@ let fontBoldBytes: Uint8Array | null = null;
 
 function loadFonts() {
   if (fontRegularBytes && fontBoldBytes) return;
-
-  const fontPaths = [
-    path.join(process.cwd(), 'fonts'),
-    path.join(__dirname, 'fonts'),
-    '/var/task/fonts',
-  ];
-
-  for (const dir of fontPaths) {
-    try {
-      const regular = path.join(dir, 'Roboto-Regular.ttf');
-      const bold = path.join(dir, 'Roboto-Bold.ttf');
-      if (fs.existsSync(regular) && fs.existsSync(bold)) {
-        fontRegularBytes = fs.readFileSync(regular);
-        fontBoldBytes = fs.readFileSync(bold);
-        logger.info({ dir }, 'Loaded custom fonts');
-        return;
-      }
-    } catch {
-      // try next
-    }
-  }
-  logger.warn('Custom fonts not found, will use standard fonts');
+  // Fontovi su ugrađeni kao base64 (assets/embedded-assets.ts) — uvijek dostupni,
+  // i lokalno i u Vercel serverless bundle-u. Roboto podržava hrvatske znakove.
+  fontRegularBytes = Buffer.from(robotoRegularBase64, 'base64');
+  fontBoldBytes = Buffer.from(robotoBoldBase64, 'base64');
 }
 
 // ─── Logo loading ─────────────────────────────────────────────────────────────
@@ -91,26 +68,8 @@ let logoBytes: Uint8Array | null = null;
 
 function loadLogo() {
   if (logoBytes) return logoBytes;
-
-  const logoPaths = [
-    path.join(process.cwd(), 'logo.png'),
-    path.join(__dirname, 'logo.png'),
-    '/var/task/logo.png',
-    path.join(process.cwd(), 'apps/os/public/logo.png'),
-  ];
-
-  for (const p of logoPaths) {
-    try {
-      if (fs.existsSync(p)) {
-        logoBytes = fs.readFileSync(p);
-        logger.info({ path: p }, 'Loaded logo');
-        return logoBytes;
-      }
-    } catch {
-      // try next
-    }
-  }
-  return null;
+  if (logoBase64) logoBytes = Buffer.from(logoBase64, 'base64');
+  return logoBytes;
 }
 
 // ─── PDF Generation ───────────────────────────────────────────────────────────
