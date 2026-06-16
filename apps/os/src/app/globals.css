@@ -29,10 +29,28 @@
   --color-gray-900: #111827;
 }
 
+/* Svijetla tema je jedina — bez ovoga iOS Safari u Dark Mode-u sam zatamni
+   form-kontrole i upisani tekst ispadne bijel na bijeloj pozadini (nevidljiv). */
+html {
+  color-scheme: light;
+}
+
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--color-gray-50);
   color: var(--color-gray-900);
+}
+
+/* Eksplicitna boja upisanog teksta — form-kontrole ne nasljeđuju body color
+   pouzdano (osobito na iOS-u), pa fiksiramo tamni tekst i sivi placeholder. */
+input,
+textarea,
+select {
+  color: var(--color-gray-900);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-gray-400);
 }
 
 /* Scrollbar */
