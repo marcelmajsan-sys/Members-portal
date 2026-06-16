@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -88,48 +88,71 @@ export default function MembersPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
 
-  const [activeFilters, setActiveFilters] = useState<Set<string>>(() => {
-    const f = searchParams.get('filter');
-    return f ? new Set(f.split(',')) : new Set<string>();
+  // Filteri: glavni tab (tip) + podfilteri (status / certifikat / promo) koji ovise o tipu.
+  const legacyFilter = searchParams.get('filter'); // dashboard kartice linkaju ?filter=active itd.
+  const [type, setType] = useState<string>(() => searchParams.get('type') || 'all');
+  const [status, setStatus] = useState<string>(() => {
+    if (legacyFilter === 'active') return 'ACTIVE';
+    if (legacyFilter === 'expired') return 'EXPIRED';
+    if (legacyFilter === 'pending') return 'PENDING';
+    return searchParams.get('status') || '';
   });
+  const [extra, setExtra] = useState<string>('');
+  const [expiring, setExpiring] = useState<boolean>(() => legacyFilter === 'expiring_soon');
   const [companyId, setCompanyId] = useState<string | null>(() => searchParams.get('companyId'));
   const [companyName, setCompanyName] = useState<string | null>(() => searchParams.get('companyName'));
   const [counts, setCounts] = useState<Record<string, number>>({});
 
   const limit = 20;
 
+  // Glavni tabovi (tip člana) s brojkama
+  const TYPE_TABS: { key: string; label: string; countKey: string }[] = [
+    { key: 'all', label: 'Svi članovi', countKey: 'total' },
+    { key: 'WEB_TRADER', label: 'Trgovci', countKey: 'webTrader' },
+    { key: 'SERVICE_PROVIDER', label: 'Nuditelji', countKey: 'serviceProvider' },
+    { key: 'PHYSICAL', label: 'Fizičke osobe', countKey: 'physical' },
+  ];
 
-  const fetchMembers = useCallback(async (p: number, filters: Set<string>, filterCompanyId?: string | null) => {
+  // Podfilteri za odabrani tip (status + tip-specifični: certifikat / promo)
+  type SubFilter = { key: string; label: string; group: 'status' | 'extra'; value: string; count?: number };
+  const subFilters = useMemo<SubFilter[]>(() => {
+    const c = counts;
+    const statusPills = (pfx: string): SubFilter[] => [
+      { key: 's-active', label: 'Aktivni', group: 'status', value: 'ACTIVE', count: c[`${pfx}Active`] },
+      { key: 's-expired', label: 'Istekli', group: 'status', value: 'EXPIRED', count: c[`${pfx}Expired`] },
+      { key: 's-suspended', label: 'Pauzirani', group: 'status', value: 'SUSPENDED', count: c[`${pfx}Suspended`] },
+    ];
+    if (type === 'WEB_TRADER') return [
+      ...statusPills('wt'),
+      { key: 'e-cert', label: 'Certificirani', group: 'extra', value: 'cert', count: c.wtCertified },
+      { key: 'e-nocert', label: 'Necertificirani', group: 'extra', value: 'no_cert', count: c.wtNoCert },
+    ];
+    if (type === 'SERVICE_PROVIDER') return [
+      ...statusPills('sp'),
+      { key: 'e-konf', label: 'Konferencija promo', group: 'extra', value: 'promoKonferencija', count: c.spPromoKonferencija },
+      { key: 'e-meet', label: 'Meetup promo', group: 'extra', value: 'promoMeetup', count: c.spPromoMeetup },
+      { key: 'e-mag', label: 'Magazin promo', group: 'extra', value: 'promoMagazin', count: c.spPromoMagazin },
+      { key: 'e-web', label: 'Web promo', group: 'extra', value: 'promoWeb', count: c.spPromoWeb },
+      { key: 'e-ost', label: 'Ostalo promo', group: 'extra', value: 'promoOstalo', count: c.spPromoOstalo },
+    ];
+    if (type === 'PHYSICAL') return statusPills('ph');
+    return [];
+  }, [type, counts]);
+
+
+  const fetchMembers = useCallback(async (
+    p: number, t: string, st: string, ex: string, exp: boolean, filterCompanyId?: string | null,
+  ) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(p), limit: String(limit) });
 
-    if (filterCompanyId) {
-      params.set('companyId', filterCompanyId);
-    }
-
-    // Build query from active filters
-    const grouped: Record<string, string[]> = {};
-    for (const key of filters) {
-      const def: { param: string; value: string } | undefined = ({
-        active: { param: 'status', value: 'ACTIVE' },
-        expired: { param: 'status', value: 'EXPIRED' },
-        pending: { param: 'status', value: 'PENDING' },
-        cert: { param: 'certificate', value: 'HAS_CERT' },
-        no_cert: { param: 'certificate', value: 'NO_CERT' },
-        academy: { param: 'certificate', value: 'HAS_ACADEMY' },
-        web_trader: { param: 'type', value: 'WEB_TRADER' },
-        service_provider: { param: 'type', value: 'SERVICE_PROVIDER' },
-        physical: { param: 'type', value: 'PHYSICAL' },
-        expiring_soon: { param: 'expiring', value: '30' },
-      } as Record<string, { param: string; value: string }>)[key];
-      if (def) {
-        if (!grouped[def.param]) grouped[def.param] = [];
-        grouped[def.param].push(def.value);
-      }
-    }
-    for (const [param, values] of Object.entries(grouped)) {
-      params.set(param, values.join(','));
-    }
+    if (filterCompanyId) params.set('companyId', filterCompanyId);
+    if (t && t !== 'all') params.set('type', t);
+    if (st) params.set('status', st);
+    if (exp) params.set('expiring', '30');
+    if (ex === 'cert') params.set('hasCertificate', 'true');
+    else if (ex === 'no_cert') params.set('hasCertificate', 'false');
+    else if (ex) params.set(ex, 'true'); // promo* zastavice
 
     const res = await api.get<MemberRaw[]>(`/api/os/members?${params}`);
     if (res.success && res.data) {
@@ -144,8 +167,8 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    fetchMembers(page, activeFilters, companyId);
-  }, [page, activeFilters, companyId, fetchMembers]);
+    fetchMembers(page, type, status, extra, expiring, companyId);
+  }, [page, type, status, extra, expiring, companyId, fetchMembers]);
 
   useEffect(() => {
     api.get<Record<string, number>>('/api/os/members/counts').then((res) => {
@@ -153,20 +176,20 @@ export default function MembersPage() {
     });
   }, []);
 
-  function toggleFilter(filter: string) {
-    setActiveFilters(prev => {
-      const next = new Set(prev);
-      if (filter === 'all') {
-        // "Sve" clears all filters
-        return new Set<string>();
-      }
-      if (next.has(filter)) {
-        next.delete(filter);
-      } else {
-        next.add(filter);
-      }
-      return next;
-    });
+  function selectType(t: string) {
+    setType(t);
+    setStatus('');
+    setExtra('');
+    setExpiring(false);
+    setPage(1);
+  }
+  function toggleStatus(v: string) {
+    setStatus((s) => (s === v ? '' : v));
+    setExpiring(false);
+    setPage(1);
+  }
+  function toggleExtra(v: string) {
+    setExtra((e) => (e === v ? '' : v));
     setPage(1);
   }
 
@@ -179,7 +202,7 @@ export default function MembersPage() {
     if (res.success) {
       setShowAddModal(false);
       setAddForm({ email: '', firstName: '', lastName: '', companyName: '', oib: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' });
-      fetchMembers(page, activeFilters, companyId);
+      fetchMembers(page, type, status, extra, expiring, companyId);
     } else {
       setAddError(res.error?.message || 'Greška pri dodavanju');
     }
@@ -233,42 +256,69 @@ export default function MembersPage() {
         </div>
       )}
 
-      {/* Filter pills — multi-select */}
+      {/* Glavni tabovi — tip člana (jednostruki odabir) */}
       <div className="flex flex-wrap gap-2">
-        {[
-          { key: 'all', label: 'Sve', count: counts.total },
-          { key: 'active', label: 'Aktivni', count: counts.active },
-          { key: 'expired', label: 'Istekli', count: counts.expired },
-          { key: 'pending', label: 'Izbrisani', count: counts.pending },
-          { key: 'cert', label: 'Certifikat', count: counts.withCert },
-          { key: 'academy', label: 'Akademija', count: counts.withAcademy },
-          { key: 'no_cert', label: 'Bez certifikata', count: counts.total && counts.withCert != null ? counts.total - counts.withCert : undefined },
-          { key: 'expiring_soon', label: 'Ističu uskoro', count: counts.expiringSoon },
-          { key: 'web_trader', label: 'Trgovac', count: counts.webTrader },
-          { key: 'service_provider', label: 'Nuditelj', count: counts.serviceProvider },
-          { key: 'physical', label: 'Fizička osoba', count: counts.physical },
-        ].map((f) => {
-          const isActive = f.key === 'all' ? activeFilters.size === 0 : activeFilters.has(f.key);
+        {TYPE_TABS.map((tab) => {
+          const isActive = type === tab.key;
+          const count = counts[tab.countKey];
           return (
             <button
-              key={f.key}
-              onClick={() => toggleFilter(f.key)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+              key={tab.key}
+              onClick={() => selectType(tab.key)}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
                 isActive
                   ? 'bg-[#1B365D] text-white shadow-sm'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {f.label}
-              {f.count != null && (
-                <span className={`ml-1.5 ${isActive ? 'text-white/70' : 'text-gray-400'}`}>
-                  {f.count}
-                </span>
+              {tab.label}
+              {count != null && (
+                <span className={`ml-2 ${isActive ? 'text-white/60' : 'text-gray-400'}`}>{count}</span>
               )}
             </button>
           );
         })}
       </div>
+
+      {/* Podfilteri — ovise o odabranom tipu */}
+      {subFilters.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {subFilters.map((sf) => {
+            const isActive = sf.group === 'status' ? status === sf.value : extra === sf.value;
+            return (
+              <button
+                key={sf.key}
+                onClick={() => (sf.group === 'status' ? toggleStatus(sf.value) : toggleExtra(sf.value))}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                  isActive
+                    ? 'border-[#1B365D] bg-[#1B365D] text-white'
+                    : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {sf.label}
+                {sf.count != null && (
+                  <span className={`ml-1.5 ${isActive ? 'text-white/60' : 'text-gray-400'}`}>{sf.count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Globalni filter iz dashboarda (kad je "Svi članovi" + status/ističu uskoro) */}
+      {type === 'all' && (status || expiring) && (
+        <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-4 py-2">
+          <span className="text-sm text-blue-800">
+            Filter: <strong>{expiring ? 'Ističu uskoro' : (STATUS_LABELS[status] || status)}</strong>
+          </span>
+          <button
+            onClick={() => { setStatus(''); setExpiring(false); setPage(1); }}
+            className="ml-auto rounded-full bg-blue-200 px-2 py-0.5 text-xs font-medium text-blue-800 hover:bg-blue-300"
+          >
+            ✕ Ukloni filter
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
