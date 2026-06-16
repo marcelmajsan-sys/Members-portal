@@ -73,7 +73,8 @@ async function request<T>(
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/admin/login'; // window.location ne prefiksira basePath, pa ručno
+
       return { success: false, error: { code: 'UNAUTHORIZED', message: 'Session expired' } };
     }
 

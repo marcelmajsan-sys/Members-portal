@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setUser(null);
-    window.location.href = '/login';
+    window.location.href = '/admin/login'; // window.location ne prefiksira basePath
   }, []);
 
   return (
