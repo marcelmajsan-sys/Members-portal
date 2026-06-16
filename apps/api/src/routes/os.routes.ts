@@ -592,7 +592,7 @@ router.post('/members/:id/reminder', validateParams(idParamSchema), async (req: 
     const reminderHtml = `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <p>Poštovani <strong>${member.user.firstName}</strong>,</p>
@@ -661,7 +661,7 @@ router.post('/members/:id/notify', validateParams(idParamSchema), async (req: Au
     `<!DOCTYPE html>
     <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
       <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-        <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+        <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
       </div>
       <div style="padding:24px;">
         <div style="background:${bgColor};border-left:4px solid ${accentColor};padding:16px;border-radius:4px;margin-bottom:20px;">
@@ -773,7 +773,7 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
     `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <p><strong>${authorName}</strong> je dodao/la bilješku na profil člana <strong>${member.user.firstName} ${member.user.lastName}</strong> (${memberEmail}):</p>
@@ -897,7 +897,7 @@ router.post('/members/:id/send-offer', validateParams(idParamSchema), async (req
     const html = `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <p>Poštovani <strong>${member.user.firstName}</strong>,</p>

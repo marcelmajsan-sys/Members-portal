@@ -17,19 +17,23 @@ app.set('trust proxy', 1);
 // runtime kompajlira funkciju bez esModuleInterop (helmet je u runtime-u callable).
 app.use((helmet as any)());
 
-// CORS
+// CORS — dopusti konfigurirane origine + bilo koju .ecommerce.hr poddomenu + localhost.
+const corsAllowList = process.env.CORS_ORIGIN?.split(',').map((s) => s.trim()).filter(Boolean) ?? [
+  'https://members.ecommerce.hr',
+];
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? [
-      'http://localhost:3000',
-      'http://localhost:3002',
-      'http://localhost:3003',
-      'http://localhost:3004',
-      'https://ecommerce-hr-os.vercel.app',
-      'https://ecommerce-hr-web.vercel.app',
-      'https://ecommerce-hr-member.vercel.app',
-      'https://admin.ecommerce.hr',
-    ],
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // curl / server-to-server
+      let host = '';
+      try { host = new URL(origin).hostname; } catch { /* ignore */ }
+      const ok =
+        corsAllowList.includes(origin) ||
+        host.endsWith('.ecommerce.hr') ||
+        host === 'localhost' ||
+        host === '127.0.0.1';
+      cb(null, ok);
+    },
     credentials: true,
   }),
 );

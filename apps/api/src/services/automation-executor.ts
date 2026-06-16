@@ -238,7 +238,7 @@ async function resolveAndSendEmail(
     html = `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <p>Poštovani <strong>${member.user.firstName}</strong>,</p>
@@ -312,7 +312,7 @@ async function resolveAndSendEmail(
       html = `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <p>Poštovani <strong>${member.user.firstName}</strong>,</p>

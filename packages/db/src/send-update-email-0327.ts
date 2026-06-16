@@ -8,7 +8,7 @@ async function main() {
 
   <!-- Header -->
   <div style="background:#1B365D;padding:28px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:48px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:48px;" />
   </div>
 
   <div style="max-width:600px;margin:0 auto;padding:32px 20px;">
@@ -67,7 +67,7 @@ async function main() {
     </div>
 
     <p style="text-align:center;font-size:13px;color:#94A3B8;margin-top:24px;">
-      Sve promjene su live na <a href="https://admin.ecommerce.hr" style="color:#E8A838;text-decoration:none;font-weight:bold;">admin.ecommerce.hr</a>
+      Sve promjene su live na <a href="https://members.ecommerce.hr/admin" style="color:#E8A838;text-decoration:none;font-weight:bold;">members.ecommerce.hr/admin</a>
     </p>
 
   </div>

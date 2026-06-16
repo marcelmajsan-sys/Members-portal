@@ -220,7 +220,7 @@ router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), asy
   // Determine reset URL based on user role
   const baseUrl = user.role === 'MEMBER'
     ? (process.env.MEMBER_APP_URL ?? 'https://member.ecommerce.hr')
-    : (process.env.OS_APP_URL ?? 'https://admin.ecommerce.hr');
+    : (process.env.OS_APP_URL ?? 'https://members.ecommerce.hr/admin');
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
   logger.info({ resetToken, email }, 'Password reset token generated');

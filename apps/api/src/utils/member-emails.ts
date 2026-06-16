@@ -3,7 +3,7 @@ interface EmailMember {
   company?: { name: string };
 }
 
-const LOGO_URL = 'https://admin.ecommerce.hr/logo.png';
+const LOGO_URL = 'https://members.ecommerce.hr/admin/logo.png';
 
 const HEADER = `<div style="background:#1B365D;padding:20px 24px;text-align:center;">
   <img src="${LOGO_URL}" alt="eCommerce Hrvatska" style="height:44px;display:inline-block;" />

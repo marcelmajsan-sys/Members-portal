@@ -94,7 +94,7 @@ router.get('/public/renew-response', async (req, res) => {
         `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <h2 style="color:#1B365D;">Zahtjev za produženje članstva</h2>
@@ -170,7 +170,7 @@ router.get('/public/upgrade-response', async (req, res) => {
       `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="padding:24px;">
     <h2 style="color:#1B365D;">Zahtjev za nadogradnju članstva</h2>
@@ -254,7 +254,7 @@ function htmlPage(title: string, body: string): string {
 <title>${title} — eCommerce Hrvatska</title></head>
 <body style="font-family:Arial,sans-serif;color:#333;margin:0;padding:0;background:#F8FAFC;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
-    <img src="https://admin.ecommerce.hr/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
   </div>
   <div style="max-width:500px;margin:40px auto;padding:32px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
     <h2 style="color:#1B365D;margin-top:0;">${title}</h2>
