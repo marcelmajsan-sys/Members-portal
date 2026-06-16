@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 import type React from "react";
 import { resend } from "./resend-client.js";
 
-const FROM_ADDRESS = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+const FROM_ADDRESS = process.env.EMAIL_FROM ?? "Udruga eCommerce Hrvatska <udruga@ecommerce.hr>";
+// Odgovori članova idu na pravi sandučić udruge (da se može odgovarati i pratiti komunikacija).
+const REPLY_TO = process.env.EMAIL_REPLY_TO ?? "udruga@ecommerce.hr";
 const isDev = process.env.NODE_ENV !== "production";
 const API_BASE = process.env.API_BASE_URL ?? "https://api.ecommerce.hr";
 
@@ -66,6 +68,7 @@ export async function sendEmail(
     const { error } = await resend.emails.send({
       from: FROM_ADDRESS,
       to: [to],
+      replyTo: REPLY_TO,
       subject,
       html: trackedHtml,
       ...(options?.attachments?.length
