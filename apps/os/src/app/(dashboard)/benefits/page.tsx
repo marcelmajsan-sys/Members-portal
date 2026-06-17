@@ -23,6 +23,18 @@ interface Benefit {
   memberTypes: string[];
   isActive: boolean;
   grants: Grant[];
+  eligibleCount: number;
+}
+interface BenefitMember {
+  memberId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  company: string | null;
+  status: string;
+  memberStatus: string;
+  hasGrant: boolean;
+  typeEligible: boolean;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -43,6 +55,7 @@ export default function BenefitsPage() {
   const [view, setView] = useState<'benefit' | 'category' | 'member'>('benefit');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [membersByBenefit, setMembersByBenefit] = useState<Record<string, BenefitMember[]>>({});
   const [toast, setToast] = useState('');
 
   // create/edit modal
@@ -104,8 +117,18 @@ export default function BenefitsPage() {
     if (res.success) { showToast('Benefit obrisan'); fetchBenefits(); }
   }
 
+  const loadMembers = useCallback(async (benefitId: string) => {
+    const res = await api.get<BenefitMember[]>(`/api/os/benefits/${benefitId}/members`);
+    if (res.success && res.data) setMembersByBenefit((m) => ({ ...m, [benefitId]: res.data! }));
+  }, []);
+
   function toggleExpand(id: string) {
-    setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    setExpanded((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else { n.add(id); loadMembers(id); }
+      return n;
+    });
   }
 
   function toggleType(t: string) {
@@ -128,7 +151,7 @@ export default function BenefitsPage() {
     if (res.success) {
       showToast('Benefit dodijeljen članu');
       setAssignFor(null); setAssignQuery(''); setAssignResults([]);
-      fetchBenefits();
+      fetchBenefits(); loadMembers(benefitId);
     } else {
       showToast(res.error?.message || 'Greška');
     }
@@ -136,7 +159,7 @@ export default function BenefitsPage() {
 
   async function unassign(benefitId: string, memberId: string) {
     const res = await api.del(`/api/os/benefits/${benefitId}/assign/${memberId}`);
-    if (res.success) { showToast('Dodjela uklonjena'); fetchBenefits(); }
+    if (res.success) { showToast('Dodjela uklonjena'); fetchBenefits(); loadMembers(benefitId); }
   }
 
   const q = search.trim().toLowerCase();
@@ -212,7 +235,7 @@ export default function BenefitsPage() {
                     <button onClick={() => openEdit(b)} className="text-gray-400 hover:text-gray-700" title="Uredi">✎</button>
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
-                    {b.grants.length} {b.grants.length === 1 ? 'član' : 'članova'} · {b.grants.filter(g => g.status === 'CLAIMED').length} iskoristilo
+                    {b.eligibleCount} {b.eligibleCount === 1 ? 'član' : 'članova'} · {b.grants.filter(g => g.status === 'CLAIMED').length} iskoristilo
                     {b.memberTypes.length > 0 && <> · cilja: {b.memberTypes.map(t => TYPE_LABELS[t]).join(', ')}</>}
                     {b.category && <> · {b.category}</>}
                   </p>
@@ -222,22 +245,33 @@ export default function BenefitsPage() {
 
               {expanded.has(b.id) && (
                 <div className="border-t border-gray-100 px-4 py-3">
-                  {b.grants.length === 0 ? (
-                    <p className="text-sm text-gray-400">Nijedan član nije pojedinačno dodijeljen.</p>
+                  {membersByBenefit[b.id] === undefined ? (
+                    <p className="text-sm text-gray-400">Učitavanje članova...</p>
+                  ) : membersByBenefit[b.id].length === 0 ? (
+                    <p className="text-sm text-gray-400">Nijedan član nema ovaj benefit.</p>
                   ) : (
-                    <ul className="space-y-2">
-                      {b.grants.map((g) => (
-                        <li key={g.id} className="flex items-center justify-between gap-3 text-sm">
-                          <div>
-                            <span className="text-gray-900">{g.member.user.firstName} {g.member.user.lastName}</span>
-                            <span className="text-gray-400"> · {g.member.company?.name || g.member.user.email}</span>
-                            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${g.status === 'CLAIMED' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                              {g.status === 'CLAIMED' ? 'Iskoristio' : 'Dostupno'}
-                            </span>
+                    <ul className="max-h-80 space-y-2 overflow-auto">
+                      {membersByBenefit[b.id].map((m) => {
+                        const active = m.memberStatus === 'ACTIVE';
+                        return (
+                        <li key={m.memberId} className="flex items-center justify-between gap-3 text-sm">
+                          <div className="min-w-0">
+                            <span className="text-gray-900">{m.firstName} {m.lastName}</span>
+                            <span className="text-gray-400"> · {m.company || m.email}</span>
+                            {m.status === 'CLAIMED' ? (
+                              <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Iskoristio</span>
+                            ) : active ? (
+                              <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">Može koristiti</span>
+                            ) : (
+                              <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Neaktivan — produžiti</span>
+                            )}
                           </div>
-                          <button onClick={() => unassign(b.id, g.member.id)} className="text-xs text-gray-400 hover:text-red-500">ukloni</button>
+                          {m.hasGrant && !m.typeEligible && (
+                            <button onClick={() => unassign(b.id, m.memberId)} className="shrink-0 text-xs text-gray-400 hover:text-red-500">ukloni</button>
+                          )}
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   )}
 
