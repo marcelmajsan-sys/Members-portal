@@ -43,6 +43,12 @@ interface DashboardData {
   pendingTasks: number;
   unreadNotifications: number;
   memberClaims?: { total: number; thisMonth: number };
+  recentClaims?: Array<{
+    id: string;
+    claimedAt: string | null;
+    benefit: { title: string };
+    member: { id: string; company: { name: string } | null; user: { firstName: string; lastName: string; email: string } };
+  }>;
 }
 
 function StatCard({
@@ -772,6 +778,53 @@ export default function DashboardPage() {
           </span>
         </Link>
       </div>
+
+      {/* Nedavne prijave članova (zatraženi benefiti) */}
+      {data.recentClaims && data.recentClaims.length > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white">
+          <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+              <span className="text-accent">➔</span> Nedavne prijave članova
+            </h2>
+            <Link href="/notifications?tab=claim" className="text-sm font-medium text-accent hover:underline">
+              Inbox →
+            </Link>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 text-left">
+                  <th className="px-5 py-2.5 font-medium text-gray-500">Član</th>
+                  <th className="hidden px-5 py-2.5 font-medium text-gray-500 sm:table-cell">Email</th>
+                  <th className="hidden px-5 py-2.5 font-medium text-gray-500 md:table-cell">Benefit</th>
+                  <th className="px-5 py-2.5 text-right font-medium text-gray-500">Vrijeme prijave</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recentClaims.map((c) => (
+                  <tr
+                    key={c.id}
+                    onClick={() => router.push(`/members/${c.member.id}`)}
+                    className="cursor-pointer border-b border-gray-50 transition hover:bg-gray-50"
+                  >
+                    <td className="px-5 py-3 text-gray-900">
+                      {c.member.user.firstName} {c.member.user.lastName}
+                      {c.member.company?.name && <span className="text-gray-400"> ({c.member.company.name})</span>}
+                    </td>
+                    <td className="hidden px-5 py-3 text-gray-500 sm:table-cell">{c.member.user.email}</td>
+                    <td className="hidden px-5 py-3 text-gray-500 md:table-cell">{c.benefit.title}</td>
+                    <td className="px-5 py-3 text-right text-gray-400">
+                      {c.claimedAt
+                        ? new Date(c.claimedAt).toLocaleDateString('hr-HR') + ' · ' + new Date(c.claimedAt).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Analytics */}
       <AnalyticsSection />
