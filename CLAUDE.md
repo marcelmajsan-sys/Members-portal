@@ -34,9 +34,10 @@ packages/ai/src/claude.ts                 — Anthropic SDK ask() (claude-opus-4
 - Direktna konekcija (`db.<ref>.supabase.co`) je IPv6-only — ne koristiti (računalo nema IPv6).
 
 ### Vercel (deploy)
-- Tim `marcelmajsan-8321s-projects`. Dva projekta, oba git-connected na `marcelmajsan-sys/Members-portal`, production branch `main`. **Push na `main` auto-deploya oba.**
+- Tim `marcelmajsan-8321s-projects`. **Tri** projekta, svi git-connected na `marcelmajsan-sys/Members-portal`, production branch `main`. **Push na `main` auto-deploya sve.**
   - **API**: `members-portal-api` (rootDirectory `apps/api`).
-  - **Admin panel**: `members-portal-os` (rootDirectory `apps/os`), domena **members.ecommerce.hr/admin** (gola domena `/` redirecta na `/admin`).
+  - **Admin panel**: `members-portal-os` (rootDirectory `apps/os`, basePath `/admin`). Više NE drži domenu — servira se pod **members.ecommerce.hr/admin** preko rewritea iz portal projekta.
+  - **Članski portal**: `members-portal-portal` (rootDirectory `apps/portal`, bez basePatha) — drži domenu **members.ecommerce.hr** (root). `apps/portal/vercel.json` rewritea `/admin/*` → `https://members-portal-os.vercel.app/admin/*` (Next.js multi-zones). Vidi [[member-portal]] memoriju.
 - **API deploy = esbuild pre-bundle**: `build-vercel.mjs` inline-a sve osim `@prisma/client` u `src/app.bundled.mjs`; `api/index.ts` to samo re-exporta. `@vercel/node` tracing NE radi s Express+Prisma+pnpm bez ovoga.
 - **Env varijable** se mijenjaju preko Vercel REST API-ja (`POST /v10/projects/{id}/env?upsert=true`) — `vercel env add` kroz PowerShell pipe sprema PRAZNE vrijednosti. Nakon promjene env-a → MORA redeploy.
 - rootDirectory se postavlja preko `PATCH /v9/projects/{id}` (CLI nema flag).
