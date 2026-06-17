@@ -5,6 +5,19 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 
+interface SecondaryContact {
+  firstName: string | null;
+  lastName: string | null;
+  address: string | null;
+  zip: string | null;
+  city: string | null;
+  country: string | null;
+  oib: string | null;
+  dateOfBirth: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+}
 interface Profile {
   memberNumber: string | null;
   memberType: string;
@@ -15,8 +28,20 @@ interface Profile {
   hasCertificate: boolean;
   hasAcademy: boolean;
   safeShopStatus: string | null;
+  dateOfBirth: string | null;
+  personalOib: string | null;
+  personalAddress: string | null;
+  personalZip: string | null;
+  personalCity: string | null;
+  personalCountry: string | null;
+  personalPhone: string | null;
+  personalNote: string | null;
   user: { firstName: string; lastName: string; email: string };
-  company: { name: string; oib: string; address: string; city: string; website?: string; phone?: string };
+  company: {
+    name: string; oib: string; address: string; city: string; zip?: string;
+    country?: string; website?: string; phone?: string; email?: string; note?: string;
+  };
+  secondaryContact: SecondaryContact | null;
 }
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
@@ -60,6 +85,7 @@ export default function PortalHome() {
   const [claiming, setClaiming] = useState('');
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<EmailItem | null>(null);
+  const [editing, setEditing] = useState(false);
   const [analysis, setAnalysis] = useState<WebshopAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
@@ -180,15 +206,24 @@ export default function PortalHome() {
 
             {/* Member info */}
             <section className="rounded-xl border border-gray-200 bg-white p-6">
-              <h2 className="mb-4 text-sm font-semibold text-gray-900">Podaci o članu</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-gray-900">Podaci o članu</h2>
+                <button
+                  onClick={() => setEditing(true)}
+                  className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-4 py-1.5 text-sm font-medium text-primary transition hover:bg-gray-100"
+                >
+                  Uredi podatke
+                </button>
+              </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Info label="Ime i prezime" value={`${profile.user.firstName} ${profile.user.lastName}`} />
                 <Info label="Email" value={profile.user.email} />
                 <Info label="Tvrtka" value={profile.company.name} />
-                <Info label="OIB" value={profile.company.oib} />
-                <Info label="Adresa" value={[profile.company.address, profile.company.city].filter(Boolean).join(', ') || '—'} />
-                <Info label="Web" value={profile.company.website || '—'} />
-                {profile.company.phone && <Info label="Telefon" value={profile.company.phone} />}
+                <Info label="OIB tvrtke" value={profile.company.oib} />
+                <Info label="Adresa tvrtke" value={[profile.company.address, profile.company.zip, profile.company.city].filter(Boolean).join(', ') || '—'} />
+                <Info label="Web trgovina" value={profile.company.website || '—'} />
+                {profile.company.phone && <Info label="Telefon tvrtke" value={profile.company.phone} />}
+                {profile.company.email && <Info label="E-mail web trgovine" value={profile.company.email} />}
               </div>
             </section>
 
@@ -463,7 +498,276 @@ export default function PortalHome() {
           </div>
         </div>
       )}
+
+      {/* Edit profile modal */}
+      {editing && profile && (
+        <EditProfileModal
+          profile={profile}
+          onClose={() => setEditing(false)}
+          onSaved={(updated) => {
+            setProfile(updated);
+            setEditing(false);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function dateInput(s: string | null) {
+  return s ? s.slice(0, 10) : '';
+}
+
+function EditProfileModal({
+  profile,
+  onClose,
+  onSaved,
+}: {
+  profile: Profile;
+  onClose: () => void;
+  onSaved: (p: Profile) => void;
+}) {
+  const sc = profile.secondaryContact;
+  const [form, setForm] = useState({
+    // Fizička osoba
+    firstName: profile.user.firstName || '',
+    lastName: profile.user.lastName || '',
+    email: profile.user.email || '',
+    personalAddress: profile.personalAddress || '',
+    personalZip: profile.personalZip || '',
+    personalCity: profile.personalCity || '',
+    personalCountry: profile.personalCountry || '',
+    personalOib: profile.personalOib || '',
+    dateOfBirth: dateInput(profile.dateOfBirth),
+    personalPhone: profile.personalPhone || '',
+    personalNote: profile.personalNote || '',
+    // Poslovni subjekt
+    companyName: profile.company.name || '',
+    address: profile.company.address || '',
+    postalCode: profile.company.zip || '',
+    city: profile.company.city || '',
+    country: profile.company.country || '',
+    oib: profile.company.oib || '',
+    phone: profile.company.phone || '',
+    website: profile.company.website || '',
+    companyEmail: profile.company.email || '',
+    companyNote: profile.company.note || '',
+    // Dodatna fizička osoba
+    scFirstName: sc?.firstName || '',
+    scLastName: sc?.lastName || '',
+    scAddress: sc?.address || '',
+    scZip: sc?.zip || '',
+    scCity: sc?.city || '',
+    scCountry: sc?.country || '',
+    scOib: sc?.oib || '',
+    scDateOfBirth: dateInput(sc?.dateOfBirth ?? null),
+    scPhone: sc?.phone || '',
+    scEmail: sc?.email || '',
+    scNote: sc?.note || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  function set<K extends keyof typeof form>(key: K, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    const payload = {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      email: form.email,
+      personalAddress: form.personalAddress,
+      personalZip: form.personalZip,
+      personalCity: form.personalCity,
+      personalCountry: form.personalCountry,
+      personalOib: form.personalOib,
+      dateOfBirth: form.dateOfBirth,
+      personalPhone: form.personalPhone,
+      personalNote: form.personalNote,
+      companyName: form.companyName,
+      address: form.address,
+      postalCode: form.postalCode,
+      city: form.city,
+      country: form.country,
+      oib: form.oib,
+      phone: form.phone,
+      website: form.website,
+      companyEmail: form.companyEmail,
+      companyNote: form.companyNote,
+      secondaryContact: {
+        firstName: form.scFirstName,
+        lastName: form.scLastName,
+        address: form.scAddress,
+        zip: form.scZip,
+        city: form.scCity,
+        country: form.scCountry,
+        oib: form.scOib,
+        dateOfBirth: form.scDateOfBirth,
+        phone: form.scPhone,
+        email: form.scEmail,
+        note: form.scNote,
+      },
+    };
+    const res = await api.put<Profile>('/api/member/profile', payload);
+    if (res.success && res.data) {
+      onSaved(res.data);
+    } else {
+      setError(res.error?.message || 'Spremanje nije uspjelo. Pokušajte ponovno.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <form
+        onSubmit={save}
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-gray-200 p-4">
+          <h2 className="text-base font-semibold text-gray-900">Uredi podatke</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Zatvori"
+            className="shrink-0 rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-8 overflow-auto p-5">
+          {/* Poslovni subjekt */}
+          <fieldset className="space-y-4">
+            <legend className="text-lg font-bold text-gray-900">Poslovni subjekt</legend>
+            <Field label="Naziv tvrtke" required value={form.companyName} onChange={(v) => set('companyName', v)} />
+            <Field label="Adresa tvrtke" required hint="ulica i grad" value={form.address} onChange={(v) => set('address', v)} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Poštanski broj tvrtke" required value={form.postalCode} onChange={(v) => set('postalCode', v)} />
+              <Field label="Mjesto tvrtke" required value={form.city} onChange={(v) => set('city', v)} />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Država tvrtke" required value={form.country} onChange={(v) => set('country', v)} />
+              <Field label="OIB tvrtke" required value={form.oib} onChange={(v) => set('oib', v)} />
+            </div>
+            <Field label="Broj telefona tvrtke" required value={form.phone} onChange={(v) => set('phone', v)} />
+            <Field label="Web trgovina (URL adresa)" required hint="ako još uvijek nemaš svoj webshop ovdje napiši zašto" value={form.website} onChange={(v) => set('website', v)} />
+            <Field label="E-mail (web trgovine)" required type="email" hint="upiši e-mail tvrtke ako još nemaš web trgovinu" value={form.companyEmail} onChange={(v) => set('companyEmail', v)} />
+            <Field label="Napomena" value={form.companyNote} onChange={(v) => set('companyNote', v)} textarea />
+          </fieldset>
+
+          {/* Fizička osoba */}
+          <fieldset className="space-y-4">
+            <legend className="text-lg font-bold text-gray-900">Fizička osoba</legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Ime" required value={form.firstName} onChange={(v) => set('firstName', v)} />
+              <Field label="Prezime" required value={form.lastName} onChange={(v) => set('lastName', v)} />
+            </div>
+            <Field label="Adresa" required value={form.personalAddress} onChange={(v) => set('personalAddress', v)} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Poštanski broj" required value={form.personalZip} onChange={(v) => set('personalZip', v)} />
+              <Field label="Grad" required value={form.personalCity} onChange={(v) => set('personalCity', v)} />
+            </div>
+            <Field label="Država" required value={form.personalCountry} onChange={(v) => set('personalCountry', v)} />
+            <Field label="OIB" required hint="ovo polje je obavezno zbog Zakona o Udrugama" value={form.personalOib} onChange={(v) => set('personalOib', v)} />
+            <Field label="Datum rođenja" required type="date" hint="ovo polje je obavezno zbog Zakona o Udrugama" value={form.dateOfBirth} onChange={(v) => set('dateOfBirth', v)} />
+            <Field label="Broj telefona" hint="opcionalno" value={form.personalPhone} onChange={(v) => set('personalPhone', v)} />
+            <Field label="Email" required type="email" hint="na ovu adresu vam šaljemo sve informacije o vašim pogodnostima" value={form.email} onChange={(v) => set('email', v)} />
+            <Field label="Napomena" value={form.personalNote} onChange={(v) => set('personalNote', v)} textarea />
+          </fieldset>
+
+          {/* Dodatna fizička osoba */}
+          <fieldset className="space-y-4">
+            <legend className="text-lg font-bold text-gray-900">Dodatna fizička osoba</legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Ime drugog člana" value={form.scFirstName} onChange={(v) => set('scFirstName', v)} />
+              <Field label="Prezime drugog člana" value={form.scLastName} onChange={(v) => set('scLastName', v)} />
+            </div>
+            <Field label="Adresa drugog člana" value={form.scAddress} onChange={(v) => set('scAddress', v)} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Poštanski broj drugog člana" value={form.scZip} onChange={(v) => set('scZip', v)} />
+              <Field label="Grad drugog člana" value={form.scCity} onChange={(v) => set('scCity', v)} />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Država drugog člana" value={form.scCountry} onChange={(v) => set('scCountry', v)} />
+              <Field label="OIB drugog člana" value={form.scOib} onChange={(v) => set('scOib', v)} />
+            </div>
+            <Field label="Datum rođenja drugog člana" type="date" value={form.scDateOfBirth} onChange={(v) => set('scDateOfBirth', v)} />
+            <Field label="Broj telefona drugog člana" value={form.scPhone} onChange={(v) => set('scPhone', v)} />
+            <Field label="Email drugog člana" type="email" value={form.scEmail} onChange={(v) => set('scEmail', v)} />
+            <Field label="Napomena drugog člana" value={form.scNote} onChange={(v) => set('scNote', v)} textarea />
+          </fieldset>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-gray-200 p-4">
+          {error && <span className="mr-auto text-sm text-danger">{error}</span>}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+          >
+            Odustani
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? 'Spremam…' : 'Spremi'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  required,
+  hint,
+  type = 'text',
+  textarea,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  hint?: string;
+  type?: string;
+  textarea?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-gray-700">
+        {label}
+        {required && <span className="text-danger"> *</span>}
+      </span>
+      {hint && <span className="mt-0.5 block text-xs italic text-gray-400">{hint}</span>}
+      {textarea ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+        />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          required={required}
+          onChange={(e) => onChange(e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+        />
+      )}
+    </label>
   );
 }
 

@@ -138,6 +138,8 @@ model Company {
   country   String   @default("HR")
   website   String?
   phone     String?
+  email     String?  // E-mail web trgovine
+  note      String?  // Napomena uz poslovni subjekt
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -156,6 +158,15 @@ model Member {
   expiresAt    DateTime?
   lastLoginAt  DateTime?
   notes          String?
+  // Osobni podaci člana kao fizičke osobe (odvojeno od podataka tvrtke)
+  dateOfBirth     DateTime?
+  personalOib     String?
+  personalAddress String?
+  personalZip     String?
+  personalCity    String?
+  personalCountry String?
+  personalPhone   String?
+  personalNote    String?
   hasCertificate Boolean      @default(false)
   hasAcademy     Boolean      @default(false)
   safeShopStatus    String?
@@ -184,6 +195,28 @@ model Member {
   offers         Offer[]
   memberBenefits MemberBenefit[]
   webshopAnalyses WebshopAnalysis[]
+  secondaryContact SecondaryContact?
+}
+
+// Dodatna fizička osoba (drugi član) — opcionalni dodatni kontakt uz člana
+model SecondaryContact {
+  id          String    @id @default(cuid())
+  memberId    String    @unique
+  firstName   String?
+  lastName    String?
+  address     String?
+  zip         String?
+  city        String?
+  country     String?
+  oib         String?
+  dateOfBirth DateTime?
+  phone       String?
+  email       String?
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
 enum BenefitStatus {

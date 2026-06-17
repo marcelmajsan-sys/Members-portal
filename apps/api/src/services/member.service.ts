@@ -1,4 +1,4 @@
-import { prisma, type Member, type MemberType, type MemberStatus, type MemberTier } from '@ecommerce-hr/db';
+import { prisma, Prisma, type Member, type MemberType, type MemberStatus, type MemberTier } from '@ecommerce-hr/db';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
 
 export async function getMemberByUserId(userId: string): Promise<Member | null> {
@@ -6,6 +6,7 @@ export async function getMemberByUserId(userId: string): Promise<Member | null> 
     where: { userId },
     include: {
       company: true,
+      secondaryContact: true,
       user: {
         select: {
           id: true,
@@ -268,19 +269,56 @@ export async function getMemberDashboard(userId: string) {
   };
 }
 
-export async function updateMemberProfile(
-  userId: string,
-  data: {
-    firstName?: string;
-    lastName?: string;
-    companyName?: string;
-    address?: string;
-    city?: string;
-    postalCode?: string;
-    phone?: string;
-    website?: string;
-  },
-) {
+// Podaci dodatne fizičke osobe (drugi član)
+interface SecondaryContactInput {
+  firstName?: string | null;
+  lastName?: string | null;
+  address?: string | null;
+  zip?: string | null;
+  city?: string | null;
+  country?: string | null;
+  oib?: string | null;
+  dateOfBirth?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  note?: string | null;
+}
+
+export interface MemberProfileInput {
+  // Fizička osoba (član)
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  personalAddress?: string | null;
+  personalZip?: string | null;
+  personalCity?: string | null;
+  personalCountry?: string | null;
+  personalOib?: string | null;
+  dateOfBirth?: string | null;
+  personalPhone?: string | null;
+  personalNote?: string | null;
+  // Poslovni subjekt (tvrtka)
+  companyName?: string;
+  oib?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string | null;
+  website?: string | null;
+  companyEmail?: string | null;
+  companyNote?: string | null;
+  // Dodatna fizička osoba
+  secondaryContact?: SecondaryContactInput | null;
+}
+
+// Normalizira prazne stringove u null i parsira datume
+const emptyToNull = (v: string | null | undefined) =>
+  v === undefined ? undefined : v === '' ? null : v;
+const toDate = (v: string | null | undefined) =>
+  v === undefined ? undefined : v === '' || v === null ? null : new Date(v);
+
+export async function updateMemberProfile(userId: string, data: MemberProfileInput) {
   const member = await prisma.member.findUnique({
     where: { userId },
     include: { user: { select: { id: true } }, company: { select: { id: true } } },
@@ -288,28 +326,86 @@ export async function updateMemberProfile(
 
   if (!member) throw new Error('Member not found');
 
-  const { firstName, lastName, companyName, address, city, postalCode, phone, website } = data;
+  // Email je ujedno login — provjeri da nije zauzet kod drugog korisnika
+  if (data.email !== undefined && data.email.trim()) {
+    const existing = await prisma.user.findUnique({
+      where: { email: data.email.trim() },
+      select: { id: true },
+    });
+    if (existing && existing.id !== member.userId) {
+      throw new Error('EMAIL_TAKEN');
+    }
+  }
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: member.userId },
-      data: {
-        ...(firstName !== undefined && { firstName }),
-        ...(lastName !== undefined && { lastName }),
-      },
-    }),
-    prisma.company.update({
-      where: { id: member.companyId },
-      data: {
-        ...(companyName !== undefined && { name: companyName }),
-        ...(address !== undefined && { address }),
-        ...(city !== undefined && { city }),
-        ...(postalCode !== undefined && { zip: postalCode }),
-        ...(phone !== undefined && { phone }),
-        ...(website !== undefined && { website }),
-      },
-    }),
-  ]);
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+
+  // User (fizička osoba — osnovni podaci za prijavu)
+  const userData: Record<string, string> = {};
+  if (data.firstName !== undefined) userData.firstName = data.firstName;
+  if (data.lastName !== undefined) userData.lastName = data.lastName;
+  if (data.email !== undefined && data.email.trim()) userData.email = data.email.trim();
+  if (Object.keys(userData).length > 0) {
+    ops.push(prisma.user.update({ where: { id: member.userId }, data: userData }));
+  }
+
+  // Company (poslovni subjekt)
+  const companyData: Record<string, string | null> = {};
+  if (data.companyName !== undefined) companyData.name = data.companyName;
+  if (data.oib !== undefined) companyData.oib = data.oib;
+  if (data.address !== undefined) companyData.address = data.address;
+  if (data.city !== undefined) companyData.city = data.city;
+  if (data.postalCode !== undefined) companyData.zip = data.postalCode;
+  if (data.country !== undefined) companyData.country = data.country;
+  if (data.phone !== undefined) companyData.phone = emptyToNull(data.phone) ?? null;
+  if (data.website !== undefined) companyData.website = emptyToNull(data.website) ?? null;
+  if (data.companyEmail !== undefined) companyData.email = emptyToNull(data.companyEmail) ?? null;
+  if (data.companyNote !== undefined) companyData.note = emptyToNull(data.companyNote) ?? null;
+  if (Object.keys(companyData).length > 0) {
+    ops.push(prisma.company.update({ where: { id: member.companyId }, data: companyData }));
+  }
+
+  // Member (osobni podaci člana kao fizičke osobe)
+  const memberData: Record<string, unknown> = {};
+  if (data.personalAddress !== undefined) memberData.personalAddress = emptyToNull(data.personalAddress);
+  if (data.personalZip !== undefined) memberData.personalZip = emptyToNull(data.personalZip);
+  if (data.personalCity !== undefined) memberData.personalCity = emptyToNull(data.personalCity);
+  if (data.personalCountry !== undefined) memberData.personalCountry = emptyToNull(data.personalCountry);
+  if (data.personalOib !== undefined) memberData.personalOib = emptyToNull(data.personalOib);
+  if (data.personalPhone !== undefined) memberData.personalPhone = emptyToNull(data.personalPhone);
+  if (data.personalNote !== undefined) memberData.personalNote = emptyToNull(data.personalNote);
+  if (data.dateOfBirth !== undefined) memberData.dateOfBirth = toDate(data.dateOfBirth);
+  if (Object.keys(memberData).length > 0) {
+    ops.push(prisma.member.update({ where: { id: member.id }, data: memberData }));
+  }
+
+  // Dodatna fizička osoba (upsert)
+  if (data.secondaryContact !== undefined && data.secondaryContact !== null) {
+    const sc = data.secondaryContact;
+    const scData = {
+      firstName: emptyToNull(sc.firstName),
+      lastName: emptyToNull(sc.lastName),
+      address: emptyToNull(sc.address),
+      zip: emptyToNull(sc.zip),
+      city: emptyToNull(sc.city),
+      country: emptyToNull(sc.country),
+      oib: emptyToNull(sc.oib),
+      dateOfBirth: toDate(sc.dateOfBirth),
+      phone: emptyToNull(sc.phone),
+      email: emptyToNull(sc.email),
+      note: emptyToNull(sc.note),
+    };
+    ops.push(
+      prisma.secondaryContact.upsert({
+        where: { memberId: member.id },
+        create: { memberId: member.id, ...scData },
+        update: scData,
+      }),
+    );
+  }
+
+  if (ops.length > 0) {
+    await prisma.$transaction(ops);
+  }
 
   return getMemberByUserId(userId);
 }

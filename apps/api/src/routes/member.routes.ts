@@ -61,6 +61,10 @@ router.put('/profile', async (req: AuthRequest, res) => {
     successResponse(res, updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Profile update failed';
+    if (message === 'EMAIL_TAKEN') {
+      errorResponse(res, 'CONFLICT', 'Email adresa je već u upotrebi.', 409);
+      return;
+    }
     errorResponse(res, 'UPDATE_FAILED', message, 500);
   }
 });
