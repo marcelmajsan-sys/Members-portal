@@ -45,7 +45,7 @@ Respond with JSON matching this structure:
 }`;
 
 export function cleanHtml(html: string): string {
-  let cleaned = html
+  const cleaned = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<svg[\s\S]*?<\/svg>/gi, '')
@@ -68,7 +68,7 @@ export function cleanHtml(html: string): string {
     .replace(/\s{2,}/g, ' ');
 
   // Try to find product area: skip content before first price indicator
-  const priceIdx = cleaned.search(/\d+[,\.]\d{2}\s*(?:€|EUR|kn|HRK)/i);
+  const priceIdx = cleaned.search(/\d+[,.]\d{2}\s*(?:€|EUR|kn|HRK)/i);
   if (priceIdx > 1000) {
     // Start 1000 chars before first price to capture product name
     const start = Math.max(0, priceIdx - 1000);

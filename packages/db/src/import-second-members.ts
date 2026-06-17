@@ -18,15 +18,6 @@ function cleanEmail(val: unknown): string {
   return clean(val).toLowerCase().replace(/\s/g, '');
 }
 
-function cleanPhone(val: unknown): string {
-  let phone = clean(val);
-  if (!phone) return '';
-  phone = phone.replace(/\s+/g, '').replace(/^00/, '+');
-  if (/^\d{9,}$/.test(phone) && !phone.startsWith('+')) phone = '+385' + phone;
-  if (phone.startsWith('0') && !phone.startsWith('+')) phone = '+385' + phone.slice(1);
-  return phone;
-}
-
 function cleanOib(val: unknown): string {
   const oib = clean(val).replace(/\D/g, '');
   return oib.length === 11 ? oib : '';
@@ -93,7 +84,6 @@ async function importTrgovci2nd(sheet: XLSX.WorkSheet) {
     const status = mapStatus(r['Status članstva']);
     const joinedAt = parseExcelDate(r['Prvo učlanjenje (datum pristupanja)']);
     const expiresAt = parseExcelDate(r['Istek članstva']);
-    const phone2 = cleanPhone(r['Mobitel 2. član']);
 
     try {
       // Check if this email already exists as a user
@@ -186,7 +176,6 @@ async function importNuditelji2nd(sheet: XLSX.WorkSheet) {
     const status = mapStatus(r['Status članstva']);
     const joinedAt = parseExcelDate(r['Prvo učlanjenje (datum pristupanja)']);
     const expiresAt = parseExcelDate(r['Istek članstva']);
-    const phone2 = cleanPhone(r['Mobitel 2. član']);
 
     try {
       const existingUser = await prisma.user.findUnique({ where: { email: email2 } });
