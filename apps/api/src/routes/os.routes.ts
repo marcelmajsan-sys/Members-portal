@@ -7,7 +7,7 @@ import { validateQuery, validateParams } from '../middleware/validate.js';
 import { successResponse, paginatedResponse, errorResponse } from '../utils/api-response.js';
 import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile } from '../services/member.service.js';
 import { getDashboardStats, getDashboardAnalytics, getRecentActivity } from '../services/dashboard.service.js';
-import { createNotification } from '../services/notification.service.js';
+import { createNotification, notifyStaff } from '../services/notification.service.js';
 import { emitEvent } from '../lib/event-bus.js';
 import { sendEmail } from '@ecommerce-hr/email';
 import { ask } from '@ecommerce-hr/ai';
@@ -276,6 +276,15 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
 
     // Emit activation event (triggers welcome email automation)
     await emitEvent('member.activated', { memberId: member.id, userId: member.userId });
+
+    // Inbox: notify other staff about the new member
+    notifyStaff({
+      type: 'INFO',
+      title: 'Novi član',
+      message: `${member.user.firstName} ${member.user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} dodan/a kao član.`,
+      actionUrl: `/members/${member.id}`,
+      excludeUserId: req.user!.userId,
+    }).catch(() => {});
 
     successResponse(res, member, 201);
   } catch (err) {
@@ -867,6 +876,15 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
 </body></html>`,
     {},
   ).catch(() => {}); // fire-and-forget — don't block note creation
+
+  // Inbox: notify other staff about the new note
+  notifyStaff({
+    type: 'INFO',
+    title: 'Nova bilješka za člana',
+    message: `${authorName}: bilješka na ${member.user.firstName} ${member.user.lastName} — ${content.trim().slice(0, 120)}`,
+    actionUrl: `/members/${req.params.id}`,
+    excludeUserId: req.user!.userId,
+  }).catch(() => {});
 
   successResponse(res, note);
 });

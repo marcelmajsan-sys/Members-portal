@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
 interface Grant {
@@ -50,6 +51,7 @@ const emptyForm = {
 };
 
 export default function BenefitsPage() {
+  const router = useRouter();
   const [benefits, setBenefits] = useState<Benefit[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'benefit' | 'category' | 'member'>('benefit');
@@ -255,8 +257,12 @@ export default function BenefitsPage() {
                         const active = m.memberStatus === 'ACTIVE';
                         return (
                         <li key={m.memberId} className="flex items-center justify-between gap-3 text-sm">
-                          <div className="min-w-0">
-                            <span className="text-gray-900">{m.firstName} {m.lastName}</span>
+                          <div
+                            onClick={() => router.push(`/members/${m.memberId}`)}
+                            className="min-w-0 cursor-pointer rounded px-1 -mx-1 py-0.5 hover:bg-gray-50"
+                            title="Otvori stranicu člana"
+                          >
+                            <span className="text-gray-900 hover:underline">{m.firstName} {m.lastName}</span>
                             <span className="text-gray-400"> · {m.company || m.email}</span>
                             {m.status === 'CLAIMED' ? (
                               <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Iskoristio</span>

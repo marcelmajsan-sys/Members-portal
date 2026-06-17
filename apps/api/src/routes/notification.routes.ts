@@ -51,6 +51,15 @@ router.patch('/:id/read', validateParams(idParamSchema), async (req: AuthRequest
   successResponse(res, notification);
 });
 
+// PATCH /:id/unread — mark single as unread
+router.patch('/:id/unread', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const notification = await prisma.notification.update({
+    where: { id: req.params.id as string },
+    data: { isRead: false },
+  });
+  successResponse(res, notification);
+});
+
 // POST /mark-all-read — mark all as read for current user
 router.post('/mark-all-read', async (req: AuthRequest, res) => {
   await markAllAsRead(req.user!.userId);

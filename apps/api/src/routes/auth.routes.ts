@@ -21,6 +21,7 @@ import {
   revokeRefreshToken,
 } from '../services/auth.service.js';
 import { emitEvent } from '../lib/event-bus.js';
+import { notifyStaff } from '../services/notification.service.js';
 import { DomainEvents } from '@ecommerce-hr/shared';
 import { sendPasswordResetEmail } from '@ecommerce-hr/email';
 
@@ -83,6 +84,14 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res)
     email: user.email,
     firstName: user.firstName,
   }).catch((err) => logger.error(err, 'Failed to emit MEMBER_REGISTERED event'));
+
+  // Inbox: notify staff about the new member self-registration
+  notifyStaff({
+    type: 'INFO',
+    title: 'Novi član',
+    message: `${user.firstName} ${user.lastName} (${companyName}) se registrirao/la kao član.`,
+    actionUrl: `/members/${member.id}`,
+  }).catch(() => {});
 
   successResponse(
     res,

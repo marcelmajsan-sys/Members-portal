@@ -22,6 +22,8 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     monthlyRenewals,
     pendingTasks,
     unreadNotifications,
+    benefitClaimsTotal,
+    benefitClaimsThisMonth,
   ] = await Promise.all([
     prisma.member.count(),
     prisma.member.count({ where: { status: 'ACTIVE' } }),
@@ -110,6 +112,8 @@ export async function getDashboardStats(userId: string, userRole?: string) {
       },
     }),
     prisma.notification.count({ where: { userId, isRead: false } }),
+    prisma.memberBenefit.count({ where: { status: 'CLAIMED' } }),
+    prisma.memberBenefit.count({ where: { status: 'CLAIMED', claimedAt: { gte: startOfMonth } } }),
   ]);
 
   return {
@@ -130,6 +134,10 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     monthlyRenewals,
     pendingTasks,
     unreadNotifications,
+    memberClaims: {
+      total: benefitClaimsTotal,
+      thisMonth: benefitClaimsThisMonth,
+    },
   };
 }
 

@@ -42,6 +42,7 @@ interface DashboardData {
   }>;
   pendingTasks: number;
   unreadNotifications: number;
+  memberClaims?: { total: number; thisMonth: number };
 }
 
 function StatCard({
@@ -748,7 +749,7 @@ export default function DashboardPage() {
       />
 
       {/* Quick stats row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/tasks" className="rounded-xl border border-gray-200 bg-white p-5 flex items-center justify-between transition hover:border-primary hover:shadow-sm">
           <span className="text-sm text-gray-600">Zadaci na čekanju</span>
           <span className="rounded-full bg-warning-light px-2.5 py-0.5 text-sm font-semibold text-warning">
@@ -759,6 +760,15 @@ export default function DashboardPage() {
           <span className="text-sm text-gray-600">Nepročitane obavijesti</span>
           <span className="rounded-full bg-info-light px-2.5 py-0.5 text-sm font-semibold text-info">
             {data.unreadNotifications}
+          </span>
+        </Link>
+        <Link href="/notifications?tab=claim" className="rounded-xl border border-gray-200 bg-white p-5 flex items-center justify-between transition hover:border-primary hover:shadow-sm">
+          <div>
+            <span className="text-sm text-gray-600">Prijave članova</span>
+            <span className="block text-xs text-gray-400">{data.memberClaims?.thisMonth ?? 0} ovaj mjesec</span>
+          </div>
+          <span className="rounded-full bg-purple-50 px-2.5 py-0.5 text-sm font-semibold text-purple-700">
+            {data.memberClaims?.total ?? 0}
           </span>
         </Link>
       </div>

@@ -18,6 +18,36 @@ export async function createNotification(data: {
   });
 }
 
+// Notify all active staff (OWNER/OPERATOR) — used for admin-inbox events.
+// Optionally exclude the user who triggered the action (so the author isn't pinged).
+export async function notifyStaff(data: {
+  type?: NotificationType;
+  title: string;
+  message: string;
+  actionUrl?: string;
+  excludeUserId?: string;
+}): Promise<void> {
+  const staff = await prisma.user.findMany({
+    where: { role: { in: ['OWNER', 'OPERATOR'] }, isActive: true },
+    select: { id: true },
+  });
+  await Promise.all(
+    staff
+      .filter((s) => s.id !== data.excludeUserId)
+      .map((s) =>
+        prisma.notification.create({
+          data: {
+            userId: s.id,
+            type: data.type ?? 'INFO',
+            title: data.title,
+            message: data.message,
+            actionUrl: data.actionUrl,
+          },
+        }),
+      ),
+  );
+}
+
 export async function getNotifications(
   userId: string,
   page: number,
