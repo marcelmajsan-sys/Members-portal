@@ -59,11 +59,21 @@ export async function requestWebshopAnalysis(userId: string) {
   const website = member.company?.website?.trim();
   if (!website) return { error: 'NO_WEBSITE' } as RequestError;
 
-  // Spriječi paralelno dvostruko pokretanje
+  // Spriječi paralelno dvostruko pokretanje — ali samo za stvarno tekući zahtjev.
+  // Zaglavljeni PENDING (prekinuta veza, timeout) stariji od 3 min smatramo napuštenim
+  // i označavamo FAILED kako član ne bi ostao trajno zaključan.
   const pending = await prisma.webshopAnalysis.findFirst({
     where: { memberId: member.id, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
   });
-  if (pending) return { error: 'IN_PROGRESS' } as RequestError;
+  if (pending) {
+    const ageMs = Date.now() - pending.createdAt.getTime();
+    if (ageMs < 3 * 60 * 1000) return { error: 'IN_PROGRESS' } as RequestError;
+    await prisma.webshopAnalysis.update({
+      where: { id: pending.id },
+      data: { status: 'FAILED', error: 'Napušteno (prekoračeno vrijeme)' },
+    });
+  }
 
   const websiteUrl = normalizeUrl(website);
 

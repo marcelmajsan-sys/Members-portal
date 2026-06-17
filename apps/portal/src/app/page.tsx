@@ -101,6 +101,8 @@ export default function PortalHome() {
       if (pk.success && pk.data) setPerks(pk.data);
       if (wa.success && wa.data) setAnalysis(wa.data);
       setLoading(false);
+      // Ako je analiza pokrenuta u prethodnom posjetu i još traje, nastavi pollati.
+      if (wa.success && wa.data?.status === 'PENDING') pollAnalysis();
     })();
   }, [isLoading, isAuthenticated, user]);
 
@@ -116,16 +118,46 @@ export default function PortalHome() {
     setClaiming('');
   }
 
-  async function runAnalysis() {
+  // Periodički provjerava spremljenu analizu dok ne postane COMPLETED/FAILED.
+  // Tako se dovršena analiza prikaže i ako se duga POST veza prekine.
+  async function pollAnalysis(maxMs = 180000) {
     setAnalyzing(true);
-    setAnalysisError('');
-    const res = await api.post<WebshopAnalysis>('/api/member/webshop-analysis');
-    if (res.success && res.data) {
-      setAnalysis(res.data);
-    } else {
-      setAnalysisError(res.error?.message || 'Analiza nije uspjela. Pokušajte ponovno kasnije.');
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const res = await api.get<WebshopAnalysis | null>('/api/member/webshop-analysis');
+      if (res.success && res.data) {
+        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setAnalyzing(false); return; }
+        if (res.data.status === 'FAILED') {
+          setAnalysis(res.data);
+          setAnalysisError('Analiza nije uspjela. Pokušajte ponovno.');
+          setAnalyzing(false);
+          return;
+        }
+      }
     }
     setAnalyzing(false);
+    setAnalysisError('Analiza traje duže nego inače — osvježite stranicu za koju minutu.');
+  }
+
+  async function runAnalysis() {
+    setAnalysisError('');
+    setAnalyzing(true);
+    // Pokreni analizu (na serveru se izvršava sinkrono, ~1 min).
+    const res = await api.post<WebshopAnalysis>('/api/member/webshop-analysis').catch(() => null);
+    if (res && res.success && res.data?.status === 'COMPLETED') {
+      setAnalysis(res.data);
+      setAnalyzing(false);
+      return;
+    }
+    // Brze, tvrde greške (neaktivan član / bez web adrese) — odmah prikaži, bez pollanja.
+    if (res && !res.success && res.error && res.error.code !== 'CONFLICT' && res.error.code !== 'NETWORK_ERROR') {
+      setAnalysisError(res.error.message || 'Analiza nije uspjela. Pokušajte ponovno kasnije.');
+      setAnalyzing(false);
+      return;
+    }
+    // U tijeku / prekinuta duga veza → dohvati spremljeni rezultat pollanjem.
+    await pollAnalysis();
   }
 
   if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) {
