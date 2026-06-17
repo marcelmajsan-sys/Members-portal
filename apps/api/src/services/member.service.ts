@@ -6,6 +6,7 @@ export async function getMemberByUserId(userId: string): Promise<Member | null> 
     where: { userId },
     include: {
       company: true,
+      secondaryContact: true,
       user: {
         select: {
           id: true,
@@ -292,6 +293,22 @@ export interface MemberProfileInput {
   website?: string | null;
   companyEmail?: string | null;
   companyNote?: string | null;
+  // Druga fizička osoba (opcionalno): objekt = upsert, null = ukloni, undefined = ne diraj
+  secondaryContact?: SecondaryContactInput | null;
+}
+
+export interface SecondaryContactInput {
+  firstName?: string | null;
+  lastName?: string | null;
+  address?: string | null;
+  zip?: string | null;
+  city?: string | null;
+  country?: string | null;
+  oib?: string | null;
+  dateOfBirth?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  note?: string | null;
 }
 
 // Normalizira prazne stringove u null i parsira datume
@@ -358,6 +375,33 @@ export async function updateMemberProfile(userId: string, data: MemberProfileInp
   if (data.dateOfBirth !== undefined) memberData.dateOfBirth = toDate(data.dateOfBirth);
   if (Object.keys(memberData).length > 0) {
     ops.push(prisma.member.update({ where: { id: member.id }, data: memberData }));
+  }
+
+  // Druga fizička osoba (opcionalno)
+  if (data.secondaryContact !== undefined) {
+    if (data.secondaryContact === null) {
+      ops.push(prisma.secondaryContact.deleteMany({ where: { memberId: member.id } }));
+    } else {
+      const s = data.secondaryContact;
+      const scData = {
+        firstName: emptyToNull(s.firstName),
+        lastName: emptyToNull(s.lastName),
+        address: emptyToNull(s.address),
+        zip: emptyToNull(s.zip),
+        city: emptyToNull(s.city),
+        country: emptyToNull(s.country),
+        oib: emptyToNull(s.oib),
+        dateOfBirth: toDate(s.dateOfBirth),
+        phone: emptyToNull(s.phone),
+        email: emptyToNull(s.email),
+        note: emptyToNull(s.note),
+      };
+      ops.push(prisma.secondaryContact.upsert({
+        where: { memberId: member.id },
+        create: { memberId: member.id, ...scData },
+        update: scData,
+      }));
+    }
   }
 
   if (ops.length > 0) {

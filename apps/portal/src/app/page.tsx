@@ -28,6 +28,12 @@ interface Profile {
     name: string; oib: string; address: string; city: string; zip?: string;
     country?: string; website?: string; phone?: string; email?: string; note?: string;
   };
+  secondaryContact: SecondaryContact | null;
+}
+interface SecondaryContact {
+  firstName: string | null; lastName: string | null; address: string | null;
+  zip: string | null; city: string | null; country: string | null; oib: string | null;
+  dateOfBirth: string | null; phone: string | null; email: string | null; note: string | null;
 }
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
@@ -569,7 +575,20 @@ function EditProfileModal({
     website: profile.company.website || '',
     companyEmail: profile.company.email || '',
     companyNote: profile.company.note || '',
+    // Druga fizička osoba (opcionalno)
+    secFirstName: profile.secondaryContact?.firstName || '',
+    secLastName: profile.secondaryContact?.lastName || '',
+    secAddress: profile.secondaryContact?.address || '',
+    secZip: profile.secondaryContact?.zip || '',
+    secCity: profile.secondaryContact?.city || '',
+    secCountry: profile.secondaryContact?.country || '',
+    secOib: profile.secondaryContact?.oib || '',
+    secDateOfBirth: dateInput(profile.secondaryContact?.dateOfBirth ?? null),
+    secPhone: profile.secondaryContact?.phone || '',
+    secEmail: profile.secondaryContact?.email || '',
+    secNote: profile.secondaryContact?.note || '',
   });
+  const [hasSecond, setHasSecond] = useState(!!profile.secondaryContact);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -603,6 +622,19 @@ function EditProfileModal({
       website: form.website,
       companyEmail: form.companyEmail,
       companyNote: form.companyNote,
+      secondaryContact: hasSecond ? {
+        firstName: form.secFirstName,
+        lastName: form.secLastName,
+        address: form.secAddress,
+        zip: form.secZip,
+        city: form.secCity,
+        country: form.secCountry,
+        oib: form.secOib,
+        dateOfBirth: form.secDateOfBirth,
+        phone: form.secPhone,
+        email: form.secEmail,
+        note: form.secNote,
+      } : null,
     };
     const res = await api.put<Profile>('/api/member/profile', payload);
     if (res.success && res.data) {
@@ -673,6 +705,47 @@ function EditProfileModal({
             <Field label="Email" required type="email" hint="na ovu adresu vam šaljemo sve informacije o vašim pogodnostima" value={form.email} onChange={(v) => set('email', v)} />
             <Field label="Napomena" value={form.personalNote} onChange={(v) => set('personalNote', v)} textarea />
           </fieldset>
+
+          {/* Druga fizička osoba (opcionalno) */}
+          {hasSecond ? (
+            <fieldset className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <legend className="text-lg font-bold text-gray-900">
+                  Druga fizička osoba <span className="text-sm font-normal text-gray-400">(opcionalno)</span>
+                </legend>
+                <button
+                  type="button"
+                  onClick={() => setHasSecond(false)}
+                  className="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+                >
+                  Ukloni
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Ime" value={form.secFirstName} onChange={(v) => set('secFirstName', v)} />
+                <Field label="Prezime" value={form.secLastName} onChange={(v) => set('secLastName', v)} />
+              </div>
+              <Field label="Adresa" value={form.secAddress} onChange={(v) => set('secAddress', v)} />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Poštanski broj" value={form.secZip} onChange={(v) => set('secZip', v)} />
+                <Field label="Grad" value={form.secCity} onChange={(v) => set('secCity', v)} />
+              </div>
+              <Field label="Država" value={form.secCountry} onChange={(v) => set('secCountry', v)} />
+              <Field label="OIB" value={form.secOib} onChange={(v) => set('secOib', v)} />
+              <Field label="Datum rođenja" type="date" value={form.secDateOfBirth} onChange={(v) => set('secDateOfBirth', v)} />
+              <Field label="Broj telefona" hint="opcionalno" value={form.secPhone} onChange={(v) => set('secPhone', v)} />
+              <Field label="Email" type="email" value={form.secEmail} onChange={(v) => set('secEmail', v)} />
+              <Field label="Napomena" value={form.secNote} onChange={(v) => set('secNote', v)} textarea />
+            </fieldset>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setHasSecond(true)}
+              className="rounded-lg border border-dashed border-gray-300 px-4 py-3 text-sm font-medium text-primary transition hover:bg-gray-50"
+            >
+              + Dodaj drugu fizičku osobu
+            </button>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-gray-200 p-4">
