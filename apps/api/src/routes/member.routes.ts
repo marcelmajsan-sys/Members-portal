@@ -109,7 +109,9 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
   const result = await claimMemberPerk(req.user!.userId, req.params.benefitId as string);
 
   if ('error' in result) {
-    if (result.error === 'NOT_ELIGIBLE') {
+    if (result.error === 'INACTIVE') {
+      errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste iskoristili benefit', 403);
+    } else if (result.error === 'NOT_ELIGIBLE') {
       errorResponse(res, 'FORBIDDEN', 'Nemate pravo na ovaj benefit', 403);
     } else if (result.error === 'NOT_FOUND') {
       errorResponse(res, 'NOT_FOUND', 'Benefit nije pronađen', 404);

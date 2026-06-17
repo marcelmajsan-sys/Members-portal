@@ -181,12 +181,14 @@ export default function PortalHome() {
                       <p className="text-sm text-gray-400">Trenutno nemate dostupnih pogodnosti.</p>
                     ) : (
                       <ul className="space-y-3">
-                        {perks.available.map((perk) => (
+                        {perks.available.map((perk) => {
+                          const isActiveMember = profile.status === 'ACTIVE';
+                          return (
                           <li key={perk.id} className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-sm text-gray-700">
                                 {perk.title}
-                                {perk.actionUrl && (
+                                {isActiveMember && perk.actionUrl && (
                                   <>
                                     {' '}
                                     <a href={perk.actionUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
@@ -197,15 +199,22 @@ export default function PortalHome() {
                               </p>
                               {perk.description && <p className="text-xs text-gray-500">{perk.description}</p>}
                             </div>
-                            <button
-                              onClick={() => claimPerk(perk)}
-                              disabled={claiming === perk.id}
-                              className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
-                            >
-                              {claiming === perk.id ? '...' : 'Prijava'}
-                            </button>
+                            {isActiveMember ? (
+                              <button
+                                onClick={() => claimPerk(perk)}
+                                disabled={claiming === perk.id}
+                                className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
+                              >
+                                {claiming === perk.id ? '...' : (perk.actionLabel || 'Prijava')}
+                              </button>
+                            ) : (
+                              <span className="shrink-0 rounded-md bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700">
+                                Produži članstvo
+                              </span>
+                            )}
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

@@ -418,9 +418,12 @@ export async function getMemberPerks(userId: string) {
 export async function claimMemberPerk(userId: string, benefitId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    select: { id: true, memberType: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
+    select: { id: true, memberType: true, status: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
   });
   if (!member) return { error: 'NO_MEMBER' as const };
+
+  // Samo aktivni članovi mogu iskoristiti benefit
+  if (member.status !== 'ACTIVE') return { error: 'INACTIVE' as const };
 
   const benefit = await prisma.benefit.findUnique({ where: { id: benefitId } });
   if (!benefit || !benefit.isActive) return { error: 'NOT_FOUND' as const };
