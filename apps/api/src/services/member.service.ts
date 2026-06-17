@@ -22,7 +22,7 @@ export async function getMemberByUserId(userId: string): Promise<Member | null> 
 export async function getAllMembers(
   page: number,
   limit: number,
-  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean },
+  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean },
 ): Promise<{ members: Member[]; total: number }> {
   const skip = (page - 1) * limit;
 
@@ -53,6 +53,14 @@ export async function getAllMembers(
     future.setDate(future.getDate() + filters.expiringDays);
     where.status = 'ACTIVE';
     where.expiresAt = { gte: now, lte: future };
+  }
+
+  // Expiry month: members whose membership expires within the given calendar month
+  if (filters?.expiryMonth) {
+    const [year, mon] = filters.expiryMonth.split('-').map(Number);
+    const start = new Date(year, mon - 1, 1);
+    const end = new Date(year, mon, 0, 23, 59, 59);
+    where.expiresAt = { gte: start, lte: end };
   }
 
   // Boolean field filters (promo, certificate)

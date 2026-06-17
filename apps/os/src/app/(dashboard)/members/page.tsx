@@ -51,6 +51,12 @@ const TIER_STYLES: Record<string, string> = {
   PREMIUM: 'bg-purple-50 text-purple-700',
 };
 
+const MONTH_LABELS: Record<string, string> = {
+  '01': 'Siječanj', '02': 'Veljača', '03': 'Ožujak', '04': 'Travanj',
+  '05': 'Svibanj', '06': 'Lipanj', '07': 'Srpanj', '08': 'Kolovoz',
+  '09': 'Rujan', '10': 'Listopad', '11': 'Studeni', '12': 'Prosinac',
+};
+
 function daysUntilExpiry(expiresAt: string | null): number | null {
   if (!expiresAt) return null;
   const diff = new Date(expiresAt).getTime() - Date.now();
@@ -99,6 +105,7 @@ export default function MembersPage() {
   });
   const [extra, setExtra] = useState<string>('');
   const [expiring, setExpiring] = useState<boolean>(() => legacyFilter === 'expiring_soon');
+  const [expiryMonth, setExpiryMonth] = useState<string>(() => searchParams.get('expiryMonth') || '');
   const [companyId, setCompanyId] = useState<string | null>(() => searchParams.get('companyId'));
   const [companyName, setCompanyName] = useState<string | null>(() => searchParams.get('companyName'));
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -146,8 +153,16 @@ export default function MembersPage() {
   }, [type, counts]);
 
 
+  // Mjeseci isteka (tekući + 5 idućih) — kao "Obnove" na dashboardu
+  const monthOptions = useMemo(() => Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + i);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return { value, label: MONTH_LABELS[String(d.getMonth() + 1).padStart(2, '0')] };
+  }), []);
+
   const fetchMembers = useCallback(async (
-    p: number, t: string, st: string, ex: string, exp: boolean, filterCompanyId?: string | null,
+    p: number, t: string, st: string, ex: string, exp: boolean, em: string, filterCompanyId?: string | null,
   ) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(p), limit: String(limit) });
@@ -156,6 +171,7 @@ export default function MembersPage() {
     if (t && t !== 'all') params.set('type', t);
     if (st) params.set('status', st);
     if (exp) params.set('expiring', '30');
+    if (em) params.set('expiryMonth', em);
     if (ex === 'cert') params.set('hasCertificate', 'true');
     else if (ex === 'no_cert') params.set('hasCertificate', 'false');
     else if (ex === 'academy') params.set('certificate', 'HAS_ACADEMY');
@@ -174,8 +190,8 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    fetchMembers(page, type, status, extra, expiring, companyId);
-  }, [page, type, status, extra, expiring, companyId, fetchMembers]);
+    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
+  }, [page, type, status, extra, expiring, expiryMonth, companyId, fetchMembers]);
 
   useEffect(() => {
     api.get<Record<string, number>>('/api/os/members/counts').then((res) => {
@@ -199,6 +215,11 @@ export default function MembersPage() {
     setExtra((e) => (e === v ? '' : v));
     setPage(1);
   }
+  function toggleMonth(v: string) {
+    setExpiryMonth((m) => (m === v ? '' : v));
+    setExpiring(false);
+    setPage(1);
+  }
 
 
   async function handleAddMember(e: React.FormEvent) {
@@ -209,7 +230,7 @@ export default function MembersPage() {
     if (res.success) {
       setShowAddModal(false);
       setAddForm({ email: '', firstName: '', lastName: '', companyName: '', oib: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' });
-      fetchMembers(page, type, status, extra, expiring, companyId);
+      fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
     } else {
       setAddError(res.error?.message || 'Greška pri dodavanju');
     }
@@ -311,6 +332,35 @@ export default function MembersPage() {
           })}
         </div>
       )}
+
+      {/* Mjeseci isteka — kao "Obnove" na dashboardu (tekući + 5 idućih) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-gray-400">Ističu u mjesecu:</span>
+        {monthOptions.map((o) => {
+          const isActive = expiryMonth === o.value;
+          return (
+            <button
+              key={o.value}
+              onClick={() => toggleMonth(o.value)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                isActive
+                  ? 'bg-[#1B365D] text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+        {expiryMonth && (
+          <button
+            onClick={() => toggleMonth(expiryMonth)}
+            className="rounded-full px-2.5 py-1 text-xs font-medium text-gray-400 hover:text-gray-600"
+          >
+            ✕ Poništi mjesec
+          </button>
+        )}
+      </div>
 
       {/* Globalni filter iz dashboarda (kad je "Svi članovi" + status/ističu uskoro) */}
       {type === 'all' && (status || expiring) && (

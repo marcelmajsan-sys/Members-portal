@@ -81,10 +81,11 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
   const validTypes = ['WEB_TRADER', 'SERVICE_PROVIDER', 'PHYSICAL'];
 
   const expiringParam = req.query.expiring as string | undefined;
+  const expiryMonthParam = req.query.expiryMonth as string | undefined;
 
   const companyIdParam = req.query.companyId as string | undefined;
 
-  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean } = {};
+  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean } = {};
   if (companyIdParam) filters.companyId = companyIdParam;
   if (tier && ['FREE', 'STANDARD', 'PREMIUM'].includes(tier)) filters.tier = tier;
 
@@ -92,6 +93,11 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
   if (expiringParam) {
     const days = parseInt(expiringParam, 10);
     if (!isNaN(days) && days > 0) filters.expiringDays = days;
+  }
+
+  // Expiry month filter: ?expiryMonth=2026-06 (members whose membership expires that month)
+  if (expiryMonthParam && /^\d{4}-\d{2}$/.test(expiryMonthParam)) {
+    filters.expiryMonth = expiryMonthParam;
   }
 
   // Support comma-separated type values: ?type=WEB_TRADER,PHYSICAL
