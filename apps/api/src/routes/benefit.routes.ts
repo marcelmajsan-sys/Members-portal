@@ -118,7 +118,7 @@ router.get('/:id/members', async (req, res) => {
 
 // POST /api/os/benefits — create a benefit
 router.post('/', requireRole('OWNER'), async (req: AuthRequest, res) => {
-  const { title, description, category, actionUrl, actionLabel, memberTypes } = req.body ?? {};
+  const { title, description, category, actionUrl, actionLabel, memberTypes, condition } = req.body ?? {};
   if (!title || typeof title !== 'string') {
     errorResponse(res, 'VALIDATION_ERROR', 'Naslov je obavezan', 400);
     return;
@@ -131,6 +131,7 @@ router.post('/', requireRole('OWNER'), async (req: AuthRequest, res) => {
       actionUrl: actionUrl?.trim() || null,
       actionLabel: actionLabel?.trim() || null,
       memberTypes: sanitizeTypes(memberTypes),
+      condition: condition || null,
     },
     include: benefitInclude,
   });
@@ -139,7 +140,7 @@ router.post('/', requireRole('OWNER'), async (req: AuthRequest, res) => {
 
 // PATCH /api/os/benefits/:id — update a benefit
 router.patch('/:id', requireRole('OWNER'), async (req: AuthRequest, res) => {
-  const { title, description, category, actionUrl, actionLabel, memberTypes, isActive } = req.body ?? {};
+  const { title, description, category, actionUrl, actionLabel, memberTypes, condition, isActive } = req.body ?? {};
   try {
     const benefit = await prisma.benefit.update({
       where: { id: req.params.id as string },
@@ -150,6 +151,7 @@ router.patch('/:id', requireRole('OWNER'), async (req: AuthRequest, res) => {
         ...(actionUrl !== undefined && { actionUrl: actionUrl?.trim() || null }),
         ...(actionLabel !== undefined && { actionLabel: actionLabel?.trim() || null }),
         ...(memberTypes !== undefined && { memberTypes: sanitizeTypes(memberTypes) }),
+        ...(condition !== undefined && { condition: condition || null }),
         ...(isActive !== undefined && { isActive: !!isActive }),
       },
       include: benefitInclude,

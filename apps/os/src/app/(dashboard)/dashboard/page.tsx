@@ -764,7 +764,7 @@ export default function DashboardPage() {
         </Link>
         <Link href="/notifications?tab=claim" className="rounded-xl border border-gray-200 bg-white p-5 flex items-center justify-between transition hover:border-primary hover:shadow-sm">
           <div>
-            <span className="text-sm text-gray-600">Prijave članova</span>
+            <span className="text-sm text-gray-600">Zatraženi benefiti</span>
             <span className="block text-xs text-gray-400">{data.memberClaims?.thisMonth ?? 0} ovaj mjesec</span>
           </div>
           <span className="rounded-full bg-purple-50 px-2.5 py-0.5 text-sm font-semibold text-purple-700">

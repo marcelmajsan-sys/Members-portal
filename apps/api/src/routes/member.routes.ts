@@ -111,6 +111,8 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
   if ('error' in result) {
     if (result.error === 'INACTIVE') {
       errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste iskoristili benefit', 403);
+    } else if (result.error === 'ALREADY_FULFILLED') {
+      errorResponse(res, 'CONFLICT', 'Već imate aktivan certifikat', 409);
     } else if (result.error === 'NOT_ELIGIBLE') {
       errorResponse(res, 'FORBIDDEN', 'Nemate pravo na ovaj benefit', 403);
     } else if (result.error === 'NOT_FOUND') {

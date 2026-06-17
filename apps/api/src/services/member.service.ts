@@ -373,7 +373,7 @@ export async function getMemberOffers(userId: string) {
 export async function getMemberPerks(userId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    select: { id: true, memberType: true },
+    select: { id: true, memberType: true, hasCertificate: true },
   });
   if (!member) return null;
 
@@ -389,26 +389,33 @@ export async function getMemberPerks(userId: string) {
 
   const grantByBenefit = new Map(grants.map((g) => [g.benefitId, g]));
 
-  const shape = (b: { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null }, status: string, claimedAt: Date | null) =>
-    ({ id: b.id, title: b.title, description: b.description, category: b.category, actionUrl: b.actionUrl, actionLabel: b.actionLabel, status, claimedAt });
+  type BenefitLike = { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null };
+  const shape = (b: BenefitLike, status: string, claimedAt: Date | null, statusNote?: string) =>
+    ({ id: b.id, title: b.title, description: b.description, category: b.category, actionUrl: b.actionUrl, actionLabel: b.actionLabel, condition: b.condition, status, claimedAt, statusNote: statusNote ?? null });
 
   const available: ReturnType<typeof shape>[] = [];
   const claimed: ReturnType<typeof shape>[] = [];
 
-  // Type-targeted benefits (use grant status if one exists, else AVAILABLE)
-  for (const b of typeBenefits) {
-    const g = grantByBenefit.get(b.id);
+  // Posebni uvjet: "NO_CERTIFICATE" → ako član već ima Safe Shop certifikat, benefit je
+  // ispunjen (prikaži kao aktivan, bez akcije); inače je dostupan sa "ZATRAŽI".
+  const place = (b: BenefitLike, g?: { status: string; claimedAt: Date | null }) => {
+    if (b.condition === 'NO_CERTIFICATE' && member.hasCertificate) {
+      claimed.push(shape(b, 'FULFILLED', null, 'Certifikat aktivan'));
+      return;
+    }
     if (g?.status === 'CLAIMED') claimed.push(shape(b, 'CLAIMED', g.claimedAt));
     else available.push(shape(b, 'AVAILABLE', null));
-  }
+  };
+
+  // Type-targeted benefits
+  for (const b of typeBenefits) place(b, grantByBenefit.get(b.id) ?? undefined);
 
   // Individually-assigned benefits not already covered by type targeting
   const typeIds = new Set(typeBenefits.map((b) => b.id));
   for (const g of grants) {
     if (typeIds.has(g.benefitId)) continue;
     if (!g.benefit.isActive) continue;
-    if (g.status === 'CLAIMED') claimed.push(shape(g.benefit, 'CLAIMED', g.claimedAt));
-    else available.push(shape(g.benefit, 'AVAILABLE', null));
+    place(g.benefit, g);
   }
 
   return { available, claimed };
@@ -418,7 +425,7 @@ export async function getMemberPerks(userId: string) {
 export async function claimMemberPerk(userId: string, benefitId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    select: { id: true, memberType: true, status: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
+    select: { id: true, memberType: true, status: true, hasCertificate: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
   });
   if (!member) return { error: 'NO_MEMBER' as const };
 
@@ -427,6 +434,11 @@ export async function claimMemberPerk(userId: string, benefitId: string) {
 
   const benefit = await prisma.benefit.findUnique({ where: { id: benefitId } });
   if (!benefit || !benefit.isActive) return { error: 'NOT_FOUND' as const };
+
+  // Uvjet "NO_CERTIFICATE": član koji već ima certifikat ne može (ni ne treba) zatražiti
+  if (benefit.condition === 'NO_CERTIFICATE' && member.hasCertificate) {
+    return { error: 'ALREADY_FULFILLED' as const };
+  }
 
   const existing = await prisma.memberBenefit.findUnique({
     where: { benefitId_memberId: { benefitId, memberId: member.id } },

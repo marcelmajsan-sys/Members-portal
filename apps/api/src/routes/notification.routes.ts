@@ -60,6 +60,14 @@ router.patch('/:id/unread', validateParams(idParamSchema), async (req: AuthReque
   successResponse(res, notification);
 });
 
+// DELETE /:id — delete a notification (own)
+router.delete('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  await prisma.notification.deleteMany({
+    where: { id: req.params.id as string, userId: req.user!.userId },
+  });
+  successResponse(res, { message: 'Obavijest obrisana' });
+});
+
 // POST /mark-all-read — mark all as read for current user
 router.post('/mark-all-read', async (req: AuthRequest, res) => {
   await markAllAsRead(req.user!.userId);

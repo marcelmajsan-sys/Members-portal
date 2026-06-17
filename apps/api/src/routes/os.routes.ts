@@ -277,13 +277,12 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
     // Emit activation event (triggers welcome email automation)
     await emitEvent('member.activated', { memberId: member.id, userId: member.userId });
 
-    // Inbox: notify other staff about the new member
+    // Inbox: notify staff about the new member
     notifyStaff({
       type: 'INFO',
       title: 'Novi član',
       message: `${member.user.firstName} ${member.user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} dodan/a kao član.`,
       actionUrl: `/members/${member.id}`,
-      excludeUserId: req.user!.userId,
     }).catch(() => {});
 
     successResponse(res, member, 201);
@@ -877,13 +876,12 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
     {},
   ).catch(() => {}); // fire-and-forget — don't block note creation
 
-  // Inbox: notify other staff about the new note
+  // Inbox: notify staff about the new note (uključujući autora — u praksi je često jedini admin)
   notifyStaff({
     type: 'INFO',
     title: 'Nova bilješka za člana',
     message: `${authorName}: bilješka na ${member.user.firstName} ${member.user.lastName} — ${content.trim().slice(0, 120)}`,
     actionUrl: `/members/${req.params.id}`,
-    excludeUserId: req.user!.userId,
   }).catch(() => {});
 
   successResponse(res, note);

@@ -140,6 +140,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwLoading, setPwLoading] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,6 +221,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [isLoading, isAuthenticated, router]);
 
+  // Broj nepročitanih obavijesti za badge u izborniku
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    let cancelled = false;
+    const load = () => api.get<{ count: number }>('/api/notifications/unread-count').then((r) => {
+      if (!cancelled && r.success && r.data) setUnreadNotifs(r.data.count);
+    });
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [isLoading, isAuthenticated]);
+
   // Auto-start tour on first login for OWNER
   useEffect(() => {
     if (!isLoading && isAuthenticated && user?.role === 'OWNER') {
@@ -290,7 +303,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   }`}
                 >
                   {item.icon}
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {item.href === '/notifications' && unreadNotifs > 0 && (
+                    <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-white">{unreadNotifs}</span>
+                  )}
                 </Link>
               );
             })}

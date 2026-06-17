@@ -20,7 +20,7 @@ type Tab = NotifType | 'all';
 const TYPE_META: Record<NotifType, { label: string; icon: string; dot: string; badge: string; border: string }> = {
   task:    { label: 'Novi zadatak',  icon: '✓',  dot: 'bg-blue-100 text-blue-600',   badge: 'bg-blue-100 text-blue-700',   border: 'border-l-blue-500' },
   member:  { label: 'Novi član',     icon: '👤', dot: 'bg-green-100 text-green-600', badge: 'bg-green-100 text-green-700',  border: 'border-l-green-500' },
-  claim:   { label: 'Prijave člana', icon: '🎁', dot: 'bg-purple-100 text-purple-600', badge: 'bg-purple-100 text-purple-700', border: 'border-l-purple-500' },
+  claim:   { label: 'Zatraženi benefiti', icon: '🎁', dot: 'bg-purple-100 text-purple-600', badge: 'bg-purple-100 text-purple-700', border: 'border-l-purple-500' },
   renewal: { label: 'Članarine',     icon: '↻',  dot: 'bg-amber-100 text-amber-600', badge: 'bg-amber-100 text-amber-700',  border: 'border-l-amber-500' },
   note:    { label: 'Bilješke',      icon: '📝', dot: 'bg-teal-100 text-teal-600',   badge: 'bg-teal-100 text-teal-700',    border: 'border-l-teal-500' },
   other:   { label: 'Ostalo',        icon: '•',  dot: 'bg-gray-100 text-gray-500',   badge: 'bg-gray-100 text-gray-600',    border: 'border-l-gray-400' },
@@ -30,7 +30,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'all',     label: 'Sve obavijesti' },
   { id: 'task',    label: 'Novi zadatak' },
   { id: 'member',  label: 'Novi član' },
-  { id: 'claim',   label: 'Prijave člana' },
+  { id: 'claim',   label: 'Zatraženi benefiti' },
   { id: 'renewal', label: 'Članarine' },
   { id: 'note',    label: 'Bilješke' },
 ];
@@ -85,6 +85,11 @@ export default function NotificationsPage() {
   async function markAllRead() {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     await api.post('/api/notifications/mark-all-read');
+  }
+
+  async function deleteNotif(id: string) {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    await api.del(`/api/notifications/${id}`);
   }
 
   const withType = notifications.map((n) => ({ ...n, notifType: getNotifType(n) }));
@@ -185,6 +190,12 @@ export default function NotificationsPage() {
                       className="text-xs text-gray-400 hover:text-gray-700"
                     >
                       {n.isRead ? 'Označi nepročitano' : 'Označi pročitano'}
+                    </button>
+                    <button
+                      onClick={() => deleteNotif(n.id)}
+                      className="text-xs text-gray-400 hover:text-red-500"
+                    >
+                      Obriši
                     </button>
                   </div>
                 </div>

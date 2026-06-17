@@ -21,7 +21,7 @@ interface Profile {
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
 interface OfferItem { id: string; offerNumber: string; amount: number; currency: string; status: string; validUntil: string; createdAt: string }
-interface PerkItem { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; status: string; claimedAt: string | null }
+interface PerkItem { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null; status: string; claimedAt: string | null; statusNote: string | null }
 interface Perks { available: PerkItem[]; claimed: PerkItem[] }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -228,7 +228,11 @@ export default function PortalHome() {
                         {perks.claimed.map((perk) => (
                           <li key={perk.id}>
                             <p className="text-sm text-gray-700">{perk.title}</p>
-                            <p className="text-xs text-gray-400">Zatraženo {fmtDate(perk.claimedAt)}</p>
+                            {perk.statusNote ? (
+                              <p className="text-xs font-medium text-success">{perk.statusNote}</p>
+                            ) : (
+                              <p className="text-xs text-gray-400">Zatraženo {fmtDate(perk.claimedAt)}</p>
+                            )}
                           </li>
                         ))}
                       </ul>

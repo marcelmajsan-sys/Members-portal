@@ -196,8 +196,9 @@ model Benefit {
   description String?
   category    String?
   actionUrl   String?       // opcionalni "PREUZMI" link
-  actionLabel String?       // npr. "PREUZMI"
+  actionLabel String?       // npr. "PREUZMI" / "ZATRAŽI"
   memberTypes MemberType[]  // ciljanje po tipu članstva (prazno = nijedan tip)
+  condition   String?       // poseban uvjet, npr. "NO_CERTIFICATE" (akcija samo bez Safe Shop certa)
   isActive    Boolean       @default(true)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
