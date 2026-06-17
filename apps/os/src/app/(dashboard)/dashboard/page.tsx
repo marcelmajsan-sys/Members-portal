@@ -43,6 +43,12 @@ interface DashboardData {
   pendingTasks: number;
   unreadNotifications: number;
   memberClaims?: { total: number; thisMonth: number };
+  recentLogins?: Array<{
+    id: string;
+    lastLoginAt: string | null;
+    company: { name: string } | null;
+    user: { firstName: string; lastName: string; email: string };
+  }>;
 }
 
 function StatCard({
@@ -773,8 +779,8 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Nedavne prijave članova (nove registracije) */}
-      {data.recentMembers && data.recentMembers.length > 0 && (
+      {/* Nedavne prijave članova (login na portal) */}
+      {data.recentLogins && data.recentLogins.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
             <h2 className="flex items-center gap-2 font-semibold text-gray-900">
@@ -794,7 +800,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.recentMembers.slice(0, 8).map((m) => (
+                {data.recentLogins.map((m) => (
                   <tr
                     key={m.id}
                     onClick={() => router.push(`/members/${m.id}`)}
@@ -806,8 +812,8 @@ export default function DashboardPage() {
                     </td>
                     <td className="hidden px-5 py-3 text-gray-500 sm:table-cell">{m.user.email}</td>
                     <td className="px-5 py-3 text-right text-gray-400">
-                      {m.joinedAt
-                        ? new Date(m.joinedAt).toLocaleDateString('hr-HR') + ' · ' + new Date(m.joinedAt).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })
+                      {m.lastLoginAt
+                        ? new Date(m.lastLoginAt).toLocaleDateString('hr-HR') + ' · ' + new Date(m.lastLoginAt).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })
                         : '—'}
                     </td>
                   </tr>

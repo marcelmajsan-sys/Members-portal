@@ -38,7 +38,7 @@ const TABS: { id: Tab; label: string }[] = [
 function getNotifType(n: Notification): NotifType {
   const t = n.title.toLowerCase();
   if (n.title === 'Zatražen benefit') return 'claim';
-  if (n.title === 'Novi član') return 'member';
+  if (n.title === 'Novi član' || n.title === 'Nova prijava') return 'member';
   if (n.title === 'Nova bilješka za člana') return 'note';
   if (t.includes('zadat')) return 'task';
   if (t.includes('članarin') || t.includes('članstvo') || t.includes('obnov')) return 'renewal';

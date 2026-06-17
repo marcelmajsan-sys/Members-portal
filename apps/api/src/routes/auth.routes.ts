@@ -148,6 +148,26 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
+  // Member portal login: zabilježi prijavu + obavijesti osoblje ("Nove prijave").
+  // Await (serverless freeze nakon odgovora). Ne ruši prijavu ako zakaže.
+  if (user.role === 'MEMBER') {
+    try {
+      const member = await prisma.member.findUnique({
+        where: { userId: user.id },
+        select: { id: true, company: { select: { name: true } } },
+      });
+      if (member) {
+        await prisma.member.update({ where: { id: member.id }, data: { lastLoginAt: new Date() } });
+        await notifyStaff({
+          type: 'INFO',
+          title: 'Nova prijava',
+          message: `${user.firstName} ${user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} se prijavio/la na portal.`,
+          actionUrl: `/members/${member.id}`,
+        });
+      }
+    } catch { /* ne ruši login */ }
+  }
+
   successResponse(res, {
     user: {
       id: user.id,

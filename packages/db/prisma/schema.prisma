@@ -154,6 +154,7 @@ model Member {
   memberNumber String?      @unique
   joinedAt     DateTime?
   expiresAt    DateTime?
+  lastLoginAt  DateTime?
   notes          String?
   hasCertificate Boolean      @default(false)
   hasAcademy     Boolean      @default(false)
