@@ -19,7 +19,7 @@ type Tab = NotifType | 'all';
 
 const TYPE_META: Record<NotifType, { label: string; icon: string; dot: string; badge: string; border: string }> = {
   task:    { label: 'Novi zadatak',  icon: '✓',  dot: 'bg-blue-100 text-blue-600',   badge: 'bg-blue-100 text-blue-700',   border: 'border-l-blue-500' },
-  member:  { label: 'Novi član',     icon: '👤', dot: 'bg-green-100 text-green-600', badge: 'bg-green-100 text-green-700',  border: 'border-l-green-500' },
+  member:  { label: 'Nove prijave',  icon: '👤', dot: 'bg-green-100 text-green-600', badge: 'bg-green-100 text-green-700',  border: 'border-l-green-500' },
   claim:   { label: 'Zatraženi benefiti', icon: '🎁', dot: 'bg-purple-100 text-purple-600', badge: 'bg-purple-100 text-purple-700', border: 'border-l-purple-500' },
   renewal: { label: 'Članarine',     icon: '↻',  dot: 'bg-amber-100 text-amber-600', badge: 'bg-amber-100 text-amber-700',  border: 'border-l-amber-500' },
   note:    { label: 'Bilješke',      icon: '📝', dot: 'bg-teal-100 text-teal-600',   badge: 'bg-teal-100 text-teal-700',    border: 'border-l-teal-500' },
@@ -29,7 +29,7 @@ const TYPE_META: Record<NotifType, { label: string; icon: string; dot: string; b
 const TABS: { id: Tab; label: string }[] = [
   { id: 'all',     label: 'Sve obavijesti' },
   { id: 'task',    label: 'Novi zadatak' },
-  { id: 'member',  label: 'Novi član' },
+  { id: 'member',  label: 'Nove prijave' },
   { id: 'claim',   label: 'Zatraženi benefiti' },
   { id: 'renewal', label: 'Članarine' },
   { id: 'note',    label: 'Bilješke' },
