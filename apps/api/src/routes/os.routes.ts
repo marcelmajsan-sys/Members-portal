@@ -137,17 +137,27 @@ router.get('/members/counts', async (_req, res) => {
 
   const [
     total,
+    // ALL (svi tipovi) counts
+    allActive, allExpired, allSuspended, allCertified, allAcademy,
     // WEB_TRADER counts
     webTrader, wtActive, wtExpired, wtSuspended,
-    wtCertified, wtNoCert,
+    wtCertified, wtNoCert, wtAcademy,
     wtPromoKonferencija, wtPromoMeetup, wtPromoMagazin, wtPromoWeb, wtPromoOstalo,
     // SERVICE_PROVIDER counts
     serviceProvider, spActive, spExpired, spSuspended,
+    spCertified, spAcademy,
     spPromoKonferencija, spPromoMeetup, spPromoMagazin, spPromoWeb, spPromoOstalo,
     // PHYSICAL counts
     physical, phActive, phExpired, phSuspended,
+    phCertified, phAcademy,
   ] = await Promise.all([
     prisma.member.count(),
+    // ALL
+    prisma.member.count({ where: { status: 'ACTIVE' } }),
+    prisma.member.count({ where: { status: 'EXPIRED' } }),
+    prisma.member.count({ where: { status: 'SUSPENDED' } }),
+    prisma.member.count({ where: { hasCertificate: true } }),
+    prisma.member.count({ where: { hasAcademy: true } }),
     // WEB_TRADER
     prisma.member.count({ where: wt }),
     prisma.member.count({ where: { ...wt, status: 'ACTIVE' } }),
@@ -155,6 +165,7 @@ router.get('/members/counts', async (_req, res) => {
     prisma.member.count({ where: { ...wt, status: 'SUSPENDED' } }),
     prisma.member.count({ where: { ...wt, hasCertificate: true } }),
     prisma.member.count({ where: { ...wt, hasCertificate: false } }),
+    prisma.member.count({ where: { ...wt, hasAcademy: true } }),
     prisma.member.count({ where: { ...wt, promoKonferencija: true } }),
     prisma.member.count({ where: { ...wt, promoMeetup: true } }),
     prisma.member.count({ where: { ...wt, promoMagazin: true } }),
@@ -165,6 +176,8 @@ router.get('/members/counts', async (_req, res) => {
     prisma.member.count({ where: { ...sp, status: 'ACTIVE' } }),
     prisma.member.count({ where: { ...sp, status: 'EXPIRED' } }),
     prisma.member.count({ where: { ...sp, status: 'SUSPENDED' } }),
+    prisma.member.count({ where: { ...sp, hasCertificate: true } }),
+    prisma.member.count({ where: { ...sp, hasAcademy: true } }),
     prisma.member.count({ where: { ...sp, promoKonferencija: true } }),
     prisma.member.count({ where: { ...sp, promoMeetup: true } }),
     prisma.member.count({ where: { ...sp, promoMagazin: true } }),
@@ -175,14 +188,17 @@ router.get('/members/counts', async (_req, res) => {
     prisma.member.count({ where: { ...ph, status: 'ACTIVE' } }),
     prisma.member.count({ where: { ...ph, status: 'EXPIRED' } }),
     prisma.member.count({ where: { ...ph, status: 'SUSPENDED' } }),
+    prisma.member.count({ where: { ...ph, hasCertificate: true } }),
+    prisma.member.count({ where: { ...ph, hasAcademy: true } }),
   ]);
   successResponse(res, {
     total,
-    webTrader, wtActive, wtExpired, wtSuspended, wtCertified, wtNoCert,
+    allActive, allExpired, allSuspended, allCertified, allAcademy,
+    webTrader, wtActive, wtExpired, wtSuspended, wtCertified, wtNoCert, wtAcademy,
     wtPromoKonferencija, wtPromoMeetup, wtPromoMagazin, wtPromoWeb, wtPromoOstalo,
-    serviceProvider, spActive, spExpired, spSuspended,
+    serviceProvider, spActive, spExpired, spSuspended, spCertified, spAcademy,
     spPromoKonferencija, spPromoMeetup, spPromoMagazin, spPromoWeb, spPromoOstalo,
-    physical, phActive, phExpired, phSuspended,
+    physical, phActive, phExpired, phSuspended, phCertified, phAcademy,
   });
 });
 

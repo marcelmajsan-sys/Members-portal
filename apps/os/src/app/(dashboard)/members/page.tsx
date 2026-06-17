@@ -122,20 +122,26 @@ export default function MembersPage() {
       { key: 's-expired', label: 'Istekli', group: 'status', value: 'EXPIRED', count: c[`${pfx}Expired`] },
       { key: 's-suspended', label: 'Pauzirani', group: 'status', value: 'SUSPENDED', count: c[`${pfx}Suspended`] },
     ];
+    const certPills = (pfx: string): SubFilter[] => [
+      { key: 'e-cert', label: 'Certificirani', group: 'extra', value: 'cert', count: c[`${pfx}Certified`] },
+      { key: 'e-acad', label: 'Akademija', group: 'extra', value: 'academy', count: c[`${pfx}Academy`] },
+    ];
+    if (type === 'all') return [...statusPills('all'), ...certPills('all')];
     if (type === 'WEB_TRADER') return [
       ...statusPills('wt'),
-      { key: 'e-cert', label: 'Certificirani', group: 'extra', value: 'cert', count: c.wtCertified },
+      ...certPills('wt'),
       { key: 'e-nocert', label: 'Necertificirani', group: 'extra', value: 'no_cert', count: c.wtNoCert },
     ];
     if (type === 'SERVICE_PROVIDER') return [
       ...statusPills('sp'),
+      ...certPills('sp'),
       { key: 'e-konf', label: 'Konferencija promo', group: 'extra', value: 'promoKonferencija', count: c.spPromoKonferencija },
       { key: 'e-meet', label: 'Meetup promo', group: 'extra', value: 'promoMeetup', count: c.spPromoMeetup },
       { key: 'e-mag', label: 'Magazin promo', group: 'extra', value: 'promoMagazin', count: c.spPromoMagazin },
       { key: 'e-web', label: 'Web promo', group: 'extra', value: 'promoWeb', count: c.spPromoWeb },
       { key: 'e-ost', label: 'Ostalo promo', group: 'extra', value: 'promoOstalo', count: c.spPromoOstalo },
     ];
-    if (type === 'PHYSICAL') return statusPills('ph');
+    if (type === 'PHYSICAL') return [...statusPills('ph'), ...certPills('ph')];
     return [];
   }, [type, counts]);
 
@@ -152,6 +158,7 @@ export default function MembersPage() {
     if (exp) params.set('expiring', '30');
     if (ex === 'cert') params.set('hasCertificate', 'true');
     else if (ex === 'no_cert') params.set('hasCertificate', 'false');
+    else if (ex === 'academy') params.set('certificate', 'HAS_ACADEMY');
     else if (ex) params.set(ex, 'true'); // promo* zastavice
 
     const res = await api.get<MemberRaw[]>(`/api/os/members?${params}`);
