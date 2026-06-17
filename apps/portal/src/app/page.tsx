@@ -249,6 +249,7 @@ export default function PortalHome() {
                 {profile.company.phone && <Info label="Telefon tvrtke" value={profile.company.phone} />}
                 {profile.company.email && <Info label="E-mail web trgovine" value={profile.company.email} />}
               </div>
+              {profile.secondaryContact && <SecondaryContactView contact={profile.secondaryContact} />}
             </section>
 
             {/* Pogodnosti (benefiti) */}
@@ -811,6 +812,27 @@ function Field({
         />
       )}
     </label>
+  );
+}
+
+function SecondaryContactView({ contact }: { contact: SecondaryContact }) {
+  const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(' ');
+  const addr = [contact.address, contact.zip, contact.city, contact.country].filter(Boolean).join(', ');
+  const hasAny = fullName || addr || contact.oib || contact.dateOfBirth || contact.phone || contact.email || contact.note;
+  if (!hasAny) return null;
+  return (
+    <div className="mt-5 border-t border-gray-100 pt-5">
+      <h3 className="mb-3 text-sm font-semibold text-gray-900">Druga fizička osoba</h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {fullName && <Info label="Ime i prezime" value={fullName} />}
+        {contact.oib && <Info label="OIB" value={contact.oib} />}
+        {addr && <Info label="Adresa" value={addr} />}
+        {contact.dateOfBirth && <Info label="Datum rođenja" value={fmtDate(contact.dateOfBirth)} />}
+        {contact.phone && <Info label="Telefon" value={contact.phone} />}
+        {contact.email && <Info label="Email" value={contact.email} />}
+        {contact.note && <Info label="Napomena" value={contact.note} />}
+      </div>
+    </div>
   );
 }
 
