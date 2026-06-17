@@ -49,6 +49,7 @@ export default function PortalHome() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [offers, setOffers] = useState<OfferItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [preview, setPreview] = useState<EmailItem | null>(null);
 
   // Guard
   useEffect(() => {
@@ -197,14 +198,19 @@ export default function PortalHome() {
               ) : (
                 <ul className="divide-y divide-gray-100">
                   {emails.map((m) => (
-                    <li key={m.id} className="flex items-center justify-between py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-900">{m.subject}</p>
-                        <p className="text-xs text-gray-500">
-                          {m.status === 'received' ? 'Vaš odgovor' : 'Poslano vama'}
-                        </p>
-                      </div>
-                      <span className="whitespace-nowrap text-xs text-gray-400">{fmtDate(m.sentAt)}</span>
+                    <li key={m.id}>
+                      <button
+                        onClick={() => setPreview(m)}
+                        className="-mx-2 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-gray-50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900">{m.subject}</p>
+                          <p className="text-xs text-gray-500">
+                            {m.status === 'received' ? 'Vaš odgovor' : 'Poslano vama'}
+                          </p>
+                        </div>
+                        <span className="whitespace-nowrap text-xs text-gray-400">{fmtDate(m.sentAt)}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -213,6 +219,53 @@ export default function PortalHome() {
           </>
         )}
       </main>
+
+      {/* Email preview modal */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 p-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900 break-words">{preview.subject}</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {preview.status === 'received' ? 'Vaš odgovor' : 'Poslano vama'} · {fmtDate(preview.sentAt)}
+                </p>
+              </div>
+              <button
+                onClick={() => setPreview(null)}
+                aria-label="Zatvori"
+                className="shrink-0 rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-gray-50 p-2">
+              {preview.body ? (
+                <iframe
+                  title="Sadržaj e-maila"
+                  sandbox=""
+                  className="h-[60vh] w-full rounded-lg border border-gray-200 bg-white"
+                  srcDoc={
+                    /<[a-z][\s\S]*>/i.test(preview.body)
+                      ? preview.body
+                      : `<pre style="white-space:pre-wrap;word-break:break-word;font-family:system-ui,sans-serif;font-size:14px;color:#111827;padding:12px;margin:0;">${preview.body.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))}</pre>`
+                  }
+                />
+              ) : (
+                <p className="p-6 text-center text-sm text-gray-400">Sadržaj e-maila nije dostupan.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
