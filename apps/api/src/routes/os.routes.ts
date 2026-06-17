@@ -137,74 +137,76 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
 
 // GET /members/counts — Quick counts for filter pills (per-type breakdown)
 router.get('/members/counts', async (_req, res) => {
-  const wt = { memberType: 'WEB_TRADER' as const };
-  const sp = { memberType: 'SERVICE_PROVIDER' as const };
-  const ph = { memberType: 'PHYSICAL' as const };
-
+  // Aggregirano preko groupBy (8 round-tripova umjesto 35) — baza je u eu-central-1,
+  // pa svaki upit nosi mrežnu latenciju; smanjenje broja upita = brže učitavanje.
   const [
-    total,
-    // ALL (svi tipovi) counts
-    allActive, allExpired, allSuspended, allCertified, allAcademy,
-    // WEB_TRADER counts
-    webTrader, wtActive, wtExpired, wtSuspended,
-    wtCertified, wtNoCert, wtAcademy,
-    wtPromoKonferencija, wtPromoMeetup, wtPromoMagazin, wtPromoWeb, wtPromoOstalo,
-    // SERVICE_PROVIDER counts
-    serviceProvider, spActive, spExpired, spSuspended,
-    spCertified, spAcademy,
-    spPromoKonferencija, spPromoMeetup, spPromoMagazin, spPromoWeb, spPromoOstalo,
-    // PHYSICAL counts
-    physical, phActive, phExpired, phSuspended,
-    phCertified, phAcademy,
+    statusGroups, certGroups, academyGroups,
+    promoKonfG, promoMeetG, promoMagG, promoWebG, promoOstG,
   ] = await Promise.all([
-    prisma.member.count(),
-    // ALL
-    prisma.member.count({ where: { status: 'ACTIVE' } }),
-    prisma.member.count({ where: { status: 'EXPIRED' } }),
-    prisma.member.count({ where: { status: 'SUSPENDED' } }),
-    prisma.member.count({ where: { hasCertificate: true } }),
-    prisma.member.count({ where: { hasAcademy: true } }),
-    // WEB_TRADER
-    prisma.member.count({ where: wt }),
-    prisma.member.count({ where: { ...wt, status: 'ACTIVE' } }),
-    prisma.member.count({ where: { ...wt, status: 'EXPIRED' } }),
-    prisma.member.count({ where: { ...wt, status: 'SUSPENDED' } }),
-    prisma.member.count({ where: { ...wt, hasCertificate: true } }),
-    prisma.member.count({ where: { ...wt, hasCertificate: false } }),
-    prisma.member.count({ where: { ...wt, hasAcademy: true } }),
-    prisma.member.count({ where: { ...wt, promoKonferencija: true } }),
-    prisma.member.count({ where: { ...wt, promoMeetup: true } }),
-    prisma.member.count({ where: { ...wt, promoMagazin: true } }),
-    prisma.member.count({ where: { ...wt, promoWeb: true } }),
-    prisma.member.count({ where: { ...wt, promoOstalo: { not: null } } }),
-    // SERVICE_PROVIDER
-    prisma.member.count({ where: sp }),
-    prisma.member.count({ where: { ...sp, status: 'ACTIVE' } }),
-    prisma.member.count({ where: { ...sp, status: 'EXPIRED' } }),
-    prisma.member.count({ where: { ...sp, status: 'SUSPENDED' } }),
-    prisma.member.count({ where: { ...sp, hasCertificate: true } }),
-    prisma.member.count({ where: { ...sp, hasAcademy: true } }),
-    prisma.member.count({ where: { ...sp, promoKonferencija: true } }),
-    prisma.member.count({ where: { ...sp, promoMeetup: true } }),
-    prisma.member.count({ where: { ...sp, promoMagazin: true } }),
-    prisma.member.count({ where: { ...sp, promoWeb: true } }),
-    prisma.member.count({ where: { ...sp, promoOstalo: { not: null } } }),
-    // PHYSICAL
-    prisma.member.count({ where: ph }),
-    prisma.member.count({ where: { ...ph, status: 'ACTIVE' } }),
-    prisma.member.count({ where: { ...ph, status: 'EXPIRED' } }),
-    prisma.member.count({ where: { ...ph, status: 'SUSPENDED' } }),
-    prisma.member.count({ where: { ...ph, hasCertificate: true } }),
-    prisma.member.count({ where: { ...ph, hasAcademy: true } }),
+    prisma.member.groupBy({ by: ['memberType', 'status'], _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { hasCertificate: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { hasAcademy: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { promoKonferencija: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { promoMeetup: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { promoMagazin: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { promoWeb: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { promoOstalo: { not: null } }, _count: { _all: true } }),
   ]);
+
+  type TypeGroup = { memberType: MemberType; _count: { _all: number } };
+  const byType = (groups: TypeGroup[], t: MemberType) =>
+    groups.find((g) => g.memberType === t)?._count._all ?? 0;
+  const sumAll = (groups: TypeGroup[]) =>
+    groups.reduce((acc, g) => acc + g._count._all, 0);
+  const statusOf = (t: MemberType, s: MemberStatus) =>
+    statusGroups.find((g) => g.memberType === t && g.status === s)?._count._all ?? 0;
+  const statusAll = (s: MemberStatus) =>
+    statusGroups.filter((g) => g.status === s).reduce((acc, g) => acc + g._count._all, 0);
+  const typeTotal = (t: MemberType) =>
+    statusGroups.filter((g) => g.memberType === t).reduce((acc, g) => acc + g._count._all, 0);
+
+  const total = statusGroups.reduce((acc, g) => acc + g._count._all, 0);
+  const webTrader = typeTotal('WEB_TRADER');
+  const serviceProvider = typeTotal('SERVICE_PROVIDER');
+  const physical = typeTotal('PHYSICAL');
+  const wtCertified = byType(certGroups, 'WEB_TRADER');
+
   successResponse(res, {
     total,
-    allActive, allExpired, allSuspended, allCertified, allAcademy,
-    webTrader, wtActive, wtExpired, wtSuspended, wtCertified, wtNoCert, wtAcademy,
-    wtPromoKonferencija, wtPromoMeetup, wtPromoMagazin, wtPromoWeb, wtPromoOstalo,
-    serviceProvider, spActive, spExpired, spSuspended, spCertified, spAcademy,
-    spPromoKonferencija, spPromoMeetup, spPromoMagazin, spPromoWeb, spPromoOstalo,
-    physical, phActive, phExpired, phSuspended, phCertified, phAcademy,
+    allActive: statusAll('ACTIVE'),
+    allExpired: statusAll('EXPIRED'),
+    allSuspended: statusAll('SUSPENDED'),
+    allCertified: sumAll(certGroups),
+    allAcademy: sumAll(academyGroups),
+    webTrader,
+    wtActive: statusOf('WEB_TRADER', 'ACTIVE'),
+    wtExpired: statusOf('WEB_TRADER', 'EXPIRED'),
+    wtSuspended: statusOf('WEB_TRADER', 'SUSPENDED'),
+    wtCertified,
+    wtNoCert: webTrader - wtCertified,
+    wtAcademy: byType(academyGroups, 'WEB_TRADER'),
+    wtPromoKonferencija: byType(promoKonfG, 'WEB_TRADER'),
+    wtPromoMeetup: byType(promoMeetG, 'WEB_TRADER'),
+    wtPromoMagazin: byType(promoMagG, 'WEB_TRADER'),
+    wtPromoWeb: byType(promoWebG, 'WEB_TRADER'),
+    wtPromoOstalo: byType(promoOstG, 'WEB_TRADER'),
+    serviceProvider,
+    spActive: statusOf('SERVICE_PROVIDER', 'ACTIVE'),
+    spExpired: statusOf('SERVICE_PROVIDER', 'EXPIRED'),
+    spSuspended: statusOf('SERVICE_PROVIDER', 'SUSPENDED'),
+    spCertified: byType(certGroups, 'SERVICE_PROVIDER'),
+    spAcademy: byType(academyGroups, 'SERVICE_PROVIDER'),
+    spPromoKonferencija: byType(promoKonfG, 'SERVICE_PROVIDER'),
+    spPromoMeetup: byType(promoMeetG, 'SERVICE_PROVIDER'),
+    spPromoMagazin: byType(promoMagG, 'SERVICE_PROVIDER'),
+    spPromoWeb: byType(promoWebG, 'SERVICE_PROVIDER'),
+    spPromoOstalo: byType(promoOstG, 'SERVICE_PROVIDER'),
+    physical,
+    phActive: statusOf('PHYSICAL', 'ACTIVE'),
+    phExpired: statusOf('PHYSICAL', 'EXPIRED'),
+    phSuspended: statusOf('PHYSICAL', 'SUSPENDED'),
+    phCertified: byType(certGroups, 'PHYSICAL'),
+    phAcademy: byType(academyGroups, 'PHYSICAL'),
   });
 });
 
