@@ -5,19 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 
-interface SecondaryContact {
-  firstName: string | null;
-  lastName: string | null;
-  address: string | null;
-  zip: string | null;
-  city: string | null;
-  country: string | null;
-  oib: string | null;
-  dateOfBirth: string | null;
-  phone: string | null;
-  email: string | null;
-  note: string | null;
-}
 interface Profile {
   memberNumber: string | null;
   memberType: string;
@@ -41,7 +28,6 @@ interface Profile {
     name: string; oib: string; address: string; city: string; zip?: string;
     country?: string; website?: string; phone?: string; email?: string; note?: string;
   };
-  secondaryContact: SecondaryContact | null;
 }
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
@@ -527,7 +513,6 @@ function EditProfileModal({
   onClose: () => void;
   onSaved: (p: Profile) => void;
 }) {
-  const sc = profile.secondaryContact;
   const [form, setForm] = useState({
     // Fizička osoba
     firstName: profile.user.firstName || '',
@@ -552,18 +537,6 @@ function EditProfileModal({
     website: profile.company.website || '',
     companyEmail: profile.company.email || '',
     companyNote: profile.company.note || '',
-    // Dodatna fizička osoba
-    scFirstName: sc?.firstName || '',
-    scLastName: sc?.lastName || '',
-    scAddress: sc?.address || '',
-    scZip: sc?.zip || '',
-    scCity: sc?.city || '',
-    scCountry: sc?.country || '',
-    scOib: sc?.oib || '',
-    scDateOfBirth: dateInput(sc?.dateOfBirth ?? null),
-    scPhone: sc?.phone || '',
-    scEmail: sc?.email || '',
-    scNote: sc?.note || '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -598,19 +571,6 @@ function EditProfileModal({
       website: form.website,
       companyEmail: form.companyEmail,
       companyNote: form.companyNote,
-      secondaryContact: {
-        firstName: form.scFirstName,
-        lastName: form.scLastName,
-        address: form.scAddress,
-        zip: form.scZip,
-        city: form.scCity,
-        country: form.scCountry,
-        oib: form.scOib,
-        dateOfBirth: form.scDateOfBirth,
-        phone: form.scPhone,
-        email: form.scEmail,
-        note: form.scNote,
-      },
     };
     const res = await api.put<Profile>('/api/member/profile', payload);
     if (res.success && res.data) {
@@ -680,28 +640,6 @@ function EditProfileModal({
             <Field label="Broj telefona" hint="opcionalno" value={form.personalPhone} onChange={(v) => set('personalPhone', v)} />
             <Field label="Email" required type="email" hint="na ovu adresu vam šaljemo sve informacije o vašim pogodnostima" value={form.email} onChange={(v) => set('email', v)} />
             <Field label="Napomena" value={form.personalNote} onChange={(v) => set('personalNote', v)} textarea />
-          </fieldset>
-
-          {/* Dodatna fizička osoba */}
-          <fieldset className="space-y-4">
-            <legend className="text-lg font-bold text-gray-900">Dodatna fizička osoba</legend>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Ime drugog člana" value={form.scFirstName} onChange={(v) => set('scFirstName', v)} />
-              <Field label="Prezime drugog člana" value={form.scLastName} onChange={(v) => set('scLastName', v)} />
-            </div>
-            <Field label="Adresa drugog člana" value={form.scAddress} onChange={(v) => set('scAddress', v)} />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Poštanski broj drugog člana" value={form.scZip} onChange={(v) => set('scZip', v)} />
-              <Field label="Grad drugog člana" value={form.scCity} onChange={(v) => set('scCity', v)} />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Država drugog člana" value={form.scCountry} onChange={(v) => set('scCountry', v)} />
-              <Field label="OIB drugog člana" value={form.scOib} onChange={(v) => set('scOib', v)} />
-            </div>
-            <Field label="Datum rođenja drugog člana" type="date" value={form.scDateOfBirth} onChange={(v) => set('scDateOfBirth', v)} />
-            <Field label="Broj telefona drugog člana" value={form.scPhone} onChange={(v) => set('scPhone', v)} />
-            <Field label="Email drugog člana" type="email" value={form.scEmail} onChange={(v) => set('scEmail', v)} />
-            <Field label="Napomena drugog člana" value={form.scNote} onChange={(v) => set('scNote', v)} textarea />
           </fieldset>
         </div>
 

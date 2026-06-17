@@ -6,7 +6,6 @@ export async function getMemberByUserId(userId: string): Promise<Member | null> 
     where: { userId },
     include: {
       company: true,
-      secondaryContact: true,
       user: {
         select: {
           id: true,
@@ -269,21 +268,6 @@ export async function getMemberDashboard(userId: string) {
   };
 }
 
-// Podaci dodatne fizičke osobe (drugi član)
-interface SecondaryContactInput {
-  firstName?: string | null;
-  lastName?: string | null;
-  address?: string | null;
-  zip?: string | null;
-  city?: string | null;
-  country?: string | null;
-  oib?: string | null;
-  dateOfBirth?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  note?: string | null;
-}
-
 export interface MemberProfileInput {
   // Fizička osoba (član)
   firstName?: string;
@@ -308,8 +292,6 @@ export interface MemberProfileInput {
   website?: string | null;
   companyEmail?: string | null;
   companyNote?: string | null;
-  // Dodatna fizička osoba
-  secondaryContact?: SecondaryContactInput | null;
 }
 
 // Normalizira prazne stringove u null i parsira datume
@@ -376,31 +358,6 @@ export async function updateMemberProfile(userId: string, data: MemberProfileInp
   if (data.dateOfBirth !== undefined) memberData.dateOfBirth = toDate(data.dateOfBirth);
   if (Object.keys(memberData).length > 0) {
     ops.push(prisma.member.update({ where: { id: member.id }, data: memberData }));
-  }
-
-  // Dodatna fizička osoba (upsert)
-  if (data.secondaryContact !== undefined && data.secondaryContact !== null) {
-    const sc = data.secondaryContact;
-    const scData = {
-      firstName: emptyToNull(sc.firstName),
-      lastName: emptyToNull(sc.lastName),
-      address: emptyToNull(sc.address),
-      zip: emptyToNull(sc.zip),
-      city: emptyToNull(sc.city),
-      country: emptyToNull(sc.country),
-      oib: emptyToNull(sc.oib),
-      dateOfBirth: toDate(sc.dateOfBirth),
-      phone: emptyToNull(sc.phone),
-      email: emptyToNull(sc.email),
-      note: emptyToNull(sc.note),
-    };
-    ops.push(
-      prisma.secondaryContact.upsert({
-        where: { memberId: member.id },
-        create: { memberId: member.id, ...scData },
-        update: scData,
-      }),
-    );
   }
 
   if (ops.length > 0) {
