@@ -9,6 +9,8 @@ import {
   getMemberDashboard,
   getMemberInvoices,
   getMemberBenefits,
+  getMemberEmails,
+  getMemberOffers,
 } from '../services/member.service.js';
 
 const router = Router();
@@ -65,6 +67,26 @@ router.get('/invoices', validateQuery(paginationSchema), async (req: AuthRequest
   }
 
   paginatedResponse(res, result.invoices, { page, limit, total: result.total });
+});
+
+// GET /emails — member's email communication (sent + received)
+router.get('/emails', async (req: AuthRequest, res) => {
+  const emails = await getMemberEmails(req.user!.userId);
+  if (!emails) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  successResponse(res, emails);
+});
+
+// GET /offers — member's offers
+router.get('/offers', async (req: AuthRequest, res) => {
+  const offers = await getMemberOffers(req.user!.userId);
+  if (!offers) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  successResponse(res, offers);
 });
 
 // GET /benefits — benefits by member type

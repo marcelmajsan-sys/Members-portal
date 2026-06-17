@@ -211,6 +211,21 @@ export default function MemberDetailPage() {
     setActionLoading('');
   }
 
+  async function sendInvite() {
+    if (!member) return;
+    setActionLoading('invite');
+    const res = await api.post<{ email: string }>(`/api/os/members/${id}/send-invite`, {});
+    if (res.success && res.data) {
+      showToast(`Pristupni podaci poslani na ${res.data.email}`);
+      api.get<typeof emails>(`/api/os/members/${id}/emails`).then((r) => {
+        if (r.success && r.data) setEmails(r.data);
+      });
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
+    }
+    setActionLoading('');
+  }
+
   async function sendOffer() {
     setActionLoading('offer');
     const res = await api.post<{ offer: { id: string; offerNumber: string; step: number; amount: number } }>(`/api/os/members/${id}/send-offer`, {});
@@ -607,6 +622,14 @@ export default function MemberDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={sendInvite}
+            disabled={actionLoading === 'invite'}
+            title="Aktivira pristup i šalje članu email s linkom za postavljanje lozinke (members.ecommerce.hr)"
+            className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-sm font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
+          >
+            {actionLoading === 'invite' ? 'Slanje...' : 'Pošalji pristup članu'}
+          </button>
           <button
             onClick={openEditModal}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"

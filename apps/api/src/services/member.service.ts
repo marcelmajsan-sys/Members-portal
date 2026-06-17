@@ -337,6 +337,37 @@ export async function getMemberInvoices(userId: string, page: number, limit: num
   return { invoices: items, total };
 }
 
+export async function getMemberEmails(userId: string) {
+  const member = await prisma.member.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!member) return null;
+
+  return prisma.emailLog.findMany({
+    where: { memberId: member.id },
+    orderBy: { sentAt: 'desc' },
+    select: { id: true, subject: true, status: true, sentAt: true, to: true, body: true },
+  });
+}
+
+export async function getMemberOffers(userId: string) {
+  const member = await prisma.member.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!member) return null;
+
+  return prisma.offer.findMany({
+    where: { memberId: member.id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, offerNumber: true, amount: true, currency: true,
+      items: true, status: true, validUntil: true, respondedAt: true, createdAt: true,
+    },
+  });
+}
+
 export async function getMemberBenefits(userId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },

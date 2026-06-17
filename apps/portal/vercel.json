@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "cd ../.. && pnpm turbo build --filter=@ecommerce-hr/portal",
+  "rewrites": [
+    { "source": "/admin", "destination": "https://members-portal-os.vercel.app/admin" },
+    { "source": "/admin/:path*", "destination": "https://members-portal-os.vercel.app/admin/:path*" }
+  ]
+}

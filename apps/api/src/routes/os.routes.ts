@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { paginationSchema, idParamSchema } from '@ecommerce-hr/shared';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -383,6 +384,61 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
   }
 
   successResponse(res, member);
+});
+
+// POST /members/:id/send-invite — Create/refresh member portal access and email a set-password link (OWNER)
+router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const member = await prisma.member.findUnique({
+    where: { id: req.params.id as string },
+    include: { user: true },
+  });
+
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+
+  const user = member.user;
+
+  // Ensure the login is enabled
+  if (!user.isActive) {
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: true } });
+  }
+
+  // Create a set-password token (reuses the reset_ mechanism used by /api/auth/reset-password), 7-day TTL
+  const token = crypto.randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+  await prisma.refreshToken.create({
+    data: { token: `reset_${token}`, userId: user.id, expiresAt },
+  });
+
+  const baseUrl = process.env.MEMBER_APP_URL ?? 'https://members.ecommerce.hr';
+  const link = `${baseUrl}/reset-password?token=${token}`;
+
+  const html = `<!DOCTYPE html><html lang="hr"><body style="font-family:Helvetica,Arial,sans-serif;color:#1f2937;line-height:1.6;">
+    <p>Poštovani ${user.firstName},</p>
+    <p>Otvorili smo vam pristup članskom portalu Udruge eCommerce Hrvatska, gdje možete vidjeti podatke o svom članstvu, komunikaciju, obavijesti i ponude.</p>
+    <p>Kliknite na gumb ispod da postavite svoju lozinku i prijavite se:</p>
+    <p style="margin:24px 0;">
+      <a href="${link}" style="background:#1B365D;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block;">Postavi lozinku</a>
+    </p>
+    <p style="font-size:13px;color:#6b7280;">Ako gumb ne radi, kopirajte ovaj link u preglednik:<br>${link}</p>
+    <p style="font-size:13px;color:#6b7280;">Link vrijedi 7 dana. Prijava: <a href="${baseUrl}/">${baseUrl.replace(/^https?:\/\//, '')}</a></p>
+    <p>Srdačan pozdrav,<br>Udruga eCommerce Hrvatska</p>
+  </body></html>`;
+
+  try {
+    await sendEmail(user.email, 'Pristup članskom portalu — eCommerce Hrvatska', html, {
+      templateName: 'member-invite',
+      memberId: member.id,
+    });
+  } catch (err) {
+    errorResponse(res, 'EMAIL_FAILED', 'Slanje emaila nije uspjelo', 500);
+    return;
+  }
+
+  successResponse(res, { message: 'Pristupni podaci poslani', email: user.email });
 });
 
 // PATCH /members/:id/status — Change member status (activate, suspend, expire)
