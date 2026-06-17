@@ -68,7 +68,7 @@ export default function NotificationsPage() {
   const [tab, setTab] = useState<Tab>(TABS.some(t => t.id === initialTab) ? initialTab : 'all');
 
   const fetchNotifications = useCallback(async () => {
-    const res = await api.get<Notification[]>('/api/notifications?limit=200');
+    const res = await api.get<Notification[]>('/api/notifications?limit=100');
     if (res.success && res.data) setNotifications(res.data);
     else setError(res.error?.message || 'Greška pri učitavanju');
     setLoading(false);
