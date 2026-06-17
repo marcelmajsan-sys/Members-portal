@@ -6,3 +6,10 @@ export { askMentor, type MentorResponse } from './academy-mentor.js';
 export { runCompetitorScan, type CompetitorMetrics } from './competitor-scan-agent.js';
 export { extractPricesFromHtml, cleanHtml, computePriceDiff, type ProductPrice, type PriceDiff } from './price-extract-agent.js';
 export { generateMemberSummary, type MemberContext } from './member-summary-agent.js';
+export {
+  runWebshopAnalysis,
+  type WebshopAnalysisResult,
+  type WebshopCategory,
+  type WebshopCategoryKey,
+  type WebshopRecommendation,
+} from './webshop-analysis-agent.js';

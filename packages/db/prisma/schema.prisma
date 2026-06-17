@@ -183,6 +183,7 @@ model Member {
   priceAlerts    PriceAlert[]
   offers         Offer[]
   memberBenefits MemberBenefit[]
+  webshopAnalyses WebshopAnalysis[]
 }
 
 enum BenefitStatus {
@@ -220,6 +221,24 @@ model MemberBenefit {
   member  Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([benefitId, memberId])
+  @@index([memberId])
+}
+
+// AI stručna analiza webshopa — član jednim klikom pokreće, AI generira po 6 kategorija
+model WebshopAnalysis {
+  id           String   @id @default(cuid())
+  memberId     String
+  websiteUrl   String
+  status       String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  overallScore Int?
+  summary      String?
+  result       Json? // WebshopCategory[]
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
   @@index([memberId])
 }
 

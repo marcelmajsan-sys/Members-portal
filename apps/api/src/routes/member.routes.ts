@@ -14,6 +14,10 @@ import {
   getMemberPerks,
   claimMemberPerk,
 } from '../services/member.service.js';
+import {
+  requestWebshopAnalysis,
+  getLatestWebshopAnalysis,
+} from '../services/webshop-analysis.service.js';
 import { sendEmail } from '@ecommerce-hr/email';
 import { prisma } from '@ecommerce-hr/db';
 import { createNotification } from '../services/notification.service.js';
@@ -166,6 +170,39 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
   }
 
   successResponse(res, { message: 'Benefit zatražen', alreadyClaimed: result.alreadyClaimed });
+});
+
+// GET /webshop-analysis — latest AI webshop analysis for the member (or null)
+router.get('/webshop-analysis', async (req: AuthRequest, res) => {
+  const analysis = await getLatestWebshopAnalysis(req.user!.userId);
+  successResponse(res, analysis);
+});
+
+// POST /webshop-analysis — run a fresh AI webshop analysis (synchronous)
+router.post('/webshop-analysis', async (req: AuthRequest, res) => {
+  const result = await requestWebshopAnalysis(req.user!.userId);
+
+  if ('error' in result) {
+    switch (result.error) {
+      case 'INACTIVE':
+        errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste pokrenuli analizu', 403);
+        return;
+      case 'NO_WEBSITE':
+        errorResponse(res, 'BAD_REQUEST', 'Dodajte web adresu tvrtke da biste pokrenuli analizu', 400);
+        return;
+      case 'IN_PROGRESS':
+        errorResponse(res, 'CONFLICT', 'Analiza je već u tijeku', 409);
+        return;
+      case 'ANALYSIS_FAILED':
+        errorResponse(res, 'ANALYSIS_FAILED', 'Analiza nije uspjela, pokušajte ponovno kasnije', 502);
+        return;
+      default:
+        errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+        return;
+    }
+  }
+
+  successResponse(res, result);
 });
 
 // GET /benefits — benefits by member type

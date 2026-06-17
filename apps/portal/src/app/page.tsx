@@ -23,6 +23,9 @@ interface NotificationItem { id: string; type: string; title: string; message: s
 interface OfferItem { id: string; offerNumber: string; amount: number; currency: string; status: string; validUntil: string; createdAt: string }
 interface PerkItem { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null; status: string; claimedAt: string | null; statusNote: string | null }
 interface Perks { available: PerkItem[]; claimed: PerkItem[] }
+interface AnalysisRecommendation { title: string; description: string; severity: 'high' | 'medium' | 'low' }
+interface AnalysisCategory { key: string; title: string; score: number; summary: string; recommendations: AnalysisRecommendation[] }
+interface WebshopAnalysis { id: string; websiteUrl: string; status: string; overallScore: number | null; summary: string | null; result: AnalysisCategory[] | null; createdAt: string }
 
 const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
@@ -32,6 +35,9 @@ const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Aktivno', PENDING: 'Na 
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-success-light text-success', PENDING: 'bg-gray-100 text-gray-600',
   EXPIRED: 'bg-danger-light text-danger', SUSPENDED: 'bg-warning-light text-warning',
+};
+const SEVERITY_DOT: Record<string, string> = {
+  high: 'bg-danger', medium: 'bg-warning', low: 'bg-gray-400',
 };
 
 function fmtDate(d: string | null) {
@@ -54,6 +60,9 @@ export default function PortalHome() {
   const [claiming, setClaiming] = useState('');
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<EmailItem | null>(null);
+  const [analysis, setAnalysis] = useState<WebshopAnalysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
 
   // Guard
   useEffect(() => {
@@ -65,18 +74,20 @@ export default function PortalHome() {
   useEffect(() => {
     if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
     (async () => {
-      const [p, e, n, o, pk] = await Promise.all([
+      const [p, e, n, o, pk, wa] = await Promise.all([
         api.get<Profile>('/api/member/profile'),
         api.get<EmailItem[]>('/api/member/emails'),
         api.get<NotificationItem[]>('/api/notifications?limit=20'),
         api.get<OfferItem[]>('/api/member/offers'),
         api.get<Perks>('/api/member/perks'),
+        api.get<WebshopAnalysis | null>('/api/member/webshop-analysis'),
       ]);
       if (p.success && p.data) setProfile(p.data);
       if (e.success && e.data) setEmails(e.data);
       if (n.success && n.data) setNotifications(n.data);
       if (o.success && o.data) setOffers(o.data);
       if (pk.success && pk.data) setPerks(pk.data);
+      if (wa.success && wa.data) setAnalysis(wa.data);
       setLoading(false);
     })();
   }, [isLoading, isAuthenticated, user]);
@@ -91,6 +102,18 @@ export default function PortalHome() {
       }));
     }
     setClaiming('');
+  }
+
+  async function runAnalysis() {
+    setAnalyzing(true);
+    setAnalysisError('');
+    const res = await api.post<WebshopAnalysis>('/api/member/webshop-analysis');
+    if (res.success && res.data) {
+      setAnalysis(res.data);
+    } else {
+      setAnalysisError(res.error?.message || 'Analiza nije uspjela. Pokušajte ponovno kasnije.');
+    }
+    setAnalyzing(false);
   }
 
   if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) {
@@ -242,6 +265,89 @@ export default function PortalHome() {
               </section>
             )}
 
+            {/* Stručna analiza webshopa (AI) */}
+            <section className="rounded-xl border border-gray-200 bg-white p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Stručna analiza webshopa</h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Besplatna AI analiza vašeg webshopa po 6 područja: UX, CRO &amp; Content, SEO,
+                    Buyer&apos;s Journey, Analytics i Legal.
+                  </p>
+                </div>
+                {profile.status === 'ACTIVE' && profile.company.website && (
+                  <button
+                    onClick={runAnalysis}
+                    disabled={analyzing}
+                    className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
+                  >
+                    {analyzing ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Aktiviraj besplatnu analizu'}
+                  </button>
+                )}
+              </div>
+
+              {profile.status !== 'ACTIVE' ? (
+                <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+                  Produžite članstvo da biste pokrenuli besplatnu analizu.
+                </p>
+              ) : !profile.company.website ? (
+                <p className="mt-4 text-sm text-gray-500">
+                  Dodajte web adresu tvrtke (u podacima o članu) da biste mogli pokrenuti analizu.
+                </p>
+              ) : analyzing ? (
+                <div className="mt-4 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
+                  Analiziram webshop, ovo može potrajati do minute…
+                </div>
+              ) : analysisError ? (
+                <p className="mt-4 rounded-md bg-danger-light px-4 py-3 text-sm font-medium text-danger">{analysisError}</p>
+              ) : analysis && analysis.result ? (
+                <div className="mt-5 space-y-5">
+                  <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
+                    <ScoreBadge score={analysis.overallScore ?? 0} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">Ukupna ocjena</p>
+                      {analysis.summary && <p className="mt-0.5 text-sm text-gray-600">{analysis.summary}</p>}
+                      <p className="mt-1 text-xs text-gray-400">Analizirano {fmtDate(analysis.createdAt)}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    {analysis.result.map((cat) => (
+                      <div key={cat.key} className="rounded-lg border border-gray-100 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-bold text-gray-900">{cat.title}</h3>
+                          <ScoreBadge score={cat.score} small />
+                        </div>
+                        {cat.summary && <p className="mt-2 text-sm text-gray-600">{cat.summary}</p>}
+                        {cat.recommendations.length > 0 && (
+                          <ul className="mt-3 space-y-2">
+                            {cat.recommendations.map((rec, i) => (
+                              <li key={i} className="flex gap-2">
+                                <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${SEVERITY_DOT[rec.severity] || 'bg-gray-300'}`} />
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800">{rec.title}</p>
+                                  <p className="text-xs text-gray-500">{rec.description}</p>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Napomena: ovo je automatska AI procjena namijenjena kao smjernica i ne zamjenjuje
+                    detaljnu stručnu analizu žirija Udruge.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-gray-500">
+                  Kliknite &quot;Aktiviraj besplatnu analizu&quot; i AI će pregledati vaš webshop te
+                  predložiti konkretna poboljšanja po 6 područja.
+                </p>
+              )}
+            </section>
+
             {/* Notifications */}
             <Section title="Obavijesti" count={notifications.length}>
               {notifications.length === 0 ? (
@@ -381,4 +487,14 @@ function Section({ title, count, children }: { title: string; count: number; chi
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="py-4 text-center text-sm text-gray-400">{children}</p>;
+}
+
+function ScoreBadge({ score, small }: { score: number; small?: boolean }) {
+  const color = score >= 70 ? 'bg-success-light text-success' : score >= 40 ? 'bg-warning-light text-warning' : 'bg-danger-light text-danger';
+  const size = small ? 'h-9 w-9 text-xs' : 'h-14 w-14 text-lg';
+  return (
+    <span className={`flex shrink-0 items-center justify-center rounded-full font-bold ${color} ${size}`}>
+      {Math.round(score)}
+    </span>
+  );
 }
