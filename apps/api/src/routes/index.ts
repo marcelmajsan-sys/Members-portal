@@ -23,6 +23,7 @@ import memberProductRoutes from './member-product.routes.js';
 import emailTemplateRoutes from './email-template.routes.js';
 import calendarEventRoutes from './calendar-event.routes.js';
 import inboundRoutes from './inbound.routes.js';
+import benefitRoutes from './benefit.routes.js';
 
 export function registerRoutes(app: Express): void {
   // Apply default rate limiter to all routes
@@ -51,5 +52,6 @@ export function registerRoutes(app: Express): void {
   app.use('/api/os/tasks/analytics', taskAnalyticsRoutes);
   app.use('/api/os/email-templates', emailTemplateRoutes);
   app.use('/api/os/calendar-events', calendarEventRoutes);
+  app.use('/api/os/benefits', benefitRoutes);
   app.use('/api/cron', inboundRoutes);
 }

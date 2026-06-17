@@ -181,6 +181,44 @@ model Member {
   memberProducts MemberProduct[]
   priceAlerts    PriceAlert[]
   offers         Offer[]
+  memberBenefits MemberBenefit[]
+}
+
+enum BenefitStatus {
+  AVAILABLE
+  CLAIMED
+}
+
+// Benefit katalog — admin kreira, cilja po tipu članstva i/ili pojedinom članu
+model Benefit {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  category    String?
+  actionUrl   String?       // opcionalni "PREUZMI" link
+  actionLabel String?       // npr. "PREUZMI"
+  memberTypes MemberType[]  // ciljanje po tipu članstva (prazno = nijedan tip)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  grants      MemberBenefit[]
+}
+
+// Veza član ↔ benefit: postoji za pojedinačno dodijeljene benefite i/ili kad član iskoristi (Prijava)
+model MemberBenefit {
+  id        String        @id @default(cuid())
+  benefitId String
+  memberId  String
+  status    BenefitStatus @default(AVAILABLE)
+  claimedAt DateTime?
+  createdAt DateTime      @default(now())
+
+  benefit Benefit @relation(fields: [benefitId], references: [id], onDelete: Cascade)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([benefitId, memberId])
+  @@index([memberId])
 }
 
 model Payment {

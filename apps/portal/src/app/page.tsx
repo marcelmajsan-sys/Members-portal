@@ -21,6 +21,8 @@ interface Profile {
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
 interface OfferItem { id: string; offerNumber: string; amount: number; currency: string; status: string; validUntil: string; createdAt: string }
+interface PerkItem { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; status: string; claimedAt: string | null }
+interface Perks { available: PerkItem[]; claimed: PerkItem[] }
 
 const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
@@ -48,6 +50,8 @@ export default function PortalHome() {
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [offers, setOffers] = useState<OfferItem[]>([]);
+  const [perks, setPerks] = useState<Perks>({ available: [], claimed: [] });
+  const [claiming, setClaiming] = useState('');
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<EmailItem | null>(null);
 
@@ -61,19 +65,33 @@ export default function PortalHome() {
   useEffect(() => {
     if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
     (async () => {
-      const [p, e, n, o] = await Promise.all([
+      const [p, e, n, o, pk] = await Promise.all([
         api.get<Profile>('/api/member/profile'),
         api.get<EmailItem[]>('/api/member/emails'),
         api.get<NotificationItem[]>('/api/notifications?limit=20'),
         api.get<OfferItem[]>('/api/member/offers'),
+        api.get<Perks>('/api/member/perks'),
       ]);
       if (p.success && p.data) setProfile(p.data);
       if (e.success && e.data) setEmails(e.data);
       if (n.success && n.data) setNotifications(n.data);
       if (o.success && o.data) setOffers(o.data);
+      if (pk.success && pk.data) setPerks(pk.data);
       setLoading(false);
     })();
   }, [isLoading, isAuthenticated, user]);
+
+  async function claimPerk(perk: PerkItem) {
+    setClaiming(perk.id);
+    const res = await api.post(`/api/member/perks/${perk.id}/claim`);
+    if (res.success) {
+      setPerks((prev) => ({
+        available: prev.available.filter((x) => x.id !== perk.id),
+        claimed: [{ ...perk, status: 'CLAIMED', claimedAt: new Date().toISOString() }, ...prev.claimed],
+      }));
+    }
+    setClaiming('');
+  }
 
   if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) {
     return <div className="flex min-h-screen items-center justify-center text-gray-500">Učitavanje...</div>;
@@ -150,6 +168,66 @@ export default function PortalHome() {
                 {profile.company.phone && <Info label="Telefon" value={profile.company.phone} />}
               </div>
             </section>
+
+            {/* Pogodnosti (benefiti) */}
+            {(perks.available.length > 0 || perks.claimed.length > 0) && (
+              <section className="rounded-xl border border-gray-200 bg-white p-6">
+                <h2 className="mb-4 text-sm font-semibold text-gray-900">Pogodnosti</h2>
+                <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+                  {/* Dostupni */}
+                  <div>
+                    <h3 className="mb-3 text-base font-bold text-gray-900">Dostupni</h3>
+                    {perks.available.length === 0 ? (
+                      <p className="text-sm text-gray-400">Trenutno nemate dostupnih pogodnosti.</p>
+                    ) : (
+                      <ul className="space-y-3">
+                        {perks.available.map((perk) => (
+                          <li key={perk.id} className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm text-gray-700">
+                                {perk.title}
+                                {perk.actionUrl && (
+                                  <>
+                                    {' '}
+                                    <a href={perk.actionUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+                                      [{perk.actionLabel || 'PREUZMI'}]
+                                    </a>
+                                  </>
+                                )}
+                              </p>
+                              {perk.description && <p className="text-xs text-gray-500">{perk.description}</p>}
+                            </div>
+                            <button
+                              onClick={() => claimPerk(perk)}
+                              disabled={claiming === perk.id}
+                              className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              {claiming === perk.id ? '...' : 'Prijava'}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  {/* Iskorišteni */}
+                  <div>
+                    <h3 className="mb-3 text-base font-bold text-gray-900">Iskorišteni</h3>
+                    {perks.claimed.length === 0 ? (
+                      <p className="text-sm text-gray-400">Još niste iskoristili nijednu pogodnost.</p>
+                    ) : (
+                      <ul className="space-y-3">
+                        {perks.claimed.map((perk) => (
+                          <li key={perk.id}>
+                            <p className="text-sm text-gray-700">{perk.title}</p>
+                            <p className="text-xs text-gray-400">Zatraženo {fmtDate(perk.claimedAt)}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
 
             {/* Notifications */}
             <Section title="Obavijesti" count={notifications.length}>

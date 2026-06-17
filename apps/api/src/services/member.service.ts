@@ -368,6 +368,82 @@ export async function getMemberOffers(userId: string) {
   });
 }
 
+// Pogodnosti (benefiti) dodijeljene članu — po tipu članstva i/ili pojedinačno.
+// Vraća { available, claimed }.
+export async function getMemberPerks(userId: string) {
+  const member = await prisma.member.findUnique({
+    where: { userId },
+    select: { id: true, memberType: true },
+  });
+  if (!member) return null;
+
+  const [typeBenefits, grants] = await Promise.all([
+    prisma.benefit.findMany({
+      where: { isActive: true, memberTypes: { has: member.memberType } },
+    }),
+    prisma.memberBenefit.findMany({
+      where: { memberId: member.id },
+      include: { benefit: true },
+    }),
+  ]);
+
+  const grantByBenefit = new Map(grants.map((g) => [g.benefitId, g]));
+
+  const shape = (b: { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null }, status: string, claimedAt: Date | null) =>
+    ({ id: b.id, title: b.title, description: b.description, category: b.category, actionUrl: b.actionUrl, actionLabel: b.actionLabel, status, claimedAt });
+
+  const available: ReturnType<typeof shape>[] = [];
+  const claimed: ReturnType<typeof shape>[] = [];
+
+  // Type-targeted benefits (use grant status if one exists, else AVAILABLE)
+  for (const b of typeBenefits) {
+    const g = grantByBenefit.get(b.id);
+    if (g?.status === 'CLAIMED') claimed.push(shape(b, 'CLAIMED', g.claimedAt));
+    else available.push(shape(b, 'AVAILABLE', null));
+  }
+
+  // Individually-assigned benefits not already covered by type targeting
+  const typeIds = new Set(typeBenefits.map((b) => b.id));
+  for (const g of grants) {
+    if (typeIds.has(g.benefitId)) continue;
+    if (!g.benefit.isActive) continue;
+    if (g.status === 'CLAIMED') claimed.push(shape(g.benefit, 'CLAIMED', g.claimedAt));
+    else available.push(shape(g.benefit, 'AVAILABLE', null));
+  }
+
+  return { available, claimed };
+}
+
+// Član iskorištava benefit (gumb "Prijava")
+export async function claimMemberPerk(userId: string, benefitId: string) {
+  const member = await prisma.member.findUnique({
+    where: { userId },
+    select: { id: true, memberType: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
+  });
+  if (!member) return { error: 'NO_MEMBER' as const };
+
+  const benefit = await prisma.benefit.findUnique({ where: { id: benefitId } });
+  if (!benefit || !benefit.isActive) return { error: 'NOT_FOUND' as const };
+
+  const existing = await prisma.memberBenefit.findUnique({
+    where: { benefitId_memberId: { benefitId, memberId: member.id } },
+  });
+  const eligible = benefit.memberTypes.includes(member.memberType) || !!existing;
+  if (!eligible) return { error: 'NOT_ELIGIBLE' as const };
+
+  if (existing?.status === 'CLAIMED') {
+    return { ok: true as const, alreadyClaimed: true, member, benefit };
+  }
+
+  await prisma.memberBenefit.upsert({
+    where: { benefitId_memberId: { benefitId, memberId: member.id } },
+    update: { status: 'CLAIMED', claimedAt: new Date() },
+    create: { benefitId, memberId: member.id, status: 'CLAIMED', claimedAt: new Date() },
+  });
+
+  return { ok: true as const, alreadyClaimed: false, member, benefit };
+}
+
 export async function getMemberBenefits(userId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
