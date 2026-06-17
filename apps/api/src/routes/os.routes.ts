@@ -277,13 +277,15 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
     // Emit activation event (triggers welcome email automation)
     await emitEvent('member.activated', { memberId: member.id, userId: member.userId });
 
-    // Inbox: notify staff about the new member
-    notifyStaff({
-      type: 'INFO',
-      title: 'Novi član',
-      message: `${member.user.firstName} ${member.user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} dodan/a kao član.`,
-      actionUrl: `/members/${member.id}`,
-    }).catch(() => {});
+    // Inbox: notify staff about the new member (await — serverless freeze nakon odgovora)
+    try {
+      await notifyStaff({
+        type: 'INFO',
+        title: 'Novi član',
+        message: `${member.user.firstName} ${member.user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} dodan/a kao član.`,
+        actionUrl: `/members/${member.id}`,
+      });
+    } catch { /* ne ruši kreiranje člana */ }
 
     successResponse(res, member, 201);
   } catch (err) {
@@ -876,13 +878,16 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
     {},
   ).catch(() => {}); // fire-and-forget — don't block note creation
 
-  // Inbox: notify staff about the new note (uključujući autora — u praksi je često jedini admin)
-  notifyStaff({
-    type: 'INFO',
-    title: 'Nova bilješka za člana',
-    message: `${authorName}: bilješka na ${member.user.firstName} ${member.user.lastName} — ${content.trim().slice(0, 120)}`,
-    actionUrl: `/members/${req.params.id}`,
-  }).catch(() => {});
+  // Inbox: notify staff about the new note (uključujući autora — u praksi je često jedini admin).
+  // MORA biti await: na serverlessu se fire-and-forget posao prekida kad funkcija pošalje odgovor.
+  try {
+    await notifyStaff({
+      type: 'INFO',
+      title: 'Nova bilješka za člana',
+      message: `${authorName}: bilješka na ${member.user.firstName} ${member.user.lastName} — ${content.trim().slice(0, 120)}`,
+      actionUrl: `/members/${req.params.id}`,
+    });
+  } catch { /* ne ruši kreiranje bilješke */ }
 
   successResponse(res, note);
 });

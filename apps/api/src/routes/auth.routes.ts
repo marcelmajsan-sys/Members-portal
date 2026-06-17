@@ -85,13 +85,15 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res)
     firstName: user.firstName,
   }).catch((err) => logger.error(err, 'Failed to emit MEMBER_REGISTERED event'));
 
-  // Inbox: notify staff about the new member self-registration
-  notifyStaff({
-    type: 'INFO',
-    title: 'Novi član',
-    message: `${user.firstName} ${user.lastName} (${companyName}) se registrirao/la kao član.`,
-    actionUrl: `/members/${member.id}`,
-  }).catch(() => {});
+  // Inbox: notify staff about the new member self-registration (await — serverless freeze)
+  try {
+    await notifyStaff({
+      type: 'INFO',
+      title: 'Novi član',
+      message: `${user.firstName} ${user.lastName} (${companyName}) se registrirao/la kao član.`,
+      actionUrl: `/members/${member.id}`,
+    });
+  } catch { /* ne ruši registraciju */ }
 
   successResponse(
     res,
