@@ -207,10 +207,10 @@ export default function SafeShopAnalysis({
         <div id="safeshop-print" className="mt-5">
           {/* Zaglavlje vidljivo samo u PDF ispisu */}
           <div className="print-only safeshop-pdf-header">
-            <img src="/admin/logo.png" alt="eCommerce Hrvatska" style={{ height: 40 }} />
+            <img src="/admin/safeshop-logo.svg" alt="Safe Shop" style={{ height: 48 }} />
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 400, letterSpacing: 1 }}>SAFE SHOP ANALIZA</h1>
-              <p style={{ fontSize: 12, color: '#2A6F97' }}>Izvođač: Udruga eCommerce Hrvatska</p>
+              <p style={{ fontSize: 12, color: '#2A6F97' }}>Certifikacijsko tijelo: Udruga eCommerce Hrvatska</p>
               {editing ? (
                 <div className="no-print mt-1 flex items-center gap-2">
                   <span style={{ fontSize: 12, color: '#555' }}>Analizu odradio:</span>
