@@ -365,6 +365,20 @@ export default function PortalHome() {
                     Besplatna AI analiza vašeg webshopa po 6 područja: UX, CRO &amp; Content, SEO,
                     Buyer&apos;s Journey, Analytics i Legal.
                   </p>
+                  <p className="mt-2 max-w-2xl text-xs leading-relaxed text-gray-500">
+                    AI model je treniran na bazi 73 webshopa koji su sudjelovali u zadnjem eCommAwards
+                    natjecanju (travanj 2025.) —{' '}
+                    <a
+                      href="https://ecommerce.hr/proglasenjem-najboljih-web-trgovaca-udruga-ecommerce-hrvatska-proslavila-10-godina-rada/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline hover:no-underline"
+                    >
+                      pogledajte izvještaj
+                    </a>
+                    . Zbog napretka AI alata ručne analize više ne radimo, no svaki član ima pravo
+                    napraviti 2 AI analize svog webshopa godišnje.
+                  </p>
                 </div>
                 {profile.status === 'ACTIVE' && profile.company.website && (
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
