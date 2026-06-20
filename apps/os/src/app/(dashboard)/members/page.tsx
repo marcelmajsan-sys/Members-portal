@@ -193,15 +193,24 @@ export default function MembersPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
-  }, [page, type, status, extra, expiring, expiryMonth, companyId, fetchMembers]);
-
-  useEffect(() => {
+  const refreshCounts = useCallback(() => {
     api.get<Record<string, number>>('/api/os/members/counts').then((res) => {
       if (res.success && res.data) setCounts(res.data);
     });
   }, []);
+
+  useEffect(() => {
+    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
+    // Osvježi i brojke uz svako učitavanje liste (npr. nakon promjene zastavica na profilu).
+    refreshCounts();
+  }, [page, type, status, extra, expiring, expiryMonth, companyId, fetchMembers, refreshCounts]);
+
+  // Osvježi brojke kad se korisnik vrati na karticu (npr. back nakon uređivanja profila).
+  useEffect(() => {
+    const onFocus = () => refreshCounts();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshCounts]);
 
   function selectType(t: string) {
     setType(t);

@@ -385,10 +385,14 @@ export default function PortalHome() {
                 <div id="analiza-print" className="mt-5 space-y-5">
                   {/* Zaglavlje vidljivo samo u PDF ispisu */}
                   <div className="print-only mb-4 border-b border-gray-200 pb-3">
-                    <img src="/logo.png" alt="eCommerce Hrvatska" style={{ height: 32 }} />
+                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: '#1B365D', textTransform: 'uppercase', margin: 0 }}>
+                      Made by member.ecommerce.hr AI Model
+                    </p>
+                    <img src="/logo.png" alt="eCommerce Hrvatska" style={{ height: 32, marginTop: 8 }} />
                     <h1 style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>Stručna analiza webshopa</h1>
-                    <p style={{ fontSize: 12, color: '#555' }}>
-                      {analysis.websiteUrl} · {fmtDate(analysis.createdAt)}
+                    <p style={{ fontSize: 12, color: '#555', margin: 0 }}>{analysis.websiteUrl}</p>
+                    <p style={{ fontSize: 12, color: '#555', margin: 0 }}>
+                      Analiza izrađena: {fmtDate(analysis.createdAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
@@ -468,8 +472,10 @@ export default function PortalHome() {
                     ))}
                   </div>
                   <p className="text-xs text-gray-400">
-                    Napomena: ovo je automatska AI procjena namijenjena kao smjernica i ne zamjenjuje
-                    detaljnu stručnu analizu žirija Udruge.
+                    Napomena: ovo je automatska AI procjena izrađena {fmtDate(analysis.createdAt)} i namijenjena
+                    je kao smjernica te ne zamjenjuje detaljnu stručnu analizu žirija Udruge. Pojedine
+                    informacije mogu biti netočne ili nepotpune — preporučujemo da nalaze i preporuke
+                    provjerite sa svojim konzultantima prije donošenja poslovnih odluka.
                   </p>
                 </div>
               ) : (
