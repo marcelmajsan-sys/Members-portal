@@ -186,7 +186,10 @@ router.get('/webshop-analysis', async (req: AuthRequest, res) => {
 router.post('/webshop-analysis', async (req: AuthRequest, res) => {
   const result = await requestWebshopAnalysis(req.user!.userId);
 
-  if ('error' in result) {
+  // Uspješan rezultat je WebshopAnalysis zapis koji TAKOĐER ima polje `error` (nullable
+  // kolona, `null` pri uspjehu) — zato `'error' in result` ne razlikuje uspjeh od greške.
+  // Sentineli greške nemaju `id`; zapis ga uvijek ima.
+  if (!('id' in result)) {
     switch (result.error) {
       case 'INACTIVE':
         errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste pokrenuli analizu', 403);
