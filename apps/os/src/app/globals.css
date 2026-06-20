@@ -84,6 +84,11 @@ textarea::placeholder {
   padding: 8px;
   font-size: 12px;
 }
+/* margin:0 uklanja preglednikove header/footer (URL, datum, broj stranice) u ispisu;
+   razmak oko sadržaja vraćamo paddingom na samom kontejneru. */
+@page {
+  margin: 0;
+}
 @media print {
   html,
   body {
@@ -101,7 +106,7 @@ textarea::placeholder {
     left: 0;
     top: 0;
     width: 100%;
-    padding: 0 12px;
+    padding: 14mm 12mm;
   }
   .no-print {
     display: none !important;
