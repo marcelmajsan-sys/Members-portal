@@ -46,7 +46,6 @@ export default function SafeShopAnalysis({
         if (res.data.status === 'PENDING') poll();
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberId]);
 
   async function poll(maxMs = 180000) {
