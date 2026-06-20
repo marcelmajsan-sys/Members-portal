@@ -86,7 +86,7 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
 
   const companyIdParam = req.query.companyId as string | undefined;
 
-  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean } = {};
+  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean } = {};
   if (companyIdParam) filters.companyId = companyIdParam;
   if (tier && ['FREE', 'STANDARD', 'PREMIUM'].includes(tier)) filters.tier = tier;
 
@@ -130,6 +130,8 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
   if (req.query.promoOstalo === 'true') filters.promoOstalo = true;
   if (req.query.hasCertificate === 'true') filters.hasCertificate = true;
   if (req.query.hasCertificate === 'false') filters.hasCertificate = false;
+  if (req.query.magazinDobrePrice === 'true') filters.magazinDobrePrice = true;
+  if (req.query.magazinDobrePrice === 'false') filters.magazinDobrePrice = false;
 
   const { members, total } = await getAllMembers(page, limit, filters);
 
@@ -142,7 +144,7 @@ router.get('/members/counts', async (_req, res) => {
   // pa svaki upit nosi mrežnu latenciju; smanjenje broja upita = brže učitavanje.
   const [
     statusGroups, certGroups, academyGroups,
-    promoKonfG, promoMeetG, promoMagG, promoWebG, promoOstG,
+    promoKonfG, promoMeetG, promoMagG, promoWebG, promoOstG, magazinG,
   ] = await Promise.all([
     prisma.member.groupBy({ by: ['memberType', 'status'], _count: { _all: true } }),
     prisma.member.groupBy({ by: ['memberType'], where: { hasCertificate: true }, _count: { _all: true } }),
@@ -152,6 +154,7 @@ router.get('/members/counts', async (_req, res) => {
     prisma.member.groupBy({ by: ['memberType'], where: { promoMagazin: true }, _count: { _all: true } }),
     prisma.member.groupBy({ by: ['memberType'], where: { promoWeb: true }, _count: { _all: true } }),
     prisma.member.groupBy({ by: ['memberType'], where: { promoOstalo: { not: null } }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { magazinDobrePrice: true }, _count: { _all: true } }),
   ]);
 
   type TypeGroup = { memberType: MemberType; _count: { _all: number } };
@@ -171,6 +174,7 @@ router.get('/members/counts', async (_req, res) => {
   const serviceProvider = typeTotal('SERVICE_PROVIDER');
   const physical = typeTotal('PHYSICAL');
   const wtCertified = byType(certGroups, 'WEB_TRADER');
+  const wtMagazinPublished = byType(magazinG, 'WEB_TRADER');
 
   successResponse(res, {
     total,
@@ -185,6 +189,8 @@ router.get('/members/counts', async (_req, res) => {
     wtSuspended: statusOf('WEB_TRADER', 'SUSPENDED'),
     wtCertified,
     wtNoCert: webTrader - wtCertified,
+    wtMagazinPublished,
+    wtMagazinUnpublished: webTrader - wtMagazinPublished,
     wtAcademy: byType(academyGroups, 'WEB_TRADER'),
     wtPromoKonferencija: byType(promoKonfG, 'WEB_TRADER'),
     wtPromoMeetup: byType(promoMeetG, 'WEB_TRADER'),

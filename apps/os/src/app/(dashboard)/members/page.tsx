@@ -138,6 +138,8 @@ export default function MembersPage() {
       ...statusPills('wt'),
       ...certPills('wt'),
       { key: 'e-nocert', label: 'Necertificirani', group: 'extra', value: 'no_cert', count: c.wtNoCert },
+      { key: 'e-mag-yes', label: 'Magazin objavljeno', group: 'extra', value: 'magazin_yes', count: c.wtMagazinPublished },
+      { key: 'e-mag-no', label: 'Magazin neobjavljeno', group: 'extra', value: 'magazin_no', count: c.wtMagazinUnpublished },
     ];
     if (type === 'SERVICE_PROVIDER') return [
       ...statusPills('sp'),
@@ -175,6 +177,8 @@ export default function MembersPage() {
     if (ex === 'cert') params.set('hasCertificate', 'true');
     else if (ex === 'no_cert') params.set('hasCertificate', 'false');
     else if (ex === 'academy') params.set('certificate', 'HAS_ACADEMY');
+    else if (ex === 'magazin_yes') params.set('magazinDobrePrice', 'true');
+    else if (ex === 'magazin_no') params.set('magazinDobrePrice', 'false');
     else if (ex) params.set(ex, 'true'); // promo* zastavice
 
     const res = await api.get<MemberRaw[]>(`/api/os/members?${params}`);

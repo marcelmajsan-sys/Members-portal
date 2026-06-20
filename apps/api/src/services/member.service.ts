@@ -23,7 +23,7 @@ export async function getMemberByUserId(userId: string): Promise<Member | null> 
 export async function getAllMembers(
   page: number,
   limit: number,
-  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean },
+  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean },
 ): Promise<{ members: Member[]; total: number }> {
   const skip = (page - 1) * limit;
 
@@ -71,6 +71,7 @@ export async function getAllMembers(
   if (filters?.promoWeb !== undefined) where.promoWeb = filters.promoWeb;
   if (filters?.promoOstalo !== undefined) where.promoOstalo = { not: null };
   if (filters?.hasCertificate !== undefined) where.hasCertificate = filters.hasCertificate;
+  if (filters?.magazinDobrePrice !== undefined) where.magazinDobrePrice = filters.magazinDobrePrice;
 
   // Support single or multiple certificate filters (combined with OR)
   if (filters?.certificate) {
