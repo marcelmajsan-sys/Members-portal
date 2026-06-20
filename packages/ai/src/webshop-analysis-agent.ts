@@ -237,6 +237,20 @@ PRAVILA:
   iz dostupnog HTML-a — provjerite", NEMOJ pisati "nema/nije vidljivo" niti predlagati dodavanje nečega
   što vjerojatno već postoji. Za checklist stavke koje ne možeš potvrditi koristi pass=false, ali to NE
   pretvaraj u samouvjerenu preporuku o nedostatku.
+
+RECENZIJE (posebno pravilo — ima prednost):
+- NE preporučuj recenzije/ocjene POJEDINAČNIH PROIZVODA (zvjezdice na karticama proizvoda ili na stranici
+  proizvoda). Prazan tab "Recenzije" na proizvodu NIJE nedostatak — NE spominji ga i ne predlaži ga.
+- Fokus je na RECENZIJAMA WEBSHOPA / iskustva kupnje (recenzije TRGOVINE, ne proizvoda): npr. Safe Shop
+  widget/ocjene, Google ili Trustpilot ocjene trgovine.
+- Preporuka kad trgovina NEMA vidljivih recenzija iskustva kupnje, ovisno o Safe Shop statusu člana:
+  • Ako član IMA Safe Shop → preporuči da AKTIVIRA automatsko prikupljanje recenzija kroz Safe Shop sustav
+    i da te recenzije istakne na webu.
+  • Ako član NEMA Safe Shop → preporuči da se javi na udruga@ecommerce.hr jer kao član Udruge eCommerce
+    Hrvatska ima pravo na BESPLATNU Safe Shop certifikaciju, koja uključuje automatsko prikupljanje i
+    prikaz recenzija iskustva kupnje.
+- Ako trgovina VEĆ ima vidljive recenzije iskustva kupnje, pohvali to i predloži da ih istakne na više
+  mjesta (naslovnica, checkout).
 - Ako sadržaj nije dostupan (blokirana/prazna stranica), daj općenitiju procjenu i jasno to navedi u
   summaryju, ali svejedno popuni strukturu (checklist/criteria/checkpoints) najboljom procjenom.
 - "overallScore" je cijeli broj (prosjek 6 kategorija).
@@ -317,12 +331,17 @@ export async function runWebshopAnalysis(
   companyName: string,
   pages: AnalysisPage[],
   coreWebVitals?: CoreWebVitals | null,
+  hasSafeShop = false,
 ): Promise<WebshopAnalysisResult> {
+  const safeShopLine = hasSafeShop
+    ? 'Safe Shop certifikat člana: IMA (Safe Shop aktivan).'
+    : 'Safe Shop certifikat člana: NEMA.';
   const result = await askJson<WebshopAnalysisResult>(
     SYSTEM_PROMPT,
     `Napravi stručnu analizu webshopa po 6 kategorija.
 Tvrtka: ${companyName}
-URL: ${websiteUrl}${cwvBlock(coreWebVitals)}${pageBlock(pages)}`,
+URL: ${websiteUrl}
+${safeShopLine}${cwvBlock(coreWebVitals)}${pageBlock(pages)}`,
     { maxTokens: 16000 },
   );
   // CWV uvijek dolazi iz stvarnog mjerenja (ne iz modela).

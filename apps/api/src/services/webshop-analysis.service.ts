@@ -210,6 +210,7 @@ export async function requestWebshopAnalysis(userId: string) {
       member.company?.name ?? '',
       pages,
       coreWebVitals,
+      member.hasCertificate,
     );
 
     return prisma.webshopAnalysis.update({
