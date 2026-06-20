@@ -386,15 +386,28 @@ export default function PortalHome() {
                   {/* Zaglavlje vidljivo samo u PDF ispisu */}
                   <div className="print-only mb-4 border-b border-gray-200 pb-3">
                     <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: '#1B365D', textTransform: 'uppercase', margin: 0 }}>
-                      Made by member.ecommerce.hr AI Model
+                      Made by members.ecommerce.hr AI Model
                     </p>
-                    <img src="/logo.png" alt="eCommerce Hrvatska" style={{ height: 32, marginTop: 8 }} />
+                    <p style={{ fontSize: 10, color: '#888', margin: '4px 0 0' }}>
+                      Napomena: ovo je automatska AI procjena izrađena {fmtDate(analysis.createdAt)} i služi kao
+                      smjernica te ne zamjenjuje detaljnu stručnu analizu žirija Udruge. Pojedine informacije mogu
+                      biti netočne ili nepotpune — preporučujemo da nalaze i preporuke provjerite sa svojim
+                      konzultantima prije donošenja poslovnih odluka.
+                    </p>
+                    <img src="/logo.png" alt="eCommerce Hrvatska" style={{ height: 32, marginTop: 10 }} />
                     <h1 style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>Stručna analiza webshopa</h1>
                     <p style={{ fontSize: 12, color: '#555', margin: 0 }}>{analysis.websiteUrl}</p>
                     <p style={{ fontSize: 12, color: '#555', margin: 0 }}>
                       Analiza izrađena: {fmtDate(analysis.createdAt)}
                     </p>
                   </div>
+                  {/* Napomena vidljiva i na ekranu, odmah na vrhu */}
+                  <p className="no-print rounded-md bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                    <strong>Made by members.ecommerce.hr AI Model.</strong> Ovo je automatska AI procjena izrađena{' '}
+                    {fmtDate(analysis.createdAt)} i služi kao smjernica — ne zamjenjuje detaljnu stručnu analizu
+                    žirija Udruge. Pojedine informacije mogu biti netočne ili nepotpune; preporučujemo da nalaze
+                    provjerite sa svojim konzultantima prije donošenja poslovnih odluka.
+                  </p>
                   <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
                     <ScoreBadge score={analysis.overallScore ?? 0} />
                     <div className="min-w-0 flex-1">
@@ -408,6 +421,20 @@ export default function PortalHome() {
                     >
                       Preuzmi PDF
                     </button>
+                  </div>
+                  {/* Presjek ocjena po kategorijama */}
+                  <div className="border-b border-gray-100 pb-5">
+                    <p className="mb-3 text-sm font-semibold text-gray-900">Presjek ocjena po kategorijama</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {analysis.result.map((cat) => (
+                        <div key={cat.key} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2">
+                          <span className="truncate pr-2 text-xs font-medium text-gray-700">{cat.title}</span>
+                          <span className={`shrink-0 text-sm font-bold ${cat.score >= 70 ? 'text-success' : cat.score >= 40 ? 'text-warning' : 'text-danger'}`}>
+                            {Math.round(cat.score)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   {analysis.coreWebVitals && <CoreWebVitalsPanel cwv={analysis.coreWebVitals} />}
                   <div className="space-y-4">
@@ -471,12 +498,6 @@ export default function PortalHome() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-400">
-                    Napomena: ovo je automatska AI procjena izrađena {fmtDate(analysis.createdAt)} i namijenjena
-                    je kao smjernica te ne zamjenjuje detaljnu stručnu analizu žirija Udruge. Pojedine
-                    informacije mogu biti netočne ili nepotpune — preporučujemo da nalaze i preporuke
-                    provjerite sa svojim konzultantima prije donošenja poslovnih odluka.
-                  </p>
                 </div>
               ) : (
                 <p className="mt-4 text-sm text-gray-500">
