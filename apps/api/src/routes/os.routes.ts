@@ -15,7 +15,7 @@ import { prisma } from '@ecommerce-hr/db';
 import type { MemberTier, MemberType, MemberStatus } from '@ecommerce-hr/db';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
-import { requestSafeShopAnalysis, getLatestSafeShopAnalysis } from '../services/safeshop-analysis.service.js';
+import { requestSafeShopAnalysis, getLatestSafeShopAnalysis, updateSafeShopAnalysis } from '../services/safeshop-analysis.service.js';
 import { buildRenewalConfirmationEmail, buildFreeUpgradeEmail } from '../utils/member-emails.js';
 import { checkEmailCooldown } from '../services/automation-executor.js';
 import { hashPassword } from '../services/auth.service.js';
@@ -433,6 +433,19 @@ router.post('/members/:id/safeshop-analysis', validateParams(idParamSchema), asy
   }
 
   successResponse(res, result);
+});
+
+// PATCH /safeshop-analysis/:id — admin uređivanje analize (komentar, kriteriji, note, ✓/✗)
+router.patch('/safeshop-analysis/:id', validateParams(idParamSchema), async (req, res) => {
+  const updated = await updateSafeShopAnalysis(req.params.id as string, {
+    summary: req.body?.summary,
+    checkpoints: req.body?.checkpoints,
+  });
+  if (!updated) {
+    errorResponse(res, 'NOT_FOUND', 'Analiza nije pronađena', 404);
+    return;
+  }
+  successResponse(res, updated);
 });
 
 // POST /members/:id/send-invite — Create/refresh member portal access and email a set-password link (OWNER)

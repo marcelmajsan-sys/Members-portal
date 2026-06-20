@@ -39,6 +39,12 @@ export default function SafeShopAnalysis({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
 
+  // Uređivanje
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editSummary, setEditSummary] = useState('');
+  const [editCheckpoints, setEditCheckpoints] = useState<Checkpoint[]>([]);
+
   useEffect(() => {
     api.get<SafeShopAnalysisData | null>(`/api/os/members/${memberId}/safeshop-analysis`).then((res) => {
       if (res.success && res.data) {
@@ -65,6 +71,7 @@ export default function SafeShopAnalysis({
 
   async function run() {
     setError('');
+    setEditing(false);
     setRunning(true);
     const res = await api.post<SafeShopAnalysisData>(`/api/os/members/${memberId}/safeshop-analysis`).catch(() => null);
     if (res && res.success && res.data?.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); return; }
@@ -76,6 +83,31 @@ export default function SafeShopAnalysis({
     await poll();
   }
 
+  function startEdit() {
+    if (!analysis) return;
+    setEditSummary(analysis.summary ?? '');
+    setEditCheckpoints((analysis.result ?? []).map((c) => ({ ...c })));
+    setEditing(true);
+  }
+
+  async function save() {
+    if (!analysis) return;
+    setSaving(true);
+    const res = await api
+      .patch<SafeShopAnalysisData>(`/api/os/safeshop-analysis/${analysis.id}`, {
+        summary: editSummary,
+        checkpoints: editCheckpoints,
+      })
+      .catch(() => null);
+    setSaving(false);
+    if (res && res.success && res.data) {
+      setAnalysis(res.data);
+      setEditing(false);
+    } else {
+      setError('Spremanje nije uspjelo.');
+    }
+  }
+
   function downloadPdf() {
     const prev = document.title;
     document.title = `Safe Shop analiza - ${companyName}`;
@@ -83,9 +115,15 @@ export default function SafeShopAnalysis({
     document.title = prev;
   }
 
-  const score = analysis?.score ?? 0;
-  const passed = analysis?.passed ?? false;
-  const checkpoints = analysis?.result ?? [];
+  function setCp(i: number, patch: Partial<Checkpoint>) {
+    setEditCheckpoints((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  }
+
+  // Prikazne vrijednosti (u edit modu odražavaju nespremljene izmjene).
+  const checkpoints = editing ? editCheckpoints : analysis?.result ?? [];
+  const summary = editing ? editSummary : analysis?.summary ?? '';
+  const score = editing ? editCheckpoints.filter((c) => c.pass).length : analysis?.score ?? 0;
+  const passed = score >= 9;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -96,23 +134,33 @@ export default function SafeShopAnalysis({
             Automatska provjera webshopa po 10 Safe Shop kriterija. Prolaz: 9/10 ili 10/10.
           </p>
         </div>
-        <div className="no-print flex shrink-0 gap-2">
-          {analysis?.status === 'COMPLETED' && (
-            <button
-              onClick={downloadPdf}
-              className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100"
-            >
-              Preuzmi PDF
-            </button>
+        <div className="no-print flex shrink-0 flex-wrap gap-2">
+          {analysis?.status === 'COMPLETED' && !editing && (
+            <>
+              <button onClick={downloadPdf} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
+                Preuzmi PDF
+              </button>
+              <button onClick={startEdit} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
+                Uredi
+              </button>
+            </>
+          )}
+          {editing && (
+            <>
+              <button onClick={save} disabled={saving} className="rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:opacity-50">
+                {saving ? 'Spremam…' : 'Spremi'}
+              </button>
+              <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100">
+                Odustani
+              </button>
+            </>
           )}
           {websiteUrl ? (
-            <button
-              onClick={run}
-              disabled={running}
-              className="rounded-md border border-gray-300 bg-gray-50 px-4 py-1.5 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
-            >
-              {running ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Pokreni analizu'}
-            </button>
+            !editing && (
+              <button onClick={run} disabled={running} className="rounded-md border border-gray-300 bg-gray-50 px-4 py-1.5 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50">
+                {running ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Pokreni analizu'}
+              </button>
+            )
           ) : (
             <span className="text-xs text-gray-400">Član nema upisanu web adresu.</span>
           )}
@@ -151,21 +199,23 @@ export default function SafeShopAnalysis({
 
           {/* Rezultat */}
           <div className="mt-1 flex items-center gap-4 border-b border-gray-100 pb-5 safeshop-result">
-            <span
-              className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                passed ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
-              }`}
-            >
+            <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-sm font-bold ${passed ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
               {score}/10
             </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900">
-                {passed ? 'Uspješna certifikacija' : 'Potrebne dorade'}
-              </p>
-              {analysis.summary && <p className="mt-0.5 text-sm text-gray-600">{analysis.summary}</p>}
-              <p className="mt-1 text-xs text-gray-400">
-                {analysis.websiteUrl} · Analizirano {fmtDate(analysis.createdAt)}
-              </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900">{passed ? 'Uspješna certifikacija' : 'Potrebne dorade'}</p>
+              {editing ? (
+                <textarea
+                  value={editSummary}
+                  onChange={(e) => setEditSummary(e.target.value)}
+                  rows={4}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                  placeholder="Komentar…"
+                />
+              ) : (
+                summary && <p className="mt-0.5 text-sm text-gray-600">{summary}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-400">{analysis.websiteUrl} · Analizirano {fmtDate(analysis.createdAt)}</p>
             </div>
           </div>
 
@@ -177,18 +227,47 @@ export default function SafeShopAnalysis({
 
           {/* 10 kriterija */}
           <ul className="mt-4 space-y-3">
-            {checkpoints.map((c) => (
+            {checkpoints.map((c, i) => (
               <li key={c.n} className="flex items-start gap-3 safeshop-criterion">
                 <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs font-semibold text-gray-600">
                   {c.n}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-semibold ${c.pass ? 'text-gray-900' : 'text-amber-700'}`}>{c.title}</p>
-                  {c.note && <p className="mt-0.5 text-xs text-gray-500">{c.note}</p>}
+                  {editing ? (
+                    <>
+                      <input
+                        value={c.title}
+                        onChange={(e) => setCp(i, { title: e.target.value })}
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-900"
+                      />
+                      <textarea
+                        value={c.note}
+                        onChange={(e) => setCp(i, { note: e.target.value })}
+                        rows={3}
+                        className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <p className={`text-sm font-semibold ${c.pass ? 'text-gray-900' : 'text-amber-700'}`}>{c.title}</p>
+                      {c.note && <p className="mt-0.5 text-xs text-gray-500">{c.note}</p>}
+                    </>
+                  )}
                 </div>
-                <span className={`shrink-0 text-base font-bold ${c.pass ? 'text-green-600' : 'text-red-500'}`}>
-                  {c.pass ? '☑' : '☐'}
-                </span>
+                {editing ? (
+                  <button
+                    type="button"
+                    onClick={() => setCp(i, { pass: !c.pass })}
+                    className={`no-print shrink-0 rounded-md px-2 py-1 text-base font-bold ${c.pass ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}
+                    title="Prebaci zadovoljeno / nije"
+                  >
+                    {c.pass ? '☑' : '☐'}
+                  </button>
+                ) : (
+                  <span className={`shrink-0 text-base font-bold ${c.pass ? 'text-green-600' : 'text-red-500'}`}>
+                    {c.pass ? '☑' : '☐'}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

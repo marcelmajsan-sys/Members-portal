@@ -94,6 +94,33 @@ export async function getLatestSafeShopAnalysis(memberId: string) {
   });
 }
 
+type EditableCheckpoint = { n: number; title: string; pass: boolean; note: string };
+
+// Admin uređivanje analize: spremi izmijenjeni komentar i kriterije; ocjenu/prolaz
+// uvijek izvodimo iz checkpointa (broj zadovoljenih, prolaz >= 9).
+export async function updateSafeShopAnalysis(
+  id: string,
+  data: { summary?: string; checkpoints?: EditableCheckpoint[] },
+) {
+  const existing = await prisma.safeShopAnalysis.findUnique({ where: { id } });
+  if (!existing) return null;
+
+  const checkpoints = Array.isArray(data.checkpoints)
+    ? data.checkpoints
+    : ((existing.result as unknown as EditableCheckpoint[]) ?? []);
+  const score = checkpoints.filter((c) => c?.pass).length;
+
+  return prisma.safeShopAnalysis.update({
+    where: { id },
+    data: {
+      summary: data.summary ?? existing.summary,
+      result: JSON.parse(JSON.stringify(checkpoints)),
+      score,
+      passed: score >= 9,
+    },
+  });
+}
+
 export async function requestSafeShopAnalysis(memberId: string) {
   const member = await prisma.member.findUnique({
     where: { id: memberId },
