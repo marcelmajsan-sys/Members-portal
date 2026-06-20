@@ -671,6 +671,17 @@ export async function adminUpdateMemberProfile(
     memberType?: MemberType;
     joinedAt?: Date;
     expiresAt?: Date;
+    // Osobni podaci kontakt osobe (član kao fizička osoba)
+    dateOfBirth?: string | null;
+    personalOib?: string | null;
+    personalAddress?: string | null;
+    personalZip?: string | null;
+    personalCity?: string | null;
+    personalCountry?: string | null;
+    personalPhone?: string | null;
+    personalNote?: string | null;
+    // Druga kontakt osoba: objekt = upsert, null = ukloni, undefined = ne diraj
+    secondaryContact?: SecondaryContactInput | null;
   },
 ) {
   const member = await prisma.member.findUnique({
@@ -682,13 +693,19 @@ export async function adminUpdateMemberProfile(
 
   const { firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberType, joinedAt, expiresAt } = data;
 
-  const ops = [];
+  // Email je ujedno login — provjeri da nije zauzet kod drugog korisnika
+  if (email !== undefined && email.trim()) {
+    const existing = await prisma.user.findUnique({ where: { email: email.trim() }, select: { id: true } });
+    if (existing && existing.id !== member.userId) throw new Error('EMAIL_TAKEN');
+  }
+
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
 
   // Update user fields
   const userData: Record<string, string> = {};
   if (firstName !== undefined) userData.firstName = firstName;
   if (lastName !== undefined) userData.lastName = lastName;
-  if (email !== undefined) userData.email = email;
+  if (email !== undefined && email.trim()) userData.email = email.trim();
   if (Object.keys(userData).length > 0) {
     ops.push(prisma.user.update({ where: { id: member.userId }, data: userData }));
   }
@@ -706,13 +723,48 @@ export async function adminUpdateMemberProfile(
     ops.push(prisma.company.update({ where: { id: member.companyId }, data: companyData }));
   }
 
-  // Update member fields
+  // Update member fields (membership + osobni podaci kontakt osobe)
   const memberData: Record<string, unknown> = {};
   if (memberType !== undefined) memberData.memberType = memberType;
   if (joinedAt !== undefined) memberData.joinedAt = joinedAt;
   if (expiresAt !== undefined) memberData.expiresAt = expiresAt;
+  if (data.personalAddress !== undefined) memberData.personalAddress = emptyToNull(data.personalAddress);
+  if (data.personalZip !== undefined) memberData.personalZip = emptyToNull(data.personalZip);
+  if (data.personalCity !== undefined) memberData.personalCity = emptyToNull(data.personalCity);
+  if (data.personalCountry !== undefined) memberData.personalCountry = emptyToNull(data.personalCountry);
+  if (data.personalOib !== undefined) memberData.personalOib = emptyToNull(data.personalOib);
+  if (data.personalPhone !== undefined) memberData.personalPhone = emptyToNull(data.personalPhone);
+  if (data.personalNote !== undefined) memberData.personalNote = emptyToNull(data.personalNote);
+  if (data.dateOfBirth !== undefined) memberData.dateOfBirth = toDate(data.dateOfBirth);
   if (Object.keys(memberData).length > 0) {
     ops.push(prisma.member.update({ where: { id: memberId }, data: memberData }));
+  }
+
+  // Druga kontakt osoba (opcionalno)
+  if (data.secondaryContact !== undefined) {
+    if (data.secondaryContact === null) {
+      ops.push(prisma.secondaryContact.deleteMany({ where: { memberId } }));
+    } else {
+      const s = data.secondaryContact;
+      const scData = {
+        firstName: emptyToNull(s.firstName),
+        lastName: emptyToNull(s.lastName),
+        address: emptyToNull(s.address),
+        zip: emptyToNull(s.zip),
+        city: emptyToNull(s.city),
+        country: emptyToNull(s.country),
+        oib: emptyToNull(s.oib),
+        dateOfBirth: toDate(s.dateOfBirth),
+        phone: emptyToNull(s.phone),
+        email: emptyToNull(s.email),
+        note: emptyToNull(s.note),
+      };
+      ops.push(prisma.secondaryContact.upsert({
+        where: { memberId },
+        create: { memberId, ...scData },
+        update: scData,
+      }));
+    }
   }
 
   if (ops.length > 0) {
@@ -723,6 +775,7 @@ export async function adminUpdateMemberProfile(
     where: { id: memberId },
     include: {
       company: true,
+      secondaryContact: true,
       user: {
         select: { id: true, email: true, firstName: true, lastName: true, role: true },
       },

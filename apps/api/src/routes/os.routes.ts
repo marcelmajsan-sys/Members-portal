@@ -375,6 +375,7 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
     where: { id: req.params.id as string },
     include: {
       company: true,
+      secondaryContact: true,
       user: {
         select: {
           id: true,
@@ -545,9 +546,17 @@ router.patch('/members/:id/certificates', validateParams(idParamSchema), async (
 // PATCH /members/:id/profile — Admin edit of member profile (user, company, memberType)
 router.patch('/members/:id/profile', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   try {
-    const { firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberType, joinedAt, expiresAt } = req.body;
+    const {
+      firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberType, joinedAt, expiresAt,
+      // Osobni podaci kontakt osobe (član kao fizička osoba)
+      dateOfBirth, personalOib, personalAddress, personalZip, personalCity, personalCountry, personalPhone, personalNote,
+      // Druga kontakt osoba (objekt = upsert, null = ukloni, undefined = ne diraj)
+      secondaryContact,
+    } = req.body;
     const member = await adminUpdateMemberProfile(req.params.id as string, {
       firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberType,
+      dateOfBirth, personalOib, personalAddress, personalZip, personalCity, personalCountry, personalPhone, personalNote,
+      secondaryContact,
       ...(joinedAt && { joinedAt: new Date(joinedAt) }),
       ...(expiresAt && { expiresAt: new Date(expiresAt) }),
     });

@@ -4,6 +4,21 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
+interface SecondaryContact {
+  id?: string;
+  firstName: string | null;
+  lastName: string | null;
+  address: string | null;
+  zip: string | null;
+  city: string | null;
+  country: string | null;
+  oib: string | null;
+  dateOfBirth: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+}
+
 interface MemberRaw {
   id: string;
   memberNumber: string;
@@ -22,10 +37,19 @@ interface MemberRaw {
   promoMagazin: boolean;
   promoWeb: boolean;
   promoOstalo: string | null;
+  // Osobni podaci kontakt osobe (član kao fizička osoba)
+  dateOfBirth: string | null;
+  personalOib: string | null;
+  personalAddress: string | null;
+  personalZip: string | null;
+  personalCity: string | null;
+  personalCountry: string | null;
+  personalPhone: string | null;
   user: { id: string; firstName: string; lastName: string; email: string; role: string };
   companyId: string;
   company: { name: string; oib: string; address: string; city: string; country: string; website?: string; phone?: string };
   payments: Array<{ id: string; amount: number; currency: string; status: string; createdAt: string; description: string }>;
+  secondaryContact: SecondaryContact | null;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -119,7 +143,12 @@ export default function MemberDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', address: '', city: '', website: '', memberType: '', joinedAt: '', expiresAt: '',
+    // Osobni podaci kontakt osobe
+    dateOfBirth: '', personalOib: '', personalAddress: '', personalZip: '', personalCity: '', personalPhone: '',
+    // Druga kontakt osoba
+    secFirstName: '', secLastName: '', secEmail: '', secPhone: '', secDateOfBirth: '', secOib: '', secAddress: '', secZip: '', secCity: '',
   });
+  const [hasSecond, setHasSecond] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -333,6 +362,8 @@ export default function MemberDetailPage() {
 
   function openEditModal() {
     if (!member) return;
+    const dateInput = (d: string | null | undefined) => (d ? new Date(d).toISOString().split('T')[0] : '');
+    const sc = member.secondaryContact;
     setEditForm({
       firstName: member.user.firstName,
       lastName: member.user.lastName,
@@ -344,9 +375,27 @@ export default function MemberDetailPage() {
       city: member.company.city,
       website: member.company.website || '',
       memberType: member.memberType,
-      joinedAt: member.joinedAt ? new Date(member.joinedAt).toISOString().split('T')[0] : '',
-      expiresAt: member.expiresAt ? new Date(member.expiresAt).toISOString().split('T')[0] : '',
+      joinedAt: dateInput(member.joinedAt),
+      expiresAt: dateInput(member.expiresAt),
+      // Osobni podaci kontakt osobe
+      dateOfBirth: dateInput(member.dateOfBirth),
+      personalOib: member.personalOib || '',
+      personalAddress: member.personalAddress || '',
+      personalZip: member.personalZip || '',
+      personalCity: member.personalCity || '',
+      personalPhone: member.personalPhone || '',
+      // Druga kontakt osoba
+      secFirstName: sc?.firstName || '',
+      secLastName: sc?.lastName || '',
+      secEmail: sc?.email || '',
+      secPhone: sc?.phone || '',
+      secDateOfBirth: dateInput(sc?.dateOfBirth),
+      secOib: sc?.oib || '',
+      secAddress: sc?.address || '',
+      secZip: sc?.zip || '',
+      secCity: sc?.city || '',
     });
+    setHasSecond(!!sc);
     setEditError('');
     setShowEditModal(true);
   }
@@ -368,6 +417,27 @@ export default function MemberDetailPage() {
       memberType: editForm.memberType,
       ...(editForm.joinedAt && { joinedAt: editForm.joinedAt }),
       ...(editForm.expiresAt && { expiresAt: editForm.expiresAt }),
+      // Osobni podaci kontakt osobe
+      dateOfBirth: editForm.dateOfBirth,
+      personalOib: editForm.personalOib,
+      personalAddress: editForm.personalAddress,
+      personalZip: editForm.personalZip,
+      personalCity: editForm.personalCity,
+      personalPhone: editForm.personalPhone,
+      // Druga kontakt osoba: objekt = upsert, null = ukloni
+      secondaryContact: hasSecond
+        ? {
+            firstName: editForm.secFirstName,
+            lastName: editForm.secLastName,
+            email: editForm.secEmail,
+            phone: editForm.secPhone,
+            dateOfBirth: editForm.secDateOfBirth,
+            oib: editForm.secOib,
+            address: editForm.secAddress,
+            zip: editForm.secZip,
+            city: editForm.secCity,
+          }
+        : null,
     });
     if (res.success && res.data) {
       setMember(res.data);
@@ -541,8 +611,36 @@ export default function MemberDetailPage() {
                     <input required type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Telefon</label>
+                    <label className="block text-xs text-gray-500 mb-1">Telefon (tvrtka)</label>
                     <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Mobitel</label>
+                    <input value={editForm.personalPhone} onChange={e => setEditForm(f => ({ ...f, personalPhone: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Datum rođenja</label>
+                    <input type="date" value={editForm.dateOfBirth} onChange={e => setEditForm(f => ({ ...f, dateOfBirth: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-500 mb-1">OIB (osobni)</label>
+                  <input value={editForm.personalOib} onChange={e => setEditForm(f => ({ ...f, personalOib: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-500 mb-1">Adresa (osobna)</label>
+                  <input value={editForm.personalAddress} onChange={e => setEditForm(f => ({ ...f, personalAddress: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Poštanski broj</label>
+                    <input value={editForm.personalZip} onChange={e => setEditForm(f => ({ ...f, personalZip: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Grad</label>
+                    <input value={editForm.personalCity} onChange={e => setEditForm(f => ({ ...f, personalCity: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                 </div>
               </div>
@@ -593,6 +691,64 @@ export default function MemberDetailPage() {
                     <input type="date" value={editForm.expiresAt} onChange={e => setEditForm(f => ({ ...f, expiresAt: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                 </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Druga kontakt osoba</p>
+                  {hasSecond ? (
+                    <button type="button" onClick={() => setHasSecond(false)} className="text-xs text-red-600 hover:text-red-800">Ukloni</button>
+                  ) : (
+                    <button type="button" onClick={() => setHasSecond(true)} className="text-xs text-[#1B365D] hover:underline">+ Dodaj</button>
+                  )}
+                </div>
+                {hasSecond && (
+                  <div className="space-y-3 rounded-lg bg-gray-50 p-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Ime</label>
+                        <input value={editForm.secFirstName} onChange={e => setEditForm(f => ({ ...f, secFirstName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Prezime</label>
+                        <input value={editForm.secLastName} onChange={e => setEditForm(f => ({ ...f, secLastName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Email</label>
+                        <input type="email" value={editForm.secEmail} onChange={e => setEditForm(f => ({ ...f, secEmail: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Mobitel</label>
+                        <input value={editForm.secPhone} onChange={e => setEditForm(f => ({ ...f, secPhone: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Datum rođenja</label>
+                        <input type="date" value={editForm.secDateOfBirth} onChange={e => setEditForm(f => ({ ...f, secDateOfBirth: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">OIB</label>
+                        <input value={editForm.secOib} onChange={e => setEditForm(f => ({ ...f, secOib: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Adresa</label>
+                      <input value={editForm.secAddress} onChange={e => setEditForm(f => ({ ...f, secAddress: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Poštanski broj</label>
+                        <input value={editForm.secZip} onChange={e => setEditForm(f => ({ ...f, secZip: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Grad</label>
+                        <input value={editForm.secCity} onChange={e => setEditForm(f => ({ ...f, secCity: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t">
                 <button type="button" onClick={() => setShowEditModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
@@ -704,8 +860,22 @@ export default function MemberDetailPage() {
               <dd className="font-medium text-gray-900">{member.user.email}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500">Telefon</dt>
-              <dd className="font-medium text-gray-900">{member.company.phone || '—'}</dd>
+              <dt className="text-gray-500">Mobitel</dt>
+              <dd className="font-medium text-gray-900">{member.personalPhone || member.company.phone || '—'}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Datum rođenja</dt>
+              <dd className="font-medium text-gray-900">{formatDate(member.dateOfBirth)}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">OIB</dt>
+              <dd className="font-medium text-gray-900">{member.personalOib || '—'}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Adresa</dt>
+              <dd className="text-right font-medium text-gray-900">
+                {[member.personalAddress, [member.personalZip, member.personalCity].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—'}
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-gray-500">Tip članstva</dt>
@@ -788,6 +958,44 @@ export default function MemberDetailPage() {
           </dl>
         </div>
       </div>
+
+      {/* Druga kontakt osoba */}
+      {member.secondaryContact && (() => {
+        const sc = member.secondaryContact;
+        const fullName = [sc.firstName, sc.lastName].filter(Boolean).join(' ');
+        const addr = [sc.address, [sc.zip, sc.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Druga kontakt osoba</h2>
+            <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Ime i prezime</dt>
+                <dd className="font-medium text-gray-900">{fullName || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Email</dt>
+                <dd className="text-right font-medium text-gray-900">{sc.email || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Mobitel</dt>
+                <dd className="font-medium text-gray-900">{sc.phone || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Datum rođenja</dt>
+                <dd className="font-medium text-gray-900">{formatDate(sc.dateOfBirth)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">OIB</dt>
+                <dd className="font-medium text-gray-900">{sc.oib || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Adresa</dt>
+                <dd className="text-right font-medium text-gray-900">{addr || '—'}</dd>
+              </div>
+            </dl>
+          </div>
+        );
+      })()}
 
       {/* Trgovci: Safe Shop + Magazin Dobre Priče + Akademija */}
       {member.memberType === 'WEB_TRADER' && (
