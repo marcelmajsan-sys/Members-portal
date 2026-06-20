@@ -175,6 +175,17 @@ export default function PortalHome() {
     await pollAnalysis();
   }
 
+  // Preuzimanje analize kao PDF preko ispisa preglednika (korisnik odabere "Spremi kao PDF").
+  function downloadAnalysisPdf() {
+    document
+      .querySelectorAll<HTMLDetailsElement>('#analiza-print details')
+      .forEach((d) => { d.open = true; });
+    const prevTitle = document.title;
+    document.title = `Analiza webshopa - ${analysis?.websiteUrl ?? ''}`.replace(/https?:\/\//, '');
+    window.print();
+    document.title = prevTitle;
+  }
+
   if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) {
     return <div className="flex min-h-screen items-center justify-center text-gray-500">Učitavanje...</div>;
   }
@@ -371,14 +382,28 @@ export default function PortalHome() {
               ) : analysisError ? (
                 <p className="mt-4 rounded-md bg-danger-light px-4 py-3 text-sm font-medium text-danger">{analysisError}</p>
               ) : analysis && analysis.result ? (
-                <div className="mt-5 space-y-5">
+                <div id="analiza-print" className="mt-5 space-y-5">
+                  {/* Zaglavlje vidljivo samo u PDF ispisu */}
+                  <div className="print-only mb-4 border-b border-gray-200 pb-3">
+                    <img src="/logo.png" alt="eCommerce Hrvatska" style={{ height: 32 }} />
+                    <h1 style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>Stručna analiza webshopa</h1>
+                    <p style={{ fontSize: 12, color: '#555' }}>
+                      {analysis.websiteUrl} · {fmtDate(analysis.createdAt)}
+                    </p>
+                  </div>
                   <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
                     <ScoreBadge score={analysis.overallScore ?? 0} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">Ukupna ocjena</p>
                       {analysis.summary && <p className="mt-0.5 text-sm text-gray-600">{analysis.summary}</p>}
                       <p className="mt-1 text-xs text-gray-400">Analizirano {fmtDate(analysis.createdAt)}</p>
                     </div>
+                    <button
+                      onClick={downloadAnalysisPdf}
+                      className="no-print shrink-0 self-start rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100"
+                    >
+                      Preuzmi PDF
+                    </button>
                   </div>
                   {analysis.coreWebVitals && <CoreWebVitalsPanel cwv={analysis.coreWebVitals} />}
                   <div className="space-y-4">

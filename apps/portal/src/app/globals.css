@@ -61,3 +61,42 @@ textarea::placeholder {
   background: var(--color-gray-300);
   border-radius: 3px;
 }
+
+/* PDF preuzimanje analize: print prikazuje samo #analiza-print (korisnik spremi kao PDF). */
+.print-only {
+  display: none;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #analiza-print,
+  #analiza-print * {
+    visibility: visible !important;
+  }
+  #analiza-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0 8px;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  /* checklist <details> mora biti otvoren u ispisu (otvaramo ga i JS-om prije printa) */
+  #analiza-print details > div {
+    display: block !important;
+  }
+  #analiza-print .rounded-lg,
+  #analiza-print li {
+    break-inside: avoid;
+  }
+}
