@@ -285,6 +285,7 @@ model SafeShopAnalysis {
   score      Int? // 0–10 (broj zadovoljenih kriterija)
   passed     Boolean? // score >= 9
   summary    String? // Komentar
+  analyst    String? // "Analizu odradio:" (uredivo; default AI sustav)
   result     Json? // SafeShopCheckpoint[]
   error      String?
   createdAt  DateTime @default(now())

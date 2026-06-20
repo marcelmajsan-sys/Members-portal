@@ -15,7 +15,7 @@ import { prisma } from '@ecommerce-hr/db';
 import type { MemberTier, MemberType, MemberStatus } from '@ecommerce-hr/db';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
-import { requestSafeShopAnalysis, getLatestSafeShopAnalysis, updateSafeShopAnalysis } from '../services/safeshop-analysis.service.js';
+import { requestSafeShopAnalysis, getLatestSafeShopAnalysis, updateSafeShopAnalysis, getSafeShopAnalysisQuota } from '../services/safeshop-analysis.service.js';
 import { buildRenewalConfirmationEmail, buildFreeUpgradeEmail } from '../utils/member-emails.js';
 import { checkEmailCooldown } from '../services/automation-executor.js';
 import { hashPassword } from '../services/auth.service.js';
@@ -410,6 +410,11 @@ router.get('/members/:id/safeshop-analysis', validateParams(idParamSchema), asyn
   successResponse(res, analysis);
 });
 
+// GET /members/:id/safeshop-analysis/quota — godišnji limit (used/remaining/limit)
+router.get('/members/:id/safeshop-analysis/quota', validateParams(idParamSchema), async (req, res) => {
+  successResponse(res, await getSafeShopAnalysisQuota(req.params.id as string));
+});
+
 // POST /members/:id/safeshop-analysis — run a fresh Safe Shop certification analysis (synchronous)
 router.post('/members/:id/safeshop-analysis', validateParams(idParamSchema), async (req, res) => {
   const result = await requestSafeShopAnalysis(req.params.id as string);
@@ -422,6 +427,9 @@ router.post('/members/:id/safeshop-analysis', validateParams(idParamSchema), asy
         return;
       case 'IN_PROGRESS':
         errorResponse(res, 'CONFLICT', 'Analiza je već u tijeku', 409);
+        return;
+      case 'LIMIT_REACHED':
+        errorResponse(res, 'LIMIT_REACHED', 'Iskorišten godišnji limit od 2 Safe Shop analize', 429);
         return;
       case 'ANALYSIS_FAILED':
         errorResponse(res, 'ANALYSIS_FAILED', 'Analiza nije uspjela, pokušajte ponovno kasnije', 502);
@@ -439,6 +447,7 @@ router.post('/members/:id/safeshop-analysis', validateParams(idParamSchema), asy
 router.patch('/safeshop-analysis/:id', validateParams(idParamSchema), async (req, res) => {
   const updated = await updateSafeShopAnalysis(req.params.id as string, {
     summary: req.body?.summary,
+    analyst: req.body?.analyst,
     checkpoints: req.body?.checkpoints,
   });
   if (!updated) {

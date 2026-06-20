@@ -3,8 +3,20 @@ import { runSafeShopCertification, type SafeShopPage } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
 
 type RequestError = {
-  error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED';
+  error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED';
 };
+
+// Najviše ovoliko USPJEŠNIH Safe Shop analiza po članu u kliznom prozoru od 365 dana.
+export const SAFE_SHOP_ANALYSES_PER_YEAR = 2;
+const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+// Koliko je Safe Shop analiza član iskoristio u zadnjih godinu dana + koliko preostaje.
+export async function getSafeShopAnalysisQuota(memberId: string) {
+  const used = await prisma.safeShopAnalysis.count({
+    where: { memberId, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
+  });
+  return { used, remaining: Math.max(0, SAFE_SHOP_ANALYSES_PER_YEAR - used), limit: SAFE_SHOP_ANALYSES_PER_YEAR };
+}
 
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -100,7 +112,7 @@ type EditableCheckpoint = { n: number; title: string; pass: boolean; note: strin
 // uvijek izvodimo iz checkpointa (broj zadovoljenih, prolaz >= 9).
 export async function updateSafeShopAnalysis(
   id: string,
-  data: { summary?: string; checkpoints?: EditableCheckpoint[] },
+  data: { summary?: string; analyst?: string; checkpoints?: EditableCheckpoint[] },
 ) {
   const existing = await prisma.safeShopAnalysis.findUnique({ where: { id } });
   if (!existing) return null;
@@ -114,6 +126,7 @@ export async function updateSafeShopAnalysis(
     where: { id },
     data: {
       summary: data.summary ?? existing.summary,
+      analyst: data.analyst ?? existing.analyst,
       result: JSON.parse(JSON.stringify(checkpoints)),
       score,
       passed: score >= 9,
@@ -131,6 +144,10 @@ export async function requestSafeShopAnalysis(memberId: string) {
 
   const website = member.company?.website?.trim();
   if (!website) return { error: 'NO_WEBSITE' } as RequestError;
+
+  // Godišnji limit (2 uspješne analize u kliznih 365 dana).
+  const quota = await getSafeShopAnalysisQuota(memberId);
+  if (quota.remaining <= 0) return { error: 'LIMIT_REACHED' } as RequestError;
 
   // Zaglavljeni PENDING stariji od 5 min smatramo napuštenim.
   const pending = await prisma.safeShopAnalysis.findFirst({

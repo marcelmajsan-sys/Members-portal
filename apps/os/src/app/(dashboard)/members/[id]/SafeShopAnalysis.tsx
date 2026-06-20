@@ -16,9 +16,13 @@ interface SafeShopAnalysisData {
   score: number | null;
   passed: boolean | null;
   summary: string | null;
+  analyst: string | null;
   result: Checkpoint[] | null;
   createdAt: string;
 }
+interface Quota { used: number; remaining: number; limit: number }
+
+const DEFAULT_ANALYST = 'AI sustav Udruge eCommerce Hrvatska';
 
 function fmtDate(d: string | null) {
   if (!d) return '—';
@@ -36,6 +40,7 @@ export default function SafeShopAnalysis({
   websiteUrl?: string;
 }) {
   const [analysis, setAnalysis] = useState<SafeShopAnalysisData | null>(null);
+  const [quota, setQuota] = useState<Quota | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,9 +48,17 @@ export default function SafeShopAnalysis({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editSummary, setEditSummary] = useState('');
+  const [editAnalyst, setEditAnalyst] = useState('');
   const [editCheckpoints, setEditCheckpoints] = useState<Checkpoint[]>([]);
 
+  function refreshQuota() {
+    api.get<Quota>(`/api/os/members/${memberId}/safeshop-analysis/quota`).then((res) => {
+      if (res.success && res.data) setQuota(res.data);
+    });
+  }
+
   useEffect(() => {
+    refreshQuota();
     api.get<SafeShopAnalysisData | null>(`/api/os/members/${memberId}/safeshop-analysis`).then((res) => {
       if (res.success && res.data) {
         setAnalysis(res.data);
@@ -61,7 +74,7 @@ export default function SafeShopAnalysis({
       await new Promise((r) => setTimeout(r, 5000));
       const res = await api.get<SafeShopAnalysisData | null>(`/api/os/members/${memberId}/safeshop-analysis`);
       if (res.success && res.data) {
-        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); return; }
+        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); refreshQuota(); return; }
         if (res.data.status === 'FAILED') { setAnalysis(res.data); setError('Analiza nije uspjela. Pokušajte ponovno.'); setRunning(false); return; }
       }
     }
@@ -74,10 +87,11 @@ export default function SafeShopAnalysis({
     setEditing(false);
     setRunning(true);
     const res = await api.post<SafeShopAnalysisData>(`/api/os/members/${memberId}/safeshop-analysis`).catch(() => null);
-    if (res && res.success && res.data?.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); return; }
+    if (res && res.success && res.data?.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); refreshQuota(); return; }
     if (res && !res.success && res.error && res.error.code !== 'CONFLICT' && res.error.code !== 'NETWORK_ERROR') {
       setError(res.error.message || 'Analiza nije uspjela.');
       setRunning(false);
+      refreshQuota();
       return;
     }
     await poll();
@@ -86,6 +100,7 @@ export default function SafeShopAnalysis({
   function startEdit() {
     if (!analysis) return;
     setEditSummary(analysis.summary ?? '');
+    setEditAnalyst(analysis.analyst ?? DEFAULT_ANALYST);
     setEditCheckpoints((analysis.result ?? []).map((c) => ({ ...c })));
     setEditing(true);
   }
@@ -96,6 +111,7 @@ export default function SafeShopAnalysis({
     const res = await api
       .patch<SafeShopAnalysisData>(`/api/os/safeshop-analysis/${analysis.id}`, {
         summary: editSummary,
+        analyst: editAnalyst,
         checkpoints: editCheckpoints,
       })
       .catch(() => null);
@@ -134,35 +150,48 @@ export default function SafeShopAnalysis({
             Automatska provjera webshopa po 10 Safe Shop kriterija. Prolaz: 9/10 ili 10/10.
           </p>
         </div>
-        <div className="no-print flex shrink-0 flex-wrap gap-2">
-          {analysis?.status === 'COMPLETED' && !editing && (
-            <>
-              <button onClick={downloadPdf} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
-                Preuzmi PDF
-              </button>
-              <button onClick={startEdit} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
-                Uredi
-              </button>
-            </>
-          )}
-          {editing && (
-            <>
-              <button onClick={save} disabled={saving} className="rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:opacity-50">
-                {saving ? 'Spremam…' : 'Spremi'}
-              </button>
-              <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100">
-                Odustani
-              </button>
-            </>
-          )}
-          {websiteUrl ? (
-            !editing && (
-              <button onClick={run} disabled={running} className="rounded-md border border-gray-300 bg-gray-50 px-4 py-1.5 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50">
-                {running ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Pokreni analizu'}
-              </button>
-            )
-          ) : (
-            <span className="text-xs text-gray-400">Član nema upisanu web adresu.</span>
+        <div className="no-print flex shrink-0 flex-col items-end gap-1">
+          <div className="flex flex-wrap justify-end gap-2">
+            {analysis?.status === 'COMPLETED' && !editing && (
+              <>
+                <button onClick={downloadPdf} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
+                  Preuzmi PDF
+                </button>
+                <button onClick={startEdit} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
+                  Uredi
+                </button>
+              </>
+            )}
+            {editing && (
+              <>
+                <button onClick={save} disabled={saving} className="rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:opacity-50">
+                  {saving ? 'Spremam…' : 'Spremi'}
+                </button>
+                <button onClick={() => setEditing(false)} disabled={saving} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100">
+                  Odustani
+                </button>
+              </>
+            )}
+            {websiteUrl ? (
+              !editing && (
+                <button
+                  onClick={run}
+                  disabled={running || (quota?.remaining ?? 1) <= 0}
+                  title={(quota?.remaining ?? 1) <= 0 ? 'Iskorišten godišnji limit (2 analize)' : undefined}
+                  className="rounded-md border border-gray-300 bg-gray-50 px-4 py-1.5 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
+                >
+                  {running ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Pokreni analizu'}
+                </button>
+              )
+            ) : (
+              <span className="text-xs text-gray-400">Član nema upisanu web adresu.</span>
+            )}
+          </div>
+          {quota && !editing && (
+            <p className="text-xs text-gray-500">
+              Odrađeno {quota.used}/{quota.limit} ove godine
+              {quota.remaining <= 0 ? ' · godišnji limit iskorišten' : ` · preostalo ${quota.remaining}`}
+            </p>
           )}
         </div>
       </div>
@@ -182,7 +211,21 @@ export default function SafeShopAnalysis({
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 400, letterSpacing: 1 }}>SAFE SHOP ANALIZA</h1>
               <p style={{ fontSize: 12, color: '#2A6F97' }}>Izvođač: Udruga eCommerce Hrvatska</p>
-              <p style={{ fontSize: 12, color: '#555' }}>Analizu odradio: AI sustav Udruge eCommerce Hrvatska</p>
+              {editing ? (
+                <div className="no-print mt-1 flex items-center gap-2">
+                  <span style={{ fontSize: 12, color: '#555' }}>Analizu odradio:</span>
+                  <input
+                    value={editAnalyst}
+                    onChange={(e) => setEditAnalyst(e.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
+                    style={{ minWidth: 280 }}
+                  />
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: '#555' }}>
+                  Analizu odradio: {analysis.analyst || DEFAULT_ANALYST}
+                </p>
+              )}
             </div>
           </div>
 
