@@ -1,5 +1,5 @@
 import { prisma } from '@ecommerce-hr/db';
-import { runWebshopAnalysis } from '@ecommerce-hr/ai';
+import { runWebshopAnalysis, type AnalysisPage, type CoreWebVitals } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
 
 type RequestError = {
@@ -12,10 +12,10 @@ function normalizeUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
-// Dohvat HTML-a naslovnice (best-effort). Greška/timeout → prazan string (fallback na URL-only analizu).
-async function fetchHtml(url: string): Promise<string> {
+// Dohvat HTML-a stranice (best-effort). Greška/timeout → prazan string.
+async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       signal: controller.signal,
@@ -33,6 +33,113 @@ async function fetchHtml(url: string): Promise<string> {
   } catch (error) {
     logger.warn({ error: String(error), url }, 'Webshop analysis: HTML fetch failed');
     return '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Stranice koje ne želimo dohvaćati kao "kategoriju/proizvod" (login, košarica, pravne...).
+const SKIP_PATH = /(prijav|login|register|registr|kosaric|cart|checkout|blagajn|account|moj-racun|wishlist|kontakt|contact|o-nama|about|blog|uvjeti|terms|privatnost|privacy|kolacic|cookie|reklamacij|dostava-i-placanje|faq|\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|xml|css|js))(\/|$|\?)/i;
+const PRODUCT_HINT = /(\/proizvod|\/product|\/p\/|\/artikl|\/item)/i;
+const CATEGORY_HINT = /(\/kategorij|\/categor|\/c\/|\/trgovina|\/shop|\/proizvodi|\/products)/i;
+
+// Iz HTML-a naslovnice izvuci kandidate za stranicu kategorije i proizvoda (best-effort).
+function discoverSubpages(homepageUrl: string, html: string): AnalysisPage[] {
+  let origin: string;
+  try {
+    origin = new URL(homepageUrl).origin;
+  } catch {
+    return [];
+  }
+  const hrefs = new Set<string>();
+  const re = /href\s*=\s*["']([^"'#]+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) && hrefs.size < 400) {
+    const raw = m[1].trim();
+    if (!raw || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+    let abs: URL;
+    try {
+      abs = new URL(raw, homepageUrl);
+    } catch {
+      continue;
+    }
+    if (abs.origin !== origin) continue; // samo isti host
+    if (abs.pathname === '/' || abs.pathname === '') continue;
+    if (SKIP_PATH.test(abs.pathname)) continue;
+    hrefs.add(abs.origin + abs.pathname);
+  }
+  const list = [...hrefs];
+  const productUrl = list.find((u) => PRODUCT_HINT.test(u));
+  const categoryUrl =
+    list.find((u) => CATEGORY_HINT.test(u) && u !== productUrl) ??
+    // fallback: prvi smisleni link s dovoljnom dubinom puta
+    list.find((u) => {
+      try {
+        const segs = new URL(u).pathname.split('/').filter(Boolean);
+        return segs.length >= 1 && u !== productUrl;
+      } catch {
+        return false;
+      }
+    });
+
+  const pages: AnalysisPage[] = [];
+  if (categoryUrl) pages.push({ url: categoryUrl, label: 'Stranica kategorije', html: '' });
+  if (productUrl && productUrl !== categoryUrl)
+    pages.push({ url: productUrl, label: 'Stranica proizvoda', html: '' });
+  return pages;
+}
+
+const CWV_GOOD = { lcp: 2500, inp: 200, cls: 0.1 };
+
+// Stvarni Core Web Vitals preko Google PageSpeed Insights API-ja (mobilni).
+// Bez ključa radi i javni endpoint (rate-limited); s PAGESPEED_API_KEY pouzdanije.
+async function fetchCoreWebVitals(url: string): Promise<CoreWebVitals | null> {
+  const key = process.env.PAGESPEED_API_KEY;
+  const endpoint = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed');
+  endpoint.searchParams.set('url', url);
+  endpoint.searchParams.set('strategy', 'mobile');
+  endpoint.searchParams.set('category', 'performance');
+  if (key) endpoint.searchParams.set('key', key);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(endpoint.toString(), { signal: controller.signal });
+    if (!res.ok) {
+      logger.warn({ url, status: res.status }, 'PageSpeed: non-OK response');
+      return null;
+    }
+    const data: any = await res.json();
+    const field = data?.loadingExperience?.metrics;
+    if (field) {
+      const lcp = field.LARGEST_CONTENTFUL_PAINT_MS?.percentile ?? null;
+      const inp = field.INTERACTION_TO_NEXT_PAINT?.percentile ?? null;
+      const clsRaw = field.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile ?? null;
+      const cls = clsRaw == null ? null : clsRaw / 100;
+      const passed =
+        lcp != null && lcp <= CWV_GOOD.lcp &&
+        (inp == null || inp <= CWV_GOOD.inp) &&
+        cls != null && cls <= CWV_GOOD.cls;
+      return { lcp, inp, cls, passed, source: 'field' };
+    }
+    // Fallback: laboratorijski (Lighthouse) podaci — INP nije dostupan u labu.
+    const audits = data?.lighthouseResult?.audits;
+    if (audits) {
+      const lcp = audits['largest-contentful-paint']?.numericValue ?? null;
+      const cls = audits['cumulative-layout-shift']?.numericValue ?? null;
+      const passed = lcp != null && lcp <= CWV_GOOD.lcp && cls != null && cls <= CWV_GOOD.cls;
+      return {
+        lcp: lcp == null ? null : Math.round(lcp),
+        inp: null,
+        cls: cls == null ? null : Math.round(cls * 100) / 100,
+        passed,
+        source: 'lab',
+      };
+    }
+    return null;
+  } catch (error) {
+    logger.warn({ error: String(error), url }, 'PageSpeed: fetch failed');
+    return null;
   } finally {
     clearTimeout(timeout);
   }
@@ -60,7 +167,7 @@ export async function requestWebshopAnalysis(userId: string) {
   if (!website) return { error: 'NO_WEBSITE' } as RequestError;
 
   // Spriječi paralelno dvostruko pokretanje — ali samo za stvarno tekući zahtjev.
-  // Zaglavljeni PENDING (prekinuta veza, timeout) stariji od 3 min smatramo napuštenim
+  // Zaglavljeni PENDING (prekinuta veza, timeout) stariji od 5 min smatramo napuštenim
   // i označavamo FAILED kako član ne bi ostao trajno zaključan.
   const pending = await prisma.webshopAnalysis.findFirst({
     where: { memberId: member.id, status: 'PENDING' },
@@ -68,7 +175,7 @@ export async function requestWebshopAnalysis(userId: string) {
   });
   if (pending) {
     const ageMs = Date.now() - pending.createdAt.getTime();
-    if (ageMs < 3 * 60 * 1000) return { error: 'IN_PROGRESS' } as RequestError;
+    if (ageMs < 5 * 60 * 1000) return { error: 'IN_PROGRESS' } as RequestError;
     await prisma.webshopAnalysis.update({
       where: { id: pending.id },
       data: { status: 'FAILED', error: 'Napušteno (prekoračeno vrijeme)' },
@@ -82,8 +189,28 @@ export async function requestWebshopAnalysis(userId: string) {
   });
 
   try {
-    const html = await fetchHtml(websiteUrl);
-    const result = await runWebshopAnalysis(websiteUrl, member.company?.name ?? '', html);
+    // Core Web Vitals i HTML naslovnice idu paralelno (oboje trebaju samo URL).
+    const cwvPromise = fetchCoreWebVitals(websiteUrl);
+    const homepageHtml = await fetchHtml(websiteUrl);
+
+    // Naslovnica + best-effort kategorija/proizvod (paralelno).
+    const pages: AnalysisPage[] = [{ url: websiteUrl, label: 'Naslovnica', html: homepageHtml }];
+    const subpages = homepageHtml ? discoverSubpages(websiteUrl, homepageHtml) : [];
+    if (subpages.length) {
+      const fetched = await Promise.all(
+        subpages.map(async (p) => ({ ...p, html: await fetchHtml(p.url, 7000) })),
+      );
+      pages.push(...fetched.filter((p) => p.html));
+    }
+
+    const coreWebVitals = await cwvPromise;
+
+    const result = await runWebshopAnalysis(
+      websiteUrl,
+      member.company?.name ?? '',
+      pages,
+      coreWebVitals,
+    );
 
     return prisma.webshopAnalysis.update({
       where: { id: record.id },
@@ -92,6 +219,7 @@ export async function requestWebshopAnalysis(userId: string) {
         overallScore: Math.round(result.overallScore),
         summary: result.summary,
         result: JSON.parse(JSON.stringify(result.categories)),
+        coreWebVitals: coreWebVitals ? JSON.parse(JSON.stringify(coreWebVitals)) : undefined,
         error: null,
       },
     });

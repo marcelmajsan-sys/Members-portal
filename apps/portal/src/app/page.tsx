@@ -41,8 +41,17 @@ interface OfferItem { id: string; offerNumber: string; amount: number; currency:
 interface PerkItem { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null; status: string; claimedAt: string | null; statusNote: string | null }
 interface Perks { available: PerkItem[]; claimed: PerkItem[] }
 interface AnalysisRecommendation { title: string; description: string; severity: 'high' | 'medium' | 'low' }
-interface AnalysisCategory { key: string; title: string; score: number; summary: string; recommendations: AnalysisRecommendation[] }
-interface WebshopAnalysis { id: string; websiteUrl: string; status: string; overallScore: number | null; summary: string | null; result: AnalysisCategory[] | null; createdAt: string }
+interface ChecklistItem { label: string; pass: boolean }
+interface ChecklistGroup { group: string; items: ChecklistItem[] }
+interface Criterion { label: string; score: number; max: number; note?: string }
+interface Checkpoint { label: string; pass: boolean; note?: string }
+interface AnalysisSection { heading: string; body: string }
+interface AnalysisCategory {
+  key: string; title: string; score: number; summary: string; recommendations: AnalysisRecommendation[];
+  checklist?: ChecklistGroup[]; criteria?: Criterion[]; checkpoints?: Checkpoint[]; sections?: AnalysisSection[];
+}
+interface CoreWebVitals { lcp: number | null; inp: number | null; cls: number | null; passed: boolean; source: 'field' | 'lab' }
+interface WebshopAnalysis { id: string; websiteUrl: string; status: string; overallScore: number | null; summary: string | null; result: AnalysisCategory[] | null; coreWebVitals?: CoreWebVitals | null; createdAt: string }
 
 const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
@@ -357,7 +366,7 @@ export default function PortalHome() {
               ) : analyzing ? (
                 <div className="mt-4 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-6 text-sm text-gray-500">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
-                  Analiziram webshop, ovo može potrajati do minute…
+                  Analiziram webshop po 6 područja, ovo može potrajati nekoliko minuta…
                 </div>
               ) : analysisError ? (
                 <p className="mt-4 rounded-md bg-danger-light px-4 py-3 text-sm font-medium text-danger">{analysisError}</p>
@@ -371,6 +380,7 @@ export default function PortalHome() {
                       <p className="mt-1 text-xs text-gray-400">Analizirano {fmtDate(analysis.createdAt)}</p>
                     </div>
                   </div>
+                  {analysis.coreWebVitals && <CoreWebVitalsPanel cwv={analysis.coreWebVitals} />}
                   <div className="space-y-4">
                     {analysis.result.map((cat) => (
                       <div key={cat.key} className="rounded-lg border border-gray-100 p-4">
@@ -379,6 +389,43 @@ export default function PortalHome() {
                           <ScoreBadge score={cat.score} small />
                         </div>
                         {cat.summary && <p className="mt-2 text-sm text-gray-600">{cat.summary}</p>}
+                        {cat.sections && cat.sections.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {cat.sections.map((s, i) => (
+                              <div key={i}>
+                                <p className="text-xs font-semibold text-gray-700">{s.heading}</p>
+                                <p className="text-xs text-gray-500">{s.body}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {cat.criteria && cat.criteria.length > 0 && (
+                          <ul className="mt-3 space-y-1.5">
+                            {cat.criteria.map((c, i) => (
+                              <li key={i} className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-medium text-gray-700">{c.label}</p>
+                                  {c.note && <p className="text-[11px] text-gray-400">{c.note}</p>}
+                                </div>
+                                <span className={`shrink-0 text-xs font-bold ${c.score >= 4 ? 'text-success' : c.score >= 2 ? 'text-warning' : 'text-danger'}`}>{c.score}/{c.max}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {cat.checkpoints && cat.checkpoints.length > 0 && (
+                          <ul className="mt-3 space-y-1.5">
+                            {cat.checkpoints.map((c, i) => (
+                              <li key={i} className="flex items-start gap-2">
+                                <span className={`mt-0.5 shrink-0 text-xs font-bold ${c.pass ? 'text-success' : 'text-danger'}`}>{c.pass ? '✓' : '✗'}</span>
+                                <div>
+                                  <p className="text-xs font-medium text-gray-700">{c.label}</p>
+                                  {c.note && <p className="text-[11px] text-gray-400">{c.note}</p>}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {cat.checklist && cat.checklist.length > 0 && <UxChecklist groups={cat.checklist} />}
                         {cat.recommendations.length > 0 && (
                           <ul className="mt-3 space-y-2">
                             {cat.recommendations.map((rec, i) => (
@@ -865,5 +912,63 @@ function ScoreBadge({ score, small }: { score: number; small?: boolean }) {
     <span className={`flex shrink-0 items-center justify-center rounded-full font-bold ${color} ${size}`}>
       {Math.round(score)}
     </span>
+  );
+}
+
+function CoreWebVitalsPanel({ cwv }: { cwv: CoreWebVitals }) {
+  const metric = (label: string, value: number | null, unit: string, good: number) => {
+    const ok = value != null && value <= good;
+    const color = value == null ? 'text-gray-400' : ok ? 'text-success' : 'text-danger';
+    return (
+      <div className="rounded-md border border-gray-100 px-3 py-2 text-center">
+        <p className="text-[11px] font-medium text-gray-500">{label}</p>
+        <p className={`text-sm font-bold ${color}`}>{value == null ? 'n/p' : `${value}${unit}`}</p>
+      </div>
+    );
+  };
+  return (
+    <div className="rounded-lg border border-gray-100 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-bold text-gray-900">Core Web Vitals (mobilni)</h3>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cwv.passed ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
+          {cwv.passed ? 'Prolazi' : 'Ne prolazi'}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        {metric('LCP', cwv.lcp, ' ms', 2500)}
+        {metric('INP', cwv.inp, ' ms', 200)}
+        {metric('CLS', cwv.cls, '', 0.1)}
+      </div>
+      <p className="mt-2 text-[11px] text-gray-400">
+        Izvor: {cwv.source === 'field' ? 'stvarni korisnici (Google CrUX)' : 'Lighthouse procjena'} · mjereno preko PageSpeed Insights
+      </p>
+    </div>
+  );
+}
+
+function UxChecklist({ groups }: { groups: ChecklistGroup[] }) {
+  const all = groups.flatMap((g) => g.items);
+  const passed = all.filter((i) => i.pass).length;
+  return (
+    <details className="mt-3 rounded-md border border-gray-100">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">
+        Detaljna checklista ({passed}/{all.length} zadovoljeno)
+      </summary>
+      <div className="space-y-3 px-3 pb-3">
+        {groups.map((g, gi) => (
+          <div key={gi}>
+            <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">{g.group}</p>
+            <ul className="mt-1 space-y-1">
+              {g.items.map((it, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className={`mt-0.5 shrink-0 text-xs font-bold ${it.pass ? 'text-success' : 'text-gray-300'}`}>{it.pass ? '✓' : '✗'}</span>
+                  <span className={`text-xs ${it.pass ? 'text-gray-600' : 'text-gray-400'}`}>{it.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

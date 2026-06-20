@@ -12,4 +12,11 @@ export {
   type WebshopCategory,
   type WebshopCategoryKey,
   type WebshopRecommendation,
+  type WebshopChecklistGroup,
+  type WebshopChecklistItem,
+  type WebshopCriterion,
+  type WebshopCheckpoint,
+  type WebshopSection,
+  type CoreWebVitals,
+  type AnalysisPage,
 } from './webshop-analysis-agent.js';
