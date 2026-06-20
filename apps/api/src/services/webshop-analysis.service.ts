@@ -3,8 +3,22 @@ import { runWebshopAnalysis, type AnalysisPage, type CoreWebVitals } from '@ecom
 import { logger } from '../utils/logger.js';
 
 type RequestError = {
-  error: 'NOT_FOUND' | 'INACTIVE' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED';
+  error: 'NOT_FOUND' | 'INACTIVE' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED' | 'NOT_TRADER';
 };
+
+// Najviše ovoliko USPJEŠNIH analiza po članu u kliznom prozoru od 365 dana.
+export const ANALYSES_PER_YEAR = 2;
+const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+// Koliko je analiza član iskoristio u zadnjih godinu dana + koliko ih je preostalo.
+export async function getWebshopAnalysisQuota(userId: string) {
+  const member = await prisma.member.findUnique({ where: { userId }, select: { id: true, memberType: true } });
+  if (!member || member.memberType !== 'WEB_TRADER') return null;
+  const used = await prisma.webshopAnalysis.count({
+    where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
+  });
+  return { used, remaining: Math.max(0, ANALYSES_PER_YEAR - used), limit: ANALYSES_PER_YEAR };
+}
 
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -161,6 +175,7 @@ export async function requestWebshopAnalysis(userId: string) {
   });
 
   if (!member) return { error: 'NOT_FOUND' } as RequestError;
+  if (member.memberType !== 'WEB_TRADER') return { error: 'NOT_TRADER' } as RequestError;
   if (member.status !== 'ACTIVE') return { error: 'INACTIVE' } as RequestError;
 
   const website = member.company?.website?.trim();
@@ -181,6 +196,12 @@ export async function requestWebshopAnalysis(userId: string) {
       data: { status: 'FAILED', error: 'Napušteno (prekoračeno vrijeme)' },
     });
   }
+
+  // Godišnji limit: najviše ANALYSES_PER_YEAR uspješnih analiza u zadnjih 365 dana.
+  const usedThisYear = await prisma.webshopAnalysis.count({
+    where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
+  });
+  if (usedThisYear >= ANALYSES_PER_YEAR) return { error: 'LIMIT_REACHED' } as RequestError;
 
   const websiteUrl = normalizeUrl(website);
 

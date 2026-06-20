@@ -17,6 +17,7 @@ import {
 import {
   requestWebshopAnalysis,
   getLatestWebshopAnalysis,
+  getWebshopAnalysisQuota,
 } from '../services/webshop-analysis.service.js';
 import { sendEmail } from '@ecommerce-hr/email';
 import { prisma } from '@ecommerce-hr/db';
@@ -182,6 +183,12 @@ router.get('/webshop-analysis', async (req: AuthRequest, res) => {
   successResponse(res, analysis);
 });
 
+// GET /webshop-analysis/quota — koliko je analiza član iskoristio/preostalo (godišnji limit)
+router.get('/webshop-analysis/quota', async (req: AuthRequest, res) => {
+  const quota = await getWebshopAnalysisQuota(req.user!.userId);
+  successResponse(res, quota);
+});
+
 // POST /webshop-analysis — run a fresh AI webshop analysis (synchronous)
 router.post('/webshop-analysis', async (req: AuthRequest, res) => {
   const result = await requestWebshopAnalysis(req.user!.userId);
@@ -191,6 +198,12 @@ router.post('/webshop-analysis', async (req: AuthRequest, res) => {
   // Sentineli greške nemaju `id`; zapis ga uvijek ima.
   if (!('id' in result)) {
     switch (result.error) {
+      case 'NOT_TRADER':
+        errorResponse(res, 'FORBIDDEN', 'Analiza webshopa dostupna je samo članovima tipa Web trgovac', 403);
+        return;
+      case 'LIMIT_REACHED':
+        errorResponse(res, 'RATE_LIMITED', 'Dosegli ste godišnji limit od 2 analize webshopa', 429);
+        return;
       case 'INACTIVE':
         errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste pokrenuli analizu', 403);
         return;

@@ -52,6 +52,7 @@ interface AnalysisCategory {
 }
 interface CoreWebVitals { lcp: number | null; inp: number | null; cls: number | null; passed: boolean; source: 'field' | 'lab' }
 interface WebshopAnalysis { id: string; websiteUrl: string; status: string; overallScore: number | null; summary: string | null; result: AnalysisCategory[] | null; coreWebVitals?: CoreWebVitals | null; createdAt: string }
+interface WebshopQuota { used: number; remaining: number; limit: number }
 
 const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
@@ -90,6 +91,7 @@ export default function PortalHome() {
   const [analysis, setAnalysis] = useState<WebshopAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
+  const [quota, setQuota] = useState<WebshopQuota | null>(null);
 
   // Guard
   useEffect(() => {
@@ -101,13 +103,14 @@ export default function PortalHome() {
   useEffect(() => {
     if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
     (async () => {
-      const [p, e, n, o, pk, wa] = await Promise.all([
+      const [p, e, n, o, pk, wa, wq] = await Promise.all([
         api.get<Profile>('/api/member/profile'),
         api.get<EmailItem[]>('/api/member/emails'),
         api.get<NotificationItem[]>('/api/notifications?limit=20'),
         api.get<OfferItem[]>('/api/member/offers'),
         api.get<Perks>('/api/member/perks'),
         api.get<WebshopAnalysis | null>('/api/member/webshop-analysis'),
+        api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota'),
       ]);
       if (p.success && p.data) setProfile(p.data);
       if (e.success && e.data) setEmails(e.data);
@@ -115,6 +118,7 @@ export default function PortalHome() {
       if (o.success && o.data) setOffers(o.data);
       if (pk.success && pk.data) setPerks(pk.data);
       if (wa.success && wa.data) setAnalysis(wa.data);
+      if (wq.success && wq.data) setQuota(wq.data);
       setLoading(false);
       // Ako je analiza pokrenuta u prethodnom posjetu i još traje, nastavi pollati.
       if (wa.success && wa.data?.status === 'PENDING') pollAnalysis();
@@ -133,6 +137,11 @@ export default function PortalHome() {
     setClaiming('');
   }
 
+  async function refreshQuota() {
+    const res = await api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota');
+    if (res.success && res.data) setQuota(res.data);
+  }
+
   // Periodički provjerava spremljenu analizu dok ne postane COMPLETED/FAILED.
   // Tako se dovršena analiza prikaže i ako se duga POST veza prekine.
   async function pollAnalysis(maxMs = 180000) {
@@ -142,7 +151,7 @@ export default function PortalHome() {
       await new Promise((r) => setTimeout(r, 5000));
       const res = await api.get<WebshopAnalysis | null>('/api/member/webshop-analysis');
       if (res.success && res.data) {
-        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setAnalyzing(false); return; }
+        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setAnalyzing(false); refreshQuota(); return; }
         if (res.data.status === 'FAILED') {
           setAnalysis(res.data);
           setAnalysisError('Analiza nije uspjela. Pokušajte ponovno.');
@@ -163,6 +172,7 @@ export default function PortalHome() {
     if (res && res.success && res.data?.status === 'COMPLETED') {
       setAnalysis(res.data);
       setAnalyzing(false);
+      refreshQuota();
       return;
     }
     // Brze, tvrde greške (neaktivan član / bez web adrese) — odmah prikaži, bez pollanja.
@@ -345,7 +355,8 @@ export default function PortalHome() {
               </section>
             )}
 
-            {/* Stručna analiza webshopa (AI) */}
+            {/* Stručna analiza webshopa (AI) — samo za Web trgovce */}
+            {profile.memberType === 'WEB_TRADER' && (
             <section className="rounded-xl border border-gray-200 bg-white p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -356,13 +367,25 @@ export default function PortalHome() {
                   </p>
                 </div>
                 {profile.status === 'ACTIVE' && profile.company.website && (
-                  <button
-                    onClick={runAnalysis}
-                    disabled={analyzing}
-                    className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    {analyzing ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Aktiviraj besplatnu analizu'}
-                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <button
+                      onClick={runAnalysis}
+                      disabled={analyzing || quota?.remaining === 0}
+                      className="rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
+                    >
+                      {analyzing ? 'Analiziram…' : analysis ? 'Pokreni ponovno' : 'Aktiviraj besplatnu analizu'}
+                    </button>
+                    {quota && (
+                      <>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Preostalo analiza {quota.remaining}/{quota.limit}
+                        </p>
+                        <p className="max-w-[220px] text-right text-[11px] leading-snug text-gray-400">
+                          Dostupne su {quota.limit} analize webshopa godišnje po članu.
+                        </p>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -506,6 +529,7 @@ export default function PortalHome() {
                 </p>
               )}
             </section>
+            )}
 
             {/* Notifications */}
             <Section title="Obavijesti" count={notifications.length}>
