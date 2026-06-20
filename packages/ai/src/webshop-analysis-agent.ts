@@ -1,5 +1,25 @@
 import { askJson } from './claude.js';
-import { cleanHtml } from './price-extract-agent.js';
+
+// Sanitizer namijenjen UX/SEO analizi: za razliku od cleanHtml (koji cilja ekstrakciju
+// cijena pa briše header/footer/nav/gumbe/inpute), OVDJE zadržavamo strukturu i ključne
+// atribute (class, aria-label, type, href, alt, placeholder, role) jer UX checklista ovisi
+// o interaktivnim elementima (tražilica, mini-košarica, +/- količina, filteri, sort, ATC),
+// a SEO o ld+json/meta/canonical. Brišemo samo skripte (osim ld+json), stilove i šum.
+export function sanitizeForAnalysis(html: string): string {
+  return html
+    .replace(/<script(?![^>]*application\/ld\+json)[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/\sstyle="[^"]*"/gi, '')
+    .replace(/\son[a-z]+="[^"]*"/gi, '') // inline event handleri
+    .replace(/\sdata-[a-z-]+="[^"]*"/gi, '')
+    .replace(/\s(?:srcset|sizes|integrity|nonce|crossorigin|loading)="[^"]*"/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 export type WebshopCategoryKey =
   | 'UX'
@@ -204,9 +224,19 @@ ${UX_CHECKLIST}
    "score" = round(brojUsklađenih / 5 * 100).
 
 PRAVILA:
-- Analizu TEMELJI na priloženom sadržaju (HTML stranica i, ako su priloženi, Core Web Vitals). NE
-  izmišljaj činjenice o sadržaju kojeg nema. Što ne možeš provjeriti — tretiraj kao neispunjeno/nizak
-  rezultat i to naznači, umjesto da pretpostaviš da postoji.
+- Analizu TEMELJI na priloženom sadržaju (HTML stranica i, ako su priloženi, Core Web Vitals).
+- HTML koji dobivaš je STRUKTURNI (zadržani su tagovi te atributi class, aria-label, type, href, alt,
+  placeholder, role). UX kriterije o interaktivnim elementima prosuđuj IZ MARKUPA, ne samo iz vidljivog
+  teksta: npr. količinski +/- izbornik = <input type="number"> ili gumbi/elementi s class koji sadrži
+  "qty"/"quantity"/"plus"/"minus"; filteri/sort = class "filter"/"sort"/"orderby"/<select>; tražilica =
+  <input type="search"> ili class "search"; mini-košarica = class "cart"/"mini-cart"; sticky = class
+  "sticky"/"fixed". Header/footer/nav su sada uključeni — provjeri ih za tražilicu, kontakt, košaricu.
+- NE tvrdi da značajka NEDOSTAJE bez pozitivnog dokaza u HTML-u. Standardne platforme (WooCommerce,
+  Shopify, Magento) redovno imaju količinski izbornik, filtere i sortiranje i kad nisu očiti u markupu
+  (često ih dodaje JS). Ako značajku ne možeš ni potvrditi ni opovrgnuti, u opisu napiši "nije potvrđeno
+  iz dostupnog HTML-a — provjerite", NEMOJ pisati "nema/nije vidljivo" niti predlagati dodavanje nečega
+  što vjerojatno već postoji. Za checklist stavke koje ne možeš potvrditi koristi pass=false, ali to NE
+  pretvaraj u samouvjerenu preporuku o nedostatku.
 - Ako sadržaj nije dostupan (blokirana/prazna stranica), daj općenitiju procjenu i jasno to navedi u
   summaryju, ali svejedno popuni strukturu (checklist/criteria/checkpoints) najboljom procjenom.
 - "overallScore" je cijeli broj (prosjek 6 kategorija).
@@ -238,18 +268,37 @@ PRIMJER TONA preporuka (ugledaj se na stil, ne kopiraj sadržaj):
 - {"title":"Istaknite ATC gumb","description":"Na stranici proizvoda gumb 'dodaj u košaricu' nije istaknut bojom (jače je istaknut gumb za upit – trebalo bi biti obrnuto). Učinite ga vizualno dominantnim.","severity":"high"}
 - {"title":"Recenzije istaknite kroz cijelo iskustvo","description":"Recenzije su jedan od najjačih čimbenika konverzije, a kod vas stoje statično u footeru. Omogućite lak pristup recenzijama na naslovnici i product pageu.","severity":"medium"}`;
 
+// Sidro za glavni sadržaj podstranice (product/category) — da, ako je velik mega-menu
+// nav gurnuo glavni sadržaj izvan budžeta, prozor recentriramo na njega.
+const CONTENT_ANCHOR =
+  /(single_add_to_cart|add[_-]to[_-]cart|type="number"|itemprop="offers"|class="[^"]*(qty|quantity|entry-summary|product[_-]meta|woocommerce-product|product-grid|products|shop)[^"]*")/i;
+
+// Naslovnica: zadrži <head> (SEO: canonical/meta/ld+json) i počni od vrha (header/hero).
+// Podstranice: makni <head> i, ako treba, recentriraj na glavni sadržaj.
+function preparePage(html: string, isHome: boolean, budget: number): string {
+  if (isHome) return sanitizeForAnalysis(html).slice(0, budget);
+  const clean = sanitizeForAnalysis(html.replace(/<head[\s\S]*?<\/head>/i, ''));
+  if (clean.length <= budget) return clean;
+  const m = clean.match(CONTENT_ANCHOR);
+  if (m && m.index !== undefined && m.index > budget - 8000) {
+    const start = Math.max(0, m.index - 6000);
+    return clean.slice(start, start + budget);
+  }
+  return clean.slice(0, budget);
+}
+
 function pageBlock(pages: AnalysisPage[]): string {
-  const usable = pages.filter((p) => p.html && cleanHtml(p.html).length > 100);
+  const usable = pages
+    .map((p, i) => ({ ...p, clean: p.html ? preparePage(p.html, i === 0, i === 0 ? 70000 : 48000) : '' }))
+    .filter((p) => p.clean.length > 100);
   if (usable.length === 0) {
     return '\n\nHTML stranica nije dostupan (nedostupna stranica ili blokiran pristup). Daj općenitiju procjenu i to naznači.';
   }
-  // Naslovnica dobiva najviše prostora; ostale stranice manje (da stanemo u kontekst).
   return usable
-    .map((p, i) => {
-      const budget = i === 0 ? 60000 : 25000;
-      const cleaned = cleanHtml(p.html).slice(0, budget);
-      return `\n\n--- ${p.label.toUpperCase()} (${p.url}) — očišćeni HTML ---\n${cleaned}\n--- KRAJ ---`;
-    })
+    .map(
+      (p) =>
+        `\n\n--- ${p.label.toUpperCase()} (${p.url}) — strukturni HTML (tagovi + class/aria/type/href zadržani) ---\n${p.clean}\n--- KRAJ ---`,
+    )
     .join('');
 }
 
