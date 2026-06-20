@@ -10,14 +10,26 @@ type RequestError = {
 export const ANALYSES_PER_YEAR = 2;
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
+// Pojedini članovi (npr. testni/admin) imaju povišeni limit.
+const ANALYSES_LIMIT_OVERRIDES: Record<string, number> = {
+  'marcel.majsan@gmail.com': 100,
+};
+function analysesLimitFor(email?: string | null): number {
+  return (email ? ANALYSES_LIMIT_OVERRIDES[email.toLowerCase()] : undefined) ?? ANALYSES_PER_YEAR;
+}
+
 // Koliko je analiza član iskoristio u zadnjih godinu dana + koliko ih je preostalo.
 export async function getWebshopAnalysisQuota(userId: string) {
-  const member = await prisma.member.findUnique({ where: { userId }, select: { id: true, memberType: true } });
+  const member = await prisma.member.findUnique({
+    where: { userId },
+    select: { id: true, memberType: true, user: { select: { email: true } } },
+  });
   if (!member || member.memberType !== 'WEB_TRADER') return null;
+  const limit = analysesLimitFor(member.user?.email);
   const used = await prisma.webshopAnalysis.count({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
   });
-  return { used, remaining: Math.max(0, ANALYSES_PER_YEAR - used), limit: ANALYSES_PER_YEAR };
+  return { used, remaining: Math.max(0, limit - used), limit };
 }
 
 function normalizeUrl(raw: string): string {
@@ -171,7 +183,7 @@ export async function getLatestWebshopAnalysis(userId: string) {
 export async function requestWebshopAnalysis(userId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    include: { company: true },
+    include: { company: true, user: { select: { email: true } } },
   });
 
   if (!member) return { error: 'NOT_FOUND' } as RequestError;
@@ -201,7 +213,7 @@ export async function requestWebshopAnalysis(userId: string) {
   const usedThisYear = await prisma.webshopAnalysis.count({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
   });
-  if (usedThisYear >= ANALYSES_PER_YEAR) return { error: 'LIMIT_REACHED' } as RequestError;
+  if (usedThisYear >= analysesLimitFor(member.user?.email)) return { error: 'LIMIT_REACHED' } as RequestError;
 
   const websiteUrl = normalizeUrl(website);
 

@@ -417,7 +417,7 @@ export default function PortalHome() {
                       biti netočne ili nepotpune — preporučujemo da nalaze i preporuke provjerite sa svojim
                       konzultantima prije donošenja poslovnih odluka.
                     </p>
-                    <img src="/logo.png" alt="eCommerce Hrvatska" style={{ height: 32, marginTop: 10 }} />
+                    <img src="/logo-full.png" alt="eCommerce Hrvatska" style={{ height: 48, marginTop: 10 }} />
                     <h1 style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>Stručna analiza webshopa</h1>
                     <p style={{ fontSize: 12, color: '#555', margin: 0 }}>{analysis.websiteUrl}</p>
                     <p style={{ fontSize: 12, color: '#555', margin: 0 }}>
