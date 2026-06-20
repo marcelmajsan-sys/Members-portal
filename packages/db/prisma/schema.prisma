@@ -195,6 +195,7 @@ model Member {
   offers         Offer[]
   memberBenefits MemberBenefit[]
   webshopAnalyses WebshopAnalysis[]
+  safeShopAnalyses SafeShopAnalysis[]
   secondaryContact SecondaryContact?
 }
 
@@ -270,6 +271,24 @@ model WebshopAnalysis {
   error        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+}
+
+model SafeShopAnalysis {
+  id         String   @id @default(cuid())
+  memberId   String
+  websiteUrl String
+  status     String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  score      Int? // 0–10 (broj zadovoljenih kriterija)
+  passed     Boolean? // score >= 9
+  summary    String? // Komentar
+  result     Json? // SafeShopCheckpoint[]
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
 

@@ -15,6 +15,7 @@ import { prisma } from '@ecommerce-hr/db';
 import type { MemberTier, MemberType, MemberStatus } from '@ecommerce-hr/db';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
+import { requestSafeShopAnalysis, getLatestSafeShopAnalysis } from '../services/safeshop-analysis.service.js';
 import { buildRenewalConfirmationEmail, buildFreeUpgradeEmail } from '../utils/member-emails.js';
 import { checkEmailCooldown } from '../services/automation-executor.js';
 import { hashPassword } from '../services/auth.service.js';
@@ -401,6 +402,37 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
   }
 
   successResponse(res, member);
+});
+
+// GET /members/:id/safeshop-analysis — latest Safe Shop certification analysis (or null)
+router.get('/members/:id/safeshop-analysis', validateParams(idParamSchema), async (req, res) => {
+  const analysis = await getLatestSafeShopAnalysis(req.params.id as string);
+  successResponse(res, analysis);
+});
+
+// POST /members/:id/safeshop-analysis — run a fresh Safe Shop certification analysis (synchronous)
+router.post('/members/:id/safeshop-analysis', validateParams(idParamSchema), async (req, res) => {
+  const result = await requestSafeShopAnalysis(req.params.id as string);
+
+  // Uspjeh je SafeShopAnalysis zapis (ima `id`); sentineli greške nemaju `id`.
+  if (!('id' in result)) {
+    switch (result.error) {
+      case 'NO_WEBSITE':
+        errorResponse(res, 'BAD_REQUEST', 'Član nema upisanu web adresu', 400);
+        return;
+      case 'IN_PROGRESS':
+        errorResponse(res, 'CONFLICT', 'Analiza je već u tijeku', 409);
+        return;
+      case 'ANALYSIS_FAILED':
+        errorResponse(res, 'ANALYSIS_FAILED', 'Analiza nije uspjela, pokušajte ponovno kasnije', 502);
+        return;
+      default:
+        errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+        return;
+    }
+  }
+
+  successResponse(res, result);
 });
 
 // POST /members/:id/send-invite — Create/refresh member portal access and email a set-password link (OWNER)

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import SafeShopAnalysis from './SafeShopAnalysis';
 
 interface SecondaryContact {
   id?: string;
@@ -1588,6 +1589,9 @@ export default function MemberDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Safe Shop certifikacijska analiza */}
+      <SafeShopAnalysis memberId={id} companyName={member.company.name} websiteUrl={member.company.website} />
 
       {/* Email Preview Modal */}
       {previewEmail && (

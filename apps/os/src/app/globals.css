@@ -64,3 +64,56 @@ textarea::placeholder {
   background: var(--color-gray-300);
   border-radius: 3px;
 }
+
+/* Safe Shop PDF: ispis prikazuje samo #safeshop-print (korisnik spremi kao PDF). */
+.print-only {
+  display: none;
+}
+.safeshop-pdf-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 2px solid #2a6f97;
+  padding-bottom: 12px;
+}
+.safeshop-pdf-footer {
+  margin-top: 24px;
+  background: #0b3b8c;
+  color: #fff;
+  text-align: center;
+  padding: 8px;
+  font-size: 12px;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #safeshop-print,
+  #safeshop-print * {
+    visibility: visible !important;
+  }
+  #safeshop-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0 12px;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .safeshop-pdf-header {
+    display: flex !important;
+  }
+  .safeshop-criterion,
+  .safeshop-result {
+    break-inside: avoid;
+  }
+}
