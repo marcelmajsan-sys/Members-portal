@@ -54,11 +54,36 @@ async function fetchHtmlOnce(url: string, timeoutMs: number): Promise<string> {
   }
 }
 
-// Jedan retry ako prvi pokušaj vrati prazno (sporiji odgovor / tranzijentna blokada s datacenter IP-a).
-async function fetchHtml(url: string, timeoutMs = 15000): Promise<string> {
-  const first = await fetchHtmlOnce(url, timeoutMs);
-  if (first) return first;
-  return fetchHtmlOnce(url, timeoutMs);
+// Reader proxy (r.jina.ai) dohvaća stranicu sa SVOJE infrastrukture i vraća čist markdown.
+// Fallback kad direktan dohvat s Vercel datacenter IP-a (fra1) bude blokiran — neki
+// webshopovi (npr. otos.hr) blokiraju datacenter IP-ove bez obzira na User-Agent.
+async function fetchViaReader(url: string, timeoutMs: number): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Accept: 'text/plain, text/markdown, */*',
+        ...(process.env.JINA_API_KEY ? { Authorization: `Bearer ${process.env.JINA_API_KEY}` } : {}),
+      },
+    });
+    if (!res.ok) return '';
+    return await res.text();
+  } catch (error) {
+    logger.warn({ error: String(error), url }, 'Safe Shop analysis: reader fetch failed');
+    return '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Direktan dohvat (brz); ako vrati prazno (timeout / blokada datacenter IP-a), padni na reader proxy.
+async function fetchHtml(url: string, timeoutMs = 12000): Promise<string> {
+  const direct = await fetchHtmlOnce(url, timeoutMs);
+  if (direct) return direct;
+  return fetchViaReader(url, 30000);
 }
 
 // Pravne stranice na kojima počivaju Safe Shop kriteriji — kategorija -> ključne riječi u putanji/tekstu linka.
@@ -78,24 +103,35 @@ function discoverLegalPages(homepageUrl: string, html: string): SafeShopPage[] {
   } catch {
     return [];
   }
-  // Skupi (url, tekst-linka) parove istog hosta.
+  // Skupi (url, tekst-linka) parove istog hosta — iz HTML <a> tagova I markdown linkova
+  // (sadržaj može doći preko reader proxyja kao markdown: [tekst](url)).
   const links: { url: string; text: string }[] = [];
-  const re = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let m: RegExpExecArray | null;
-  let guard = 0;
-  while ((m = re.exec(html)) && guard < 2000) {
-    guard++;
-    const raw = m[1].trim();
-    if (!raw || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+  const addLink = (rawHref: string, rawText: string) => {
+    const href = rawHref.trim().split('#')[0];
+    if (!href || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
     let abs: URL;
     try {
-      abs = new URL(raw, homepageUrl);
+      abs = new URL(href, homepageUrl);
     } catch {
-      continue;
+      return;
     }
-    if (abs.origin !== origin) continue;
-    const text = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (abs.origin !== origin) return;
+    const text = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     links.push({ url: abs.origin + abs.pathname, text });
+  };
+
+  const htmlRe = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const mdRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let m: RegExpExecArray | null;
+  let guard = 0;
+  while ((m = htmlRe.exec(html)) && guard < 2000) {
+    guard++;
+    addLink(m[1], m[2]);
+  }
+  guard = 0;
+  while ((m = mdRe.exec(html)) && guard < 2000) {
+    guard++;
+    addLink(m[2], m[1]);
   }
 
   const chosen: SafeShopPage[] = [];
