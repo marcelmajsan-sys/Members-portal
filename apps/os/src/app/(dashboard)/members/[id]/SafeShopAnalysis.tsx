@@ -301,10 +301,10 @@ export default function SafeShopAnalysis({
                   <button
                     type="button"
                     onClick={() => setCp(i, { pass: !c.pass })}
-                    className={`no-print shrink-0 rounded-md px-2 py-1 text-base font-bold ${c.pass ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}
-                    title="Prebaci zadovoljeno / nije"
+                    className={`no-print shrink-0 rounded-md border px-2.5 py-1 text-xs font-semibold transition ${c.pass ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'}`}
+                    title="Klikni za prebacivanje: prolazno ↔ neprolazno"
                   >
-                    {c.pass ? '☑' : '☐'}
+                    {c.pass ? '☑ Prolazno' : '☐ Neprolazno'}
                   </button>
                 ) : (
                   <span className={`shrink-0 text-base font-bold ${c.pass ? 'text-green-600' : 'text-red-500'}`}>

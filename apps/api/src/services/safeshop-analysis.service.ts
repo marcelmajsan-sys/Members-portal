@@ -24,7 +24,12 @@ function normalizeUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
-async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
+// Realan browser User-Agent — mnogi webshopovi (anti-bot/WAF) blokiraju "bot" UA-ove
+// i datacenter IP-ove (Vercel fra1), zbog čega je dohvat znao vratiti prazno (npr. otos.hr).
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+async function fetchHtmlOnce(url: string, timeoutMs: number): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -32,8 +37,9 @@ async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; eCommerceHR-SafeShop/1.0; +https://www.ecommerce.hr)',
-        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': BROWSER_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'hr-HR,hr;q=0.9,en;q=0.8',
       },
     });
     if (!res.ok) return '';
@@ -46,6 +52,13 @@ async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// Jedan retry ako prvi pokušaj vrati prazno (sporiji odgovor / tranzijentna blokada s datacenter IP-a).
+async function fetchHtml(url: string, timeoutMs = 15000): Promise<string> {
+  const first = await fetchHtmlOnce(url, timeoutMs);
+  if (first) return first;
+  return fetchHtmlOnce(url, timeoutMs);
 }
 
 // Pravne stranice na kojima počivaju Safe Shop kriteriji — kategorija -> ključne riječi u putanji/tekstu linka.
