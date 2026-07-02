@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
+import { z } from 'zod';
 import { paginationSchema, idParamSchema } from '@ecommerce-hr/shared';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -962,7 +963,9 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
 });
 
 // DELETE /members/:id/notes/:noteId — Delete a note
-router.delete('/members/:id/notes/:noteId', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+// NB: dedicated schema — idParamSchema bi stripao :noteId (zod briše nepoznate ključeve) pa bi noteId ostao undefined.
+const noteParamsSchema = z.object({ id: z.string().cuid(), noteId: z.string().cuid() });
+router.delete('/members/:id/notes/:noteId', validateParams(noteParamsSchema), async (req: AuthRequest, res) => {
   const noteId = req.params.noteId as string;
   const note = await prisma.memberNote.findUnique({ where: { id: noteId }, select: { id: true } });
   if (!note) {
