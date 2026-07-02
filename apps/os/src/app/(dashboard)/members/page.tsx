@@ -565,8 +565,8 @@ export default function MembersPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Naziv firme *</label>
-                  <input required value={addForm.companyName} onChange={e => setAddForm(f => ({ ...f, companyName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  <label className="block text-xs text-gray-500 mb-1">Naziv firme</label>
+                  <input value={addForm.companyName} onChange={e => setAddForm(f => ({ ...f, companyName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">OIB</label>

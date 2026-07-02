@@ -235,8 +235,8 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   try {
     const { email, firstName, lastName, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus } = req.body;
 
-    if (!email || !firstName || !companyName || !memberType) {
-      errorResponse(res, 'VALIDATION', 'Email, ime, firma i tip su obavezni', 400);
+    if (!email || !firstName || !memberType) {
+      errorResponse(res, 'VALIDATION', 'Email, ime i tip su obavezni', 400);
       return;
     }
 
@@ -262,7 +262,7 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
         : await tx.user.create({ data: { email, passwordHash, firstName, lastName: lastName || '', role: 'MEMBER' } });
 
       const company = await tx.company.create({
-        data: { name: companyName, oib: finalOib, address: address || '', city: '', zip: '', website: website || null, phone: phone || null },
+        data: { name: companyName?.trim() || '', oib: finalOib, address: address || '', city: '', zip: '', website: website || null, phone: phone || null },
       });
 
       return tx.member.create({
