@@ -26,6 +26,7 @@ interface Ticket {
   status: 'CONFIRMED' | 'PENDING' | 'CANCELLED';
   token: string;
   url: string;
+  addedByStaff: boolean;
   checkedInAt: string | null;
   createdAt: string;
   member: {
@@ -239,82 +240,22 @@ export default function TicketsPage() {
             />
           </div>
 
-          {/* Tablica */}
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-            {loadingTickets ? (
-              <div className="p-12 text-center text-gray-400">Učitavanje ulaznica...</div>
-            ) : tickets.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">Nema prijava za odabrane filtere.</div>
-            ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
-                    <th className="px-4 py-3">Osoba</th>
-                    <th className="px-4 py-3">Član (dodao)</th>
-                    <th className="px-4 py-3">Kontakt</th>
-                    <th className="px-4 py-3">Tip</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Check-in</th>
-                    <th className="px-4 py-3 text-right">Akcije</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {tickets.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50/50">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{t.fullName}</p>
-                        {t.jobTitle && <p className="text-xs text-gray-400">{t.jobTitle}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-gray-700">{t.member.user.firstName} {t.member.user.lastName}</p>
-                        {t.member.company?.name && <p className="text-xs text-gray-400">{t.member.company.name}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-gray-700">{t.email}</p>
-                        <p className="text-xs text-gray-400">{t.phone}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TYPE_STYLES[t.type]}`}>{t.type}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}>{STATUS_LABELS[t.status]}</span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{fmtDateTime(t.checkedInAt)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                          {t.status === 'PENDING' && (
-                            <button
-                              onClick={() => updateTicket(t, { status: 'CONFIRMED' })}
-                              className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                              title="Potvrdi ulaznicu (šalje email osobi i članu)"
-                            >
-                              Odobri
-                            </button>
-                          )}
-                          {t.status === 'CONFIRMED' && (
-                            <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ulaznica</a>
-                          )}
-                          {t.status !== 'CANCELLED' && (
-                            <button
-                              onClick={() => { if (confirm(`Otkazati ulaznicu za ${t.fullName}?`)) updateTicket(t, { status: 'CANCELLED' }); }}
-                              className="text-xs text-gray-400 hover:text-red-500"
-                            >
-                              Otkaži
-                            </button>
-                          )}
-                          {t.status === 'CANCELLED' && (
-                            <button onClick={() => updateTicket(t, { status: 'CONFIRMED' })} className="text-xs text-gray-400 hover:text-emerald-600">
-                              Vrati
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {/* Tablice: prijave članova + ručno dodane (admin) */}
+          {loadingTickets ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">Učitavanje ulaznica...</div>
+          ) : tickets.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">Nema prijava za odabrane filtere.</div>
+          ) : (
+            <>
+              <TicketTable tickets={tickets.filter((t) => !t.addedByStaff)} onUpdate={updateTicket} emptyText="Članovi još nisu dodali nijednu osobu (za odabrane filtere)." />
+              {tickets.some((t) => t.addedByStaff) && (
+                <div>
+                  <h2 className="mb-2 mt-6 text-xs font-bold uppercase tracking-widest text-gray-400">Ručno dodane</h2>
+                  <TicketTable tickets={tickets.filter((t) => t.addedByStaff)} onUpdate={updateTicket} emptyText="" />
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
 
@@ -325,6 +266,92 @@ export default function TicketsPage() {
           onSaved={() => { setShowSettings(false); fetchConferences(); showToast(selected ? 'Postavke spremljene' : 'Konferencija kreirana'); }}
         />
       )}
+    </div>
+  );
+}
+
+function TicketTable({
+  tickets,
+  onUpdate,
+  emptyText,
+}: {
+  tickets: Ticket[];
+  onUpdate: (t: Ticket, data: Partial<Pick<Ticket, 'status' | 'type'>>) => void;
+  emptyText: string;
+}) {
+  if (tickets.length === 0) {
+    if (!emptyText) return null;
+    return <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-400">{emptyText}</div>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+            <th className="px-4 py-3">Osoba</th>
+            <th className="px-4 py-3">Član (dodao)</th>
+            <th className="px-4 py-3">Kontakt</th>
+            <th className="px-4 py-3">Tip</th>
+            <th className="px-4 py-3">Status</th>
+            <th className="px-4 py-3">Check-in</th>
+            <th className="px-4 py-3 text-right">Akcije</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {tickets.map((t) => (
+            <tr key={t.id} className="hover:bg-gray-50/50">
+              <td className="px-4 py-3">
+                <p className="font-semibold text-gray-900">{t.fullName}</p>
+                {t.jobTitle && <p className="text-xs text-gray-400">{t.jobTitle}</p>}
+              </td>
+              <td className="px-4 py-3">
+                <p className="text-gray-700">{t.member.user.firstName} {t.member.user.lastName}</p>
+                {t.member.company?.name && <p className="text-xs text-gray-400">{t.member.company.name}</p>}
+              </td>
+              <td className="px-4 py-3">
+                <p className="text-gray-700">{t.email}</p>
+                <p className="text-xs text-gray-400">{t.phone}</p>
+              </td>
+              <td className="px-4 py-3">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TYPE_STYLES[t.type]}`}>{t.type}</span>
+              </td>
+              <td className="px-4 py-3">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}>{STATUS_LABELS[t.status]}</span>
+              </td>
+              <td className="px-4 py-3 text-xs text-gray-500">{fmtDateTime(t.checkedInAt)}</td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                  {t.status === 'PENDING' && (
+                    <button
+                      onClick={() => onUpdate(t, { status: 'CONFIRMED' })}
+                      className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                      title="Potvrdi ulaznicu (šalje email osobi i članu)"
+                    >
+                      Odobri
+                    </button>
+                  )}
+                  {t.status === 'CONFIRMED' && (
+                    <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ulaznica</a>
+                  )}
+                  {t.status !== 'CANCELLED' && (
+                    <button
+                      onClick={() => { if (confirm(`Otkazati ulaznicu za ${t.fullName}?`)) onUpdate(t, { status: 'CANCELLED' }); }}
+                      className="text-xs text-gray-400 hover:text-red-500"
+                    >
+                      Otkaži
+                    </button>
+                  )}
+                  {t.status === 'CANCELLED' && (
+                    <button onClick={() => onUpdate(t, { status: 'CONFIRMED' })} className="text-xs text-gray-400 hover:text-emerald-600">
+                      Vrati
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

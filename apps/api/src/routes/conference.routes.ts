@@ -220,6 +220,7 @@ router.post('/:id/tickets', validate(adminCreateTicketSchema), async (req: AuthR
     phone: (req.body.phone as string).trim(),
     type: req.body.type as TicketType,
     status: req.body.status as TicketStatus,
+    addedByStaff: true,
   };
   // Otkazana ulaznica s istim emailom se oživljava (unique [conferenceId, email])
   const ticket = existing

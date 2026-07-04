@@ -667,6 +667,7 @@ model ConferenceTicket {
   type         TicketType   @default(STANDARD)
   status       TicketStatus @default(CONFIRMED)
   token        String       @unique @default(cuid()) // za javni QR URL
+  addedByStaff Boolean      @default(false) // true = ručno dodao admin (ne član)
   checkedInAt  DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
