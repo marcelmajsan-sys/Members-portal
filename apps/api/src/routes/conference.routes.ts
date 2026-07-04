@@ -152,7 +152,7 @@ router.get('/:id/tickets/export', async (req: AuthRequest, res) => {
   const fmtDT = (d: Date | null) =>
     d ? `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}. ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
 
-  const rows = tickets.map((t) => ({
+  const toRow = (t: (typeof tickets)[number]) => ({
     'Ime i prezime': t.fullName,
     'Funkcija': t.jobTitle ?? '',
     'Tvrtka': t.member.company?.name ?? '',
@@ -162,12 +162,17 @@ router.get('/:id/tickets/export', async (req: AuthRequest, res) => {
     'Tip': t.type,
     'Status': t.status,
     'Check-in': fmtDT(t.checkedInAt),
-  }));
+  });
+  const cols = [{ wch: 28 }, { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 30 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 18 }];
 
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 30 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 18 }];
+  // Dva sheeta: prijave članova i ručno dodane (admin)
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Ulaznice');
+  const memberWs = XLSX.utils.json_to_sheet(tickets.filter((t) => !t.addedByStaff).map(toRow));
+  memberWs['!cols'] = cols;
+  XLSX.utils.book_append_sheet(wb, memberWs, 'Ulaznice članova');
+  const staffWs = XLSX.utils.json_to_sheet(tickets.filter((t) => t.addedByStaff).map(toRow));
+  staffWs['!cols'] = cols;
+  XLSX.utils.book_append_sheet(wb, staffWs, 'Ručno dodane');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 
   res.set({
