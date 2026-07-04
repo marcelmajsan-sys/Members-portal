@@ -78,8 +78,6 @@ export default function TicketsPage() {
   const [search, setSearch] = useState('');
 
   const [showSettings, setShowSettings] = useState(false);
-  const [checkinValue, setCheckinValue] = useState('');
-  const [checkinResult, setCheckinResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const selected = conferences.find((c) => c.id === selectedId) || null;
 
@@ -131,7 +129,7 @@ export default function TicketsPage() {
     }
   }
 
-  async function exportCsv() {
+  async function exportXlsx() {
     if (!selectedId) return;
     const token = localStorage.getItem('accessToken');
     const res = await fetch(`${BASE_URL}/api/os/conferences/${selectedId}/tickets/export`, {
@@ -142,25 +140,9 @@ export default function TicketsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ulaznice-${selected?.name?.toLowerCase().replace(/\s+/g, '-') || 'export'}.csv`;
+    a.download = `ulaznice-${selected?.name?.toLowerCase().replace(/\s+/g, '-') || 'export'}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  // Check-in: prihvaća token ili zalijepljeni URL ulaznice (QR sadrži URL)
-  async function doCheckin(e: React.FormEvent) {
-    e.preventDefault();
-    const raw = checkinValue.trim();
-    if (!raw) return;
-    const token = raw.includes('/ulaznica/') ? raw.split('/ulaznica/')[1].split(/[?#]/)[0] : raw;
-    const res = await api.post<{ fullName: string; company: string | null; type: string }>(`/api/os/tickets/${encodeURIComponent(token)}/checkin`);
-    if (res.success && res.data) {
-      setCheckinResult({ ok: true, message: `✓ ${res.data.fullName}${res.data.company ? ` (${res.data.company})` : ''} — ${res.data.type}` });
-      setCheckinValue('');
-      fetchTickets(); fetchConferences();
-    } else {
-      setCheckinResult({ ok: false, message: res.error?.message || 'Check-in nije uspio' });
-    }
   }
 
   if (loading) {
@@ -191,8 +173,8 @@ export default function TicketsPage() {
               <button onClick={() => setShowSettings(true)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
                 ⚙ Postavke
               </button>
-              <button onClick={exportCsv} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
-                ⬇ CSV export
+              <button onClick={exportXlsx} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                ⬇ Excel export
               </button>
             </>
           )}
@@ -227,27 +209,6 @@ export default function TicketsPage() {
             {' '}· rok za izmjene: <strong>{fmtDate(selected.editDeadline)}</strong>
             {' '}· popust za dodatne: <strong>{selected.extraDiscount}%</strong>
           </div>
-
-          {/* Check-in */}
-          <form onSubmit={doCheckin} className="rounded-xl border border-gray-200 bg-white p-4">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Check-in (skeniraj QR ili zalijepi link/token ulaznice)</label>
-            <div className="flex gap-2">
-              <input
-                value={checkinValue}
-                onChange={(e) => { setCheckinValue(e.target.value); setCheckinResult(null); }}
-                placeholder="https://members.ecommerce.hr/ulaznica/..."
-                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-              <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-light">
-                Check-in
-              </button>
-            </div>
-            {checkinResult && (
-              <p className={`mt-2 rounded-md px-3 py-2 text-sm font-medium ${checkinResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                {checkinResult.message}
-              </p>
-            )}
-          </form>
 
           {/* Filteri */}
           <div className="flex flex-wrap items-center gap-2">

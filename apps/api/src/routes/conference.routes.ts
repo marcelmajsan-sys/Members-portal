@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import * as XLSX from 'xlsx';
 import { prisma } from '@ecommerce-hr/db';
 import type { TicketStatus, TicketType } from '@ecommerce-hr/db';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
@@ -140,7 +141,7 @@ router.get('/:id/tickets', async (req: AuthRequest, res) => {
   successResponse(res, tickets.map((t) => ({ ...t, url: ticketUrl(t.token) })));
 });
 
-// GET /:id/tickets/export — CSV export
+// GET /:id/tickets/export — XLSX export
 router.get('/:id/tickets/export', async (req: AuthRequest, res) => {
   const tickets = await prisma.conferenceTicket.findMany({
     where: ticketWhere(req.params.id as string, req.query),
@@ -148,30 +149,32 @@ router.get('/:id/tickets/export', async (req: AuthRequest, res) => {
     orderBy: { fullName: 'asc' },
   });
 
-  const esc = (v: string | null | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
   const fmtDT = (d: Date | null) =>
     d ? `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}. ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
 
-  const header = ['Ime i prezime', 'Funkcija', 'Tvrtka', 'Član (dodao)', 'Email', 'Telefon', 'Tip', 'Status', 'Check-in'];
-  const rows = tickets.map((t) => [
-    esc(t.fullName),
-    esc(t.jobTitle),
-    esc(t.member.company?.name),
-    esc(`${t.member.user.firstName} ${t.member.user.lastName}`.trim()),
-    esc(t.email),
-    esc(t.phone),
-    esc(t.type),
-    esc(t.status),
-    esc(fmtDT(t.checkedInAt)),
-  ].join(';'));
+  const rows = tickets.map((t) => ({
+    'Ime i prezime': t.fullName,
+    'Funkcija': t.jobTitle ?? '',
+    'Tvrtka': t.member.company?.name ?? '',
+    'Član (dodao)': `${t.member.user.firstName} ${t.member.user.lastName}`.trim(),
+    'Email': t.email,
+    'Telefon': t.phone,
+    'Tip': t.type,
+    'Status': t.status,
+    'Check-in': fmtDT(t.checkedInAt),
+  }));
 
-  // BOM da Excel ispravno prikaže hrvatske znakove; ";" separator za HR locale
-  const csv = '﻿' + [header.join(';'), ...rows].join('\r\n');
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 30 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 18 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ulaznice');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
   res.set({
-    'Content-Type': 'text/csv; charset=utf-8',
-    'Content-Disposition': 'attachment; filename="ulaznice.csv"',
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': 'attachment; filename="ulaznice.xlsx"',
   });
-  res.send(csv);
+  res.send(buf);
 });
 
 // POST /:id/tickets — admin ručno dodaje ulaznicu članu (bez kvote; admin bira status)
