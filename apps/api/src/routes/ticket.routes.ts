@@ -26,7 +26,7 @@ publicRouter.get('/:token', publicTicketLimiter, async (req, res) => {
   const ticket = await prisma.conferenceTicket.findUnique({
     where: { token: req.params.token as string },
     include: {
-      conference: { select: { name: true, startDate: true, endDate: true, location: true } },
+      conference: { select: { name: true, description: true, startDate: true, endDate: true, location: true } },
       member: { include: { company: { select: { name: true } } } },
     },
   });
@@ -40,6 +40,7 @@ publicRouter.get('/:token', publicTicketLimiter, async (req, res) => {
   successResponse(res, {
     fullName: ticket.fullName,
     jobTitle: ticket.jobTitle,
+    email: ticket.email,
     company: ticket.member.company?.name ?? null,
     type: ticket.type,
     checkedInAt: ticket.checkedInAt,

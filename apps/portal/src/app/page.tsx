@@ -80,6 +80,13 @@ function fmtDate(d: string | null) {
 function fmtCurrency(amount: number, currency = 'EUR') {
   return new Intl.NumberFormat('hr-HR', { style: 'currency', currency }).format(amount);
 }
+// Kompaktni datum bez razmaka: 13.10.2026.
+function fmtDateCompact(d: string | null) {
+  if (!d) return '—';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '—';
+  return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}.`;
+}
 
 export default function PortalHome() {
   const router = useRouter();
@@ -668,7 +675,9 @@ function TicketsSection({
     <section className="rounded-xl border border-gray-200 bg-white p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Osobe za ulaznice — {conference.name}</h2>
+          <h2 className="text-sm font-semibold text-gray-900">
+            Osobe za ulaznice — {conference.name} konferencija ({fmtDateCompact(conference.startDate)})
+          </h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
             {data.quota.VIP > 0 || data.quota.STANDARD > 0 ? (
               <>
