@@ -38,8 +38,13 @@ interface SecondaryContact {
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
 interface OfferItem { id: string; offerNumber: string; amount: number; currency: string; status: string; validUntil: string; createdAt: string }
-interface PerkItem { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null; status: string; claimedAt: string | null; statusNote: string | null }
-interface Perks { available: PerkItem[]; claimed: PerkItem[] }
+interface TicketConference {
+  conference: { id: string; name: string; startDate: string; endDate: string; location: string | null; editDeadline: string | null; extraDiscount: number };
+  editable: boolean;
+  quota: { VIP: number; STANDARD: number };
+  used: { VIP: number; STANDARD: number };
+}
+interface Ticket { id: string; fullName: string; jobTitle: string | null; email: string; phone: string; type: 'VIP' | 'STANDARD'; status: 'CONFIRMED' | 'PENDING' | 'CANCELLED'; token: string; checkedInAt: string | null }
 interface AnalysisRecommendation { title: string; description: string; severity: 'high' | 'medium' | 'low' }
 interface ChecklistItem { label: string; pass: boolean }
 interface ChecklistGroup { group: string; items: ChecklistItem[] }
@@ -83,8 +88,8 @@ export default function PortalHome() {
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [offers, setOffers] = useState<OfferItem[]>([]);
-  const [perks, setPerks] = useState<Perks>({ available: [], claimed: [] });
-  const [claiming, setClaiming] = useState('');
+  const [ticketConf, setTicketConf] = useState<TicketConference | null>(null);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<EmailItem | null>(null);
   const [editing, setEditing] = useState(false);
@@ -103,12 +108,12 @@ export default function PortalHome() {
   useEffect(() => {
     if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
     (async () => {
-      const [p, e, n, o, pk, wa, wq] = await Promise.all([
+      const [p, e, n, o, tc, wa, wq] = await Promise.all([
         api.get<Profile>('/api/member/profile'),
         api.get<EmailItem[]>('/api/member/emails'),
         api.get<NotificationItem[]>('/api/notifications?limit=20'),
         api.get<OfferItem[]>('/api/member/offers'),
-        api.get<Perks>('/api/member/perks'),
+        api.get<TicketConference | null>('/api/member/conferences/active'),
         api.get<WebshopAnalysis | null>('/api/member/webshop-analysis'),
         api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota'),
       ]);
@@ -116,7 +121,11 @@ export default function PortalHome() {
       if (e.success && e.data) setEmails(e.data);
       if (n.success && n.data) setNotifications(n.data);
       if (o.success && o.data) setOffers(o.data);
-      if (pk.success && pk.data) setPerks(pk.data);
+      if (tc.success && tc.data) {
+        setTicketConf(tc.data);
+        const t = await api.get<Ticket[]>(`/api/member/conferences/${tc.data.conference.id}/tickets`);
+        if (t.success && t.data) setTickets(t.data);
+      }
       if (wa.success && wa.data) setAnalysis(wa.data);
       if (wq.success && wq.data) setQuota(wq.data);
       setLoading(false);
@@ -125,16 +134,14 @@ export default function PortalHome() {
     })();
   }, [isLoading, isAuthenticated, user]);
 
-  async function claimPerk(perk: PerkItem) {
-    setClaiming(perk.id);
-    const res = await api.post(`/api/member/perks/${perk.id}/claim`);
-    if (res.success) {
-      setPerks((prev) => ({
-        available: prev.available.filter((x) => x.id !== perk.id),
-        claimed: [{ ...perk, status: 'CLAIMED', claimedAt: new Date().toISOString() }, ...prev.claimed],
-      }));
-    }
-    setClaiming('');
+  async function refreshTickets() {
+    if (!ticketConf) return;
+    const [t, tc] = await Promise.all([
+      api.get<Ticket[]>(`/api/member/conferences/${ticketConf.conference.id}/tickets`),
+      api.get<TicketConference | null>('/api/member/conferences/active'),
+    ]);
+    if (t.success && t.data) setTickets(t.data);
+    if (tc.success && tc.data) setTicketConf(tc.data);
   }
 
   async function refreshQuota() {
@@ -282,77 +289,14 @@ export default function PortalHome() {
               {profile.secondaryContact && <SecondaryContactView contact={profile.secondaryContact} />}
             </section>
 
-            {/* Pogodnosti (benefiti) */}
-            {(perks.available.length > 0 || perks.claimed.length > 0) && (
-              <section className="rounded-xl border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 text-sm font-semibold text-gray-900">Pogodnosti</h2>
-                <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                  {/* Dostupni */}
-                  <div>
-                    <h3 className="mb-3 text-base font-bold text-gray-900">Dostupni</h3>
-                    {perks.available.length === 0 ? (
-                      <p className="text-sm text-gray-400">Trenutno nemate dostupnih pogodnosti.</p>
-                    ) : (
-                      <ul className="space-y-3">
-                        {perks.available.map((perk) => {
-                          const isActiveMember = profile.status === 'ACTIVE';
-                          return (
-                          <li key={perk.id} className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm text-gray-700">
-                                {perk.title}
-                                {isActiveMember && perk.actionUrl && (
-                                  <>
-                                    {' '}
-                                    <a href={perk.actionUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
-                                      [{perk.actionLabel || 'PREUZMI'}]
-                                    </a>
-                                  </>
-                                )}
-                              </p>
-                              {perk.description && <p className="text-xs text-gray-500">{perk.description}</p>}
-                            </div>
-                            {isActiveMember ? (
-                              <button
-                                onClick={() => claimPerk(perk)}
-                                disabled={claiming === perk.id}
-                                className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-primary transition hover:bg-gray-100 disabled:opacity-50"
-                              >
-                                {claiming === perk.id ? '...' : (perk.actionLabel || 'Prijava')}
-                              </button>
-                            ) : (
-                              <span className="shrink-0 rounded-md bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700">
-                                Produži članstvo
-                              </span>
-                            )}
-                          </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                  {/* Iskorišteni */}
-                  <div>
-                    <h3 className="mb-3 text-base font-bold text-gray-900">Iskorišteni</h3>
-                    {perks.claimed.length === 0 ? (
-                      <p className="text-sm text-gray-400">Još niste iskoristili nijednu pogodnost.</p>
-                    ) : (
-                      <ul className="space-y-3">
-                        {perks.claimed.map((perk) => (
-                          <li key={perk.id}>
-                            <p className="text-sm text-gray-700">{perk.title}</p>
-                            {perk.statusNote ? (
-                              <p className="text-xs font-medium text-success">{perk.statusNote}</p>
-                            ) : (
-                              <p className="text-xs text-gray-400">Zatraženo {fmtDate(perk.claimedAt)}</p>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </section>
+            {/* Osobe za ulaznice (konferencija) */}
+            {ticketConf && (
+              <TicketsSection
+                data={ticketConf}
+                tickets={tickets}
+                isActiveMember={profile.status === 'ACTIVE'}
+                onChanged={refreshTickets}
+              />
             )}
 
             {/* Stručna analiza webshopa (AI) — samo za Web trgovce */}
@@ -678,6 +622,274 @@ export default function PortalHome() {
 
 function dateInput(s: string | null) {
   return s ? s.slice(0, 10) : '';
+}
+
+// ─── Osobe za ulaznice ────────────────────────────────────────────────────────
+
+const TICKET_BADGE: Record<string, string> = {
+  VIP: 'bg-amber-100 text-amber-800',
+  STANDARD: 'bg-gray-100 text-gray-600',
+  PENDING: 'bg-orange-100 text-orange-700',
+};
+
+function TicketsSection({
+  data,
+  tickets,
+  isActiveMember,
+  onChanged,
+}: {
+  data: TicketConference;
+  tickets: Ticket[];
+  isActiveMember: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const [modal, setModal] = useState<{ ticket: Ticket | null } | null>(null);
+  const [removing, setRemoving] = useState('');
+  const [error, setError] = useState('');
+
+  const { conference, editable, quota, used } = data;
+  const remaining = {
+    VIP: Math.max(0, quota.VIP - used.VIP),
+    STANDARD: Math.max(0, quota.STANDARD - used.STANDARD),
+  };
+  const canEdit = isActiveMember && editable;
+
+  async function removeTicket(t: Ticket) {
+    if (!confirm(`Ukloniti osobu ${t.fullName}?`)) return;
+    setRemoving(t.id);
+    setError('');
+    const res = await api.del(`/api/member/conferences/${conference.id}/tickets/${t.id}`);
+    if (res.success) await onChanged();
+    else setError(res.error?.message || 'Uklanjanje nije uspjelo.');
+    setRemoving('');
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Osobe za ulaznice — {conference.name}</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
+            {data.quota.VIP > 0 || data.quota.STANDARD > 0 ? (
+              <>
+                U vašem paketu:{' '}
+                {quota.VIP > 0 && <strong>{quota.VIP} VIP</strong>}
+                {quota.VIP > 0 && quota.STANDARD > 0 && ' + '}
+                {quota.STANDARD > 0 && <strong>{quota.STANDARD} STANDARD</strong>}
+                {' '}{quota.VIP + quota.STANDARD === 1 ? 'ulaznica' : 'ulaznice'}.{' '}
+              </>
+            ) : null}
+            {conference.editDeadline && (
+              <>Možete dodavati i mijenjati osobe za ulaznice najkasnije do <strong>{fmtDate(conference.editDeadline)}</strong>. </>
+            )}
+            Ako dodate više osoba nego što imate u paketu, poslat ćemo vam ponudu za dodatne ulaznice
+            uz <strong>{conference.extraDiscount}% popusta</strong>.
+          </p>
+        </div>
+        {canEdit && (
+          <button
+            onClick={() => setModal({ ticket: null })}
+            className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-gray-100"
+          >
+            + Dodaj osobu za ulaznice
+          </button>
+        )}
+      </div>
+
+      {!isActiveMember && (
+        <p className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+          Produžite članstvo da biste dodavali osobe za ulaznice.
+        </p>
+      )}
+      {isActiveMember && !editable && (
+        <p className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+          Rok za izmjene ({fmtDate(conference.editDeadline)}) je prošao — izmjene više nisu moguće, a ulaznice ostaju dostupne.
+        </p>
+      )}
+      {error && <p className="mb-4 rounded-md bg-danger-light px-4 py-3 text-sm font-medium text-danger">{error}</p>}
+
+      {tickets.length === 0 ? (
+        <p className="py-4 text-center text-sm text-gray-400">Još niste dodali nijednu osobu.</p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {tickets.map((t) => {
+            const pending = t.status === 'PENDING';
+            return (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-900">
+                    {t.fullName}
+                    {t.jobTitle && <span className="ml-2 font-normal text-gray-400">{t.jobTitle}</span>}
+                    <span className={`ml-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${pending ? TICKET_BADGE.PENDING : TICKET_BADGE[t.type]}`}>
+                      {pending ? 'NA ČEKANJU' : t.type}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">{t.email} · {t.phone}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  {pending ? (
+                    <span className="text-xs font-medium text-orange-600">Čeka potvrdu</span>
+                  ) : (
+                    <a
+                      href={`/ulaznica/${t.token}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                      title="Otvori ulaznicu s QR kodom"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.008v.008H6.75V6.75Zm0 9.75h.008v.008H6.75v-.008Zm9.75-9.75h.008v.008h-.008V6.75Zm-3 6h.008v.008h-.008v-.008Zm0 6h.008v.008h-.008v-.008Zm6-6h.008v.008h-.008v-.008Zm0 6h.008v.008h-.008v-.008Zm-3-3h.008v.008h-.008v-.008Z" />
+                      </svg>
+                      Ulaznica
+                    </a>
+                  )}
+                  {canEdit && (
+                    <>
+                      <button onClick={() => setModal({ ticket: t })} className="text-sm text-gray-500 hover:text-gray-900 hover:underline">Uredi</button>
+                      <button
+                        onClick={() => removeTicket(t)}
+                        disabled={removing === t.id}
+                        className="text-sm text-gray-400 hover:text-danger hover:underline disabled:opacity-50"
+                      >
+                        {removing === t.id ? '...' : 'Ukloni'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {modal && (
+        <TicketModal
+          conferenceId={conference.id}
+          ticket={modal.ticket}
+          remaining={remaining}
+          onClose={() => setModal(null)}
+          onSaved={async () => { setModal(null); await onChanged(); }}
+        />
+      )}
+    </section>
+  );
+}
+
+function TicketModal({
+  conferenceId,
+  ticket,
+  remaining,
+  onClose,
+  onSaved,
+}: {
+  conferenceId: string;
+  ticket: Ticket | null;
+  remaining: { VIP: number; STANDARD: number };
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    fullName: ticket?.fullName || '',
+    jobTitle: ticket?.jobTitle || '',
+    email: ticket?.email || '',
+    phone: ticket?.phone || '',
+    type: ticket?.type || (remaining.STANDARD > 0 || remaining.VIP === 0 ? 'STANDARD' : 'VIP'),
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [overQuotaNote, setOverQuotaNote] = useState(false);
+
+  function set<K extends keyof typeof form>(key: K, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // Preostala kvota za odabrani tip (kod uređivanja se vlastita ulaznica ne broji)
+  const remainingForType = (type: 'VIP' | 'STANDARD') =>
+    remaining[type] + (ticket && ticket.type === type && ticket.status !== 'PENDING' ? 1 : 0);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    const res = ticket
+      ? await api.put<Ticket>(`/api/member/conferences/${conferenceId}/tickets/${ticket.id}`, form)
+      : await api.post<{ ticket: Ticket; overQuota: boolean }>(`/api/member/conferences/${conferenceId}/tickets`, form);
+    if (res.success) {
+      await onSaved();
+    } else {
+      setError(res.error?.message || 'Spremanje nije uspjelo. Pokušajte ponovno.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <form
+        onSubmit={save}
+        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-gray-200 p-4">
+          <h2 className="text-base font-semibold text-gray-900">
+            {ticket ? 'Uredi osobu za ulaznicu' : 'Dodaj osobu za ulaznice'}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Zatvori"
+            className="shrink-0 rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-auto p-5">
+          <Field label="Ime i prezime" required value={form.fullName} onChange={(v) => set('fullName', v)} />
+          <Field label="Funkcija" hint="npr. Direktor, Marketing manager" value={form.jobTitle} onChange={(v) => set('jobTitle', v)} />
+          <Field label="Email" required type="email" hint="na ovu adresu šaljemo ulaznicu s QR kodom" value={form.email} onChange={(v) => set('email', v)} />
+          <Field label="Broj telefona" required value={form.phone} onChange={(v) => set('phone', v)} />
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Tip ulaznice</span>
+            <select
+              value={form.type}
+              onChange={(e) => { set('type', e.target.value); setOverQuotaNote(remainingForType(e.target.value as 'VIP' | 'STANDARD') <= 0); }}
+              className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+            >
+              <option value="STANDARD">STANDARD (preostalo u paketu: {remainingForType('STANDARD')})</option>
+              <option value="VIP">VIP (preostalo u paketu: {remainingForType('VIP')})</option>
+            </select>
+          </label>
+          {(overQuotaNote || remainingForType(form.type as 'VIP' | 'STANDARD') <= 0) && (
+            <p className="rounded-md bg-orange-50 px-3 py-2 text-xs leading-relaxed text-orange-700">
+              Ova osoba je preko vaše kvote — ulaznica će biti <strong>na čekanju</strong>, a mi ćemo vam
+              poslati ponudu za dodatnu ulaznicu s popustom.
+            </p>
+          )}
+          {error && <p className="rounded-md bg-danger-light px-3 py-2 text-sm font-medium text-danger">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-gray-200 p-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+          >
+            Odustani
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? 'Spremam…' : 'Spremi'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function EditProfileModal({

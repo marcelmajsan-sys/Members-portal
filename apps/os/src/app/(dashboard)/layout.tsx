@@ -53,12 +53,12 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    href: '/benefits',
-    label: 'Benefiti',
+    href: '/tickets',
+    label: 'Ulaznice',
     ownerOnly: true,
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-12-.75h.008v.008H4.5v-.008ZM21 12a2.25 2.25 0 0 0-2.25 2.25v1.5A2.25 2.25 0 0 0 21 18v1.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5V18a2.25 2.25 0 0 0 2.25-2.25v-1.5A2.25 2.25 0 0 0 3 12v-1.5A1.5 1.5 0 0 1 4.5 9h15a1.5 1.5 0 0 1 1.5 1.5V12Zm-18-1.5V6A1.5 1.5 0 0 1 4.5 4.5h15A1.5 1.5 0 0 1 21 6v4.5" />
       </svg>
     ),
   },

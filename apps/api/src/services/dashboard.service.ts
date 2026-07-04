@@ -22,8 +22,8 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     monthlyRenewals,
     pendingTasks,
     unreadNotifications,
-    benefitClaimsTotal,
-    benefitClaimsThisMonth,
+    ticketsPending,
+    ticketsThisMonth,
     recentLogins,
   ] = await Promise.all([
     prisma.member.count(),
@@ -113,8 +113,9 @@ export async function getDashboardStats(userId: string, userRole?: string) {
       },
     }),
     prisma.notification.count({ where: { userId, isRead: false } }),
-    prisma.memberBenefit.count({ where: { status: 'CLAIMED' } }),
-    prisma.memberBenefit.count({ where: { status: 'CLAIMED', claimedAt: { gte: startOfMonth } } }),
+    // .catch(0): ne ruši dashboard ako ConferenceTicket tablica još nije dodana (db push)
+    prisma.conferenceTicket.count({ where: { status: 'PENDING' } }).catch(() => 0),
+    prisma.conferenceTicket.count({ where: { status: { not: 'CANCELLED' }, createdAt: { gte: startOfMonth } } }).catch(() => 0),
     prisma.member.findMany({
       where: { lastLoginAt: { not: null } },
       orderBy: { lastLoginAt: 'desc' },
@@ -146,9 +147,10 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     monthlyRenewals,
     pendingTasks,
     unreadNotifications,
+    // Ulaznice za konferenciju: total = PENDING (čekaju ponudu/odobrenje), thisMonth = dodane ovaj mjesec
     memberClaims: {
-      total: benefitClaimsTotal,
-      thisMonth: benefitClaimsThisMonth,
+      total: ticketsPending,
+      thisMonth: ticketsThisMonth,
     },
     recentLogins,
   };

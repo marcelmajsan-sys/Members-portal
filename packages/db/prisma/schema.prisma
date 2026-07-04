@@ -85,6 +85,17 @@ enum SequenceStatus {
   CANCELLED
 }
 
+enum TicketType {
+  VIP
+  STANDARD
+}
+
+enum TicketStatus {
+  CONFIRMED // unutar kvote ili odobreno od admina
+  PENDING   // preko kvote — čeka ponudu/odobrenje
+  CANCELLED
+}
+
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 model User {
@@ -197,6 +208,7 @@ model Member {
   webshopAnalyses WebshopAnalysis[]
   safeShopAnalyses SafeShopAnalysis[]
   secondaryContact SecondaryContact?
+  conferenceTickets ConferenceTicket[]
 }
 
 // Druga fizička osoba (opcionalni dodatni kontakt uz člana)
@@ -624,19 +636,46 @@ model LegalQuery {
 }
 
 model Conference {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String?
-  startDate   DateTime
-  endDate     DateTime
-  location    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(cuid())
+  name          String
+  slug          String    @unique
+  description   String?
+  startDate     DateTime
+  endDate       DateTime
+  location      String?
+  isActive      Boolean   @default(true)
+  editDeadline  DateTime? // rok za izmjene osoba za ulaznice (npr. 10.10.2026.)
+  extraDiscount Int       @default(30) // % popusta za ulaznice preko kvote
+  ticketQuotas  Json?     // { "STANDARD": { "STANDARD": 1, "PREMIUM": 2 }, "VIP": {...} } po TicketType → MemberTier/MemberType
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   sponsors ConferenceSponsor[]
   speakers ConferenceSpeaker[]
+  tickets  ConferenceTicket[]
+}
+
+// Osoba za ulaznicu na konferenciju — dodaje ju član (vlasnik) preko portala
+model ConferenceTicket {
+  id           String       @id @default(cuid())
+  conferenceId String
+  memberId     String       // vlasnik — član koji je osobu dodao
+  fullName     String
+  jobTitle     String?
+  email        String
+  phone        String
+  type         TicketType   @default(STANDARD)
+  status       TicketStatus @default(CONFIRMED)
+  token        String       @unique @default(cuid()) // za javni QR URL
+  checkedInAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id])
+  member     Member     @relation(fields: [memberId], references: [id])
+
+  @@unique([conferenceId, email])
+  @@index([memberId])
 }
 
 model ConferenceSponsor {

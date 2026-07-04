@@ -22,6 +22,17 @@ import {
 import { sendEmail } from '@ecommerce-hr/email';
 import { prisma } from '@ecommerce-hr/db';
 import { createNotification } from '../services/notification.service.js';
+import { z } from 'zod';
+import {
+  getActiveConference,
+  getTicketQuota,
+  getTicketUsage,
+  getMemberTickets,
+  isEditOpen,
+  createTicket,
+  updateTicket,
+  deleteTicket,
+} from '../services/ticket.service.js';
 
 const router = Router();
 
@@ -223,6 +234,130 @@ router.post('/webshop-analysis', async (req: AuthRequest, res) => {
   }
 
   successResponse(res, result);
+});
+
+// ─── Ulaznice za konferenciju ────────────────────────────────────────────────
+
+const ticketInputSchema = z.object({
+  fullName: z.string().trim().min(1, 'Ime i prezime je obavezno'),
+  jobTitle: z.string().trim().optional().nullable(),
+  email: z.string().trim().email('Neispravna email adresa'),
+  phone: z.string().trim().min(1, 'Broj telefona je obavezan'),
+  type: z.enum(['VIP', 'STANDARD']).default('STANDARD'),
+});
+
+async function getTicketMember(userId: string) {
+  return prisma.member.findUnique({
+    where: { userId },
+    include: { user: true, company: true },
+  });
+}
+
+function ticketErrorResponse(res: Parameters<typeof errorResponse>[0], error: string): void {
+  switch (error) {
+    case 'CONFERENCE_NOT_FOUND':
+      errorResponse(res, 'NOT_FOUND', 'Konferencija nije pronađena', 404);
+      return;
+    case 'DEADLINE_PASSED':
+      errorResponse(res, 'FORBIDDEN', 'Rok za izmjene osoba za ulaznice je prošao', 403);
+      return;
+    case 'DUPLICATE_EMAIL':
+      errorResponse(res, 'CONFLICT', 'Osoba s tom email adresom već ima ulaznicu za ovu konferenciju', 409);
+      return;
+    case 'INACTIVE':
+      errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste dodavali osobe za ulaznice', 403);
+      return;
+    default:
+      errorResponse(res, 'NOT_FOUND', 'Ulaznica nije pronađena', 404);
+  }
+}
+
+// GET /conferences/active — aktivna konferencija + kvota + rok (null ako nema aktivne)
+router.get('/conferences/active', async (req: AuthRequest, res) => {
+  const member = await getTicketMember(req.user!.userId);
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  const conference = await getActiveConference();
+  if (!conference) {
+    successResponse(res, null);
+    return;
+  }
+  const [quota, used] = await Promise.all([
+    Promise.resolve(getTicketQuota(conference, member)),
+    getTicketUsage(conference.id, member.id),
+  ]);
+  successResponse(res, {
+    conference: {
+      id: conference.id,
+      name: conference.name,
+      startDate: conference.startDate,
+      endDate: conference.endDate,
+      location: conference.location,
+      editDeadline: conference.editDeadline,
+      extraDiscount: conference.extraDiscount,
+    },
+    editable: isEditOpen(conference),
+    quota,
+    used,
+  });
+});
+
+// GET /conferences/:id/tickets — samo vlastite osobe (memberId iz tokena)
+router.get('/conferences/:id/tickets', async (req: AuthRequest, res) => {
+  const member = await getTicketMember(req.user!.userId);
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  const tickets = await getMemberTickets(req.params.id as string, member.id);
+  successResponse(res, tickets);
+});
+
+// POST /conferences/:id/tickets — dodaj osobu (kvota/rok/duplikat se provjeravaju na backendu)
+router.post('/conferences/:id/tickets', validate(ticketInputSchema), async (req: AuthRequest, res) => {
+  const member = await getTicketMember(req.user!.userId);
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  const result = await createTicket(req.params.id as string, member, req.body);
+  if ('error' in result) {
+    ticketErrorResponse(res, result.error);
+    return;
+  }
+  successResponse(res, { ticket: result.ticket, overQuota: result.overQuota }, 201);
+});
+
+// PUT /conferences/:id/tickets/:tid — uredi osobu
+router.put('/conferences/:id/tickets/:tid', validate(ticketInputSchema), async (req: AuthRequest, res) => {
+  const member = await getTicketMember(req.user!.userId);
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  const result = await updateTicket(req.params.id as string, req.params.tid as string, member.id, req.body);
+  if ('error' in result) {
+    ticketErrorResponse(res, result.error);
+    return;
+  }
+  successResponse(res, result.ticket);
+});
+
+// DELETE /conferences/:id/tickets/:tid — ukloni osobu
+router.delete('/conferences/:id/tickets/:tid', async (req: AuthRequest, res) => {
+  const member = await getTicketMember(req.user!.userId);
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
+    return;
+  }
+  const result = await deleteTicket(req.params.id as string, req.params.tid as string, member.id);
+  if ('error' in result) {
+    ticketErrorResponse(res, result.error);
+    return;
+  }
+  successResponse(res, { deleted: true });
 });
 
 // GET /benefits — benefits by member type

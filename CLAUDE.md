@@ -12,7 +12,10 @@ apps/api/src/routes/index.ts              — registracija svih ruta
 apps/api/src/routes/inbound.routes.ts     — cron endpointi (fetch-inbound, daily-renewal)
 apps/api/src/routes/auth.routes.ts        — login/register/refresh/reset; member login bilježi lastLoginAt + "Nova prijava"
 apps/api/src/routes/member.routes.ts      — member-scoped portal API (profile, emails, offers, perks, perks/:id/claim)
-apps/api/src/routes/benefit.routes.ts     — /api/os/benefits CRUD + assign + :id/members
+apps/api/src/routes/benefit.routes.ts     — /api/os/benefits CRUD + assign + :id/members (UI uklonjen, API ostao)
+apps/api/src/routes/conference.routes.ts  — /api/os/conferences CRUD + tickets pregled/potvrda/filteri + CSV export
+apps/api/src/routes/ticket.routes.ts      — javno GET /api/tickets/:token (QR) + POST /api/os/tickets/:token/checkin
+apps/api/src/services/ticket.service.ts   — kvote ulaznica, CRUD + validacije, QR (bwip-js), emailovi
 apps/api/src/routes/notification.routes.ts — list/unread-count/:id read|unread|DELETE/mark-all-read
 apps/api/src/services/notification.service.ts — createNotification + notifyStaff() (svi OWNER/OPERATOR)
 apps/api/src/services/member.service.ts   — getAllMembers, getMemberPerks/claimMemberPerk, getMemberEmails/Offers
@@ -24,11 +27,12 @@ apps/api/src/services/inbound-email.service.ts  — IMAP dohvat dolaznih odgovor
 apps/api/src/services/renewal.service.ts        — dnevna provjera obnova (podsjetnici + auto-istek)
 apps/os/src/app/login/page.tsx            — login (logo src="/admin/logo.png")
 apps/os/src/app/(dashboard)/             — sve admin stranice (Next.js App Router)
-apps/os/src/app/(dashboard)/benefits/page.tsx       — admin Benefiti (katalog, ciljanje, dodjela)
+apps/os/src/app/(dashboard)/tickets/page.tsx        — admin Ulaznice (tablica, filteri, check-in, postavke konferencije)
 apps/os/src/app/(dashboard)/notifications/page.tsx  — tabbed inbox (Nove prijave/Zatraženi benefiti/Bilješke...)
 apps/os/next.config.ts                    — basePath:'/admin', images.unoptimized
 apps/portal/                              — članski portal (Next.js, bez basePatha; root members.ecommerce.hr)
-apps/portal/src/app/page.tsx              — članska kontrolna ploča (članstvo, emailovi, obavijesti, ponude, pogodnosti)
+apps/portal/src/app/page.tsx              — članska kontrolna ploča (članstvo, emailovi, obavijesti, ponude, ulaznice)
+apps/portal/src/app/ulaznica/[token]/page.tsx — javna stranica ulaznice s QR kodom (bez prijave)
 apps/portal/vercel.json                   — rewrite /admin/* → admin projekt (multi-zones)
 packages/db/prisma/schema.prisma          — Prisma schema (svi modeli)
 packages/db/prisma/sql/rls-lockdown.sql   — RLS lockdown (idempotentno; re-run nakon nove tablice)
@@ -76,8 +80,11 @@ Aplikacija NE koristi PostgREST/anon ključ — sav pristup ide kroz Prisma kao 
 ### Članski portal (apps/portal)
 Članovi (rola `MEMBER`) se prijavljuju na **members.ecommerce.hr** i vide: članstvo (tip/tier/status/istek), podatke o članu/tvrtki, email komunikaciju (modal, sandbox iframe), obavijesti, ponude i **pogodnosti**. Zove isti API (`NEXT_PUBLIC_API_URL`). Staff (OWNER/OPERATOR) na portalu se redirecta na `/admin`. Kreiranje pristupa: admin na profilu člana → "Pošalji pristup članu" (`POST /api/os/members/:id/send-invite`, reuse reset_ token flow, link na `${MEMBER_APP_URL}/reset-password`).
 
-### Benefiti (pogodnosti)
-`Benefit` (memberTypes[] ciljanje, category, actionUrl/Label, `condition`) + `MemberBenefit` (po članu: AVAILABLE/CLAIMED). Benefit vrijedi za SVE članove ciljanih tipova (i/ili pojedinačno dodijeljene). Na portalu: samo **ACTIVE** članovi vide akciju (PREUZMI/ZATRAŽI/Prijava); neaktivni vide "Produži članstvo". `condition: "NO_CERTIFICATE"` (Safe Shop) → akcija samo članovima bez `hasCertificate`; ostali vide "Certifikat aktivan". Claim ("Prijava") → status CLAIMED + obavijest osoblju + email udruzi.
+### Benefiti (pogodnosti) — UI UKLONJEN
+Modul benefita je maknut iz UI-a (portal sekcija "Pogodnosti" + admin stranica/nav "Benefiti") i zamijenjen ulaznicama. Backend (`benefit.routes.ts`, `Benefit`/`MemberBenefit` modeli, member `/perks` endpointi) postoji i dalje, ali se nigdje ne prikazuje.
+
+### Ulaznice za konferenciju (ULAZNICE-SPEC.md)
+`ConferenceTicket` (osoba za ulaznicu; vlasnik = `memberId`) na `Conference` (+ `editDeadline`, `extraDiscount`, `ticketQuotas Json`). Kvota po članu iz `ticketQuotas[TicketType][MemberTier|MemberType]`; **default: STANDARD član → 1 STANDARD, PREMIUM član → 3 VIP**. Unutar kvote → `CONFIRMED` (email osobi s linkom na `/ulaznica/[token]` + potvrda članu); preko kvote → `PENDING` + `notifyStaff("Zatražena dodatna ulaznica")` + ponuda s `extraDiscount`% popusta (ručno). Backend validacije: vlasništvo iz JWT-a, rok (`editDeadline` → 403), duplikat emaila po konferenciji (409). Javna ulaznica: `GET /api/tickets/:token` (samo CONFIRMED, QR = URL ulaznice, rate-limited). Check-in: `POST /api/os/tickets/:token/checkin` — jednokratan, drugi sken → 409 s vremenom. Admin `/admin/tickets`: tablica + filteri (Set<string> → comma-separated), odobri PENDING, CSV export (`;`, BOM), ručni check-in (link/token), postavke konferencije s kvotama po paketu.
 
 ### Obavijesti (admin inbox)
 `Notification` je per-user. Admin `/admin/notifications` je tabbed inbox; tip se izvodi iz `title` (getNotifType): **Nove prijave** (`Nova prijava` login / `Novi član` registracija), **Zatraženi benefiti** (`Zatražen benefit`), **Novi zadatak**, **Članarine**, **Bilješke** (`Nova bilješka za člana`). Sidebar badge = unread-count. Dashboard kartice: "Zatraženi benefiti" (broj) + "Nedavne prijave članova" (zadnji login-i, `Member.lastLoginAt`).
