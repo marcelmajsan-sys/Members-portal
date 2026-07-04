@@ -115,6 +115,9 @@ function ticketWhere(conferenceId: string, query: Record<string, unknown>) {
   if (checkedIn === 'true') where.checkedInAt = { not: null };
   if (checkedIn === 'false') where.checkedInAt = null;
 
+  const memberId = query.memberId as string | undefined;
+  if (memberId) where.memberId = memberId;
+
   return where;
 }
 
@@ -169,6 +172,67 @@ router.get('/:id/tickets/export', async (req: AuthRequest, res) => {
     'Content-Disposition': 'attachment; filename="ulaznice.csv"',
   });
   res.send(csv);
+});
+
+// POST /:id/tickets — admin ručno dodaje ulaznicu članu (bez kvote; admin bira status)
+const adminCreateTicketSchema = z.object({
+  memberId: z.string().min(1),
+  fullName: z.string().trim().min(1, 'Ime i prezime je obavezno'),
+  jobTitle: z.string().trim().optional().nullable(),
+  email: z.string().trim().email('Neispravna email adresa'),
+  phone: z.string().trim().min(1, 'Broj telefona je obavezan'),
+  type: z.enum(['VIP', 'STANDARD']).default('STANDARD'),
+  status: z.enum(['CONFIRMED', 'PENDING']).default('CONFIRMED'),
+});
+
+router.post('/:id/tickets', validate(adminCreateTicketSchema), async (req: AuthRequest, res) => {
+  const conferenceId = req.params.id as string;
+  const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
+  if (!conference) {
+    errorResponse(res, 'NOT_FOUND', 'Konferencija nije pronađena', 404);
+    return;
+  }
+  const member = await prisma.member.findUnique({
+    where: { id: req.body.memberId },
+    include: { user: true, company: true },
+  });
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+
+  const email = (req.body.email as string).toLowerCase();
+  const existing = await prisma.conferenceTicket.findUnique({
+    where: { conferenceId_email: { conferenceId, email } },
+  });
+  if (existing && existing.status !== 'CANCELLED') {
+    errorResponse(res, 'CONFLICT', 'Osoba s tom email adresom već ima ulaznicu za ovu konferenciju', 409);
+    return;
+  }
+
+  const data = {
+    fullName: (req.body.fullName as string).trim(),
+    jobTitle: (req.body.jobTitle as string | null)?.trim() || null,
+    email,
+    phone: (req.body.phone as string).trim(),
+    type: req.body.type as TicketType,
+    status: req.body.status as TicketStatus,
+  };
+  // Otkazana ulaznica s istim emailom se oživljava (unique [conferenceId, email])
+  const ticket = existing
+    ? await prisma.conferenceTicket.update({ where: { id: existing.id }, data: { ...data, memberId: member.id } })
+    : await prisma.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id } });
+
+  if (ticket.status === 'CONFIRMED') {
+    try {
+      await sendTicketConfirmedEmail(conference, ticket, member);
+      await sendMemberAddedEmail(conference, ticket, member, false);
+    } catch (err) {
+      logger.error(err, 'Admin ticket creation emails failed');
+    }
+  }
+
+  successResponse(res, { ...ticket, url: ticketUrl(ticket.token) }, 201);
 });
 
 // PUT /:id/tickets/:tid — admin izmjena (potvrda PENDING → CONFIRMED, tip, podaci)
