@@ -216,10 +216,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [isLoading, isAuthenticated, router]);
+    if (isLoading) return;
+    if (!isAuthenticated) { router.replace('/login'); return; }
+    // Članovi ne smiju u admin — natrag na portal (window.location ne prefiksira basePath)
+    if (user?.role === 'MEMBER') { window.location.href = '/'; }
+  }, [isLoading, isAuthenticated, user, router]);
 
   // Broj nepročitanih obavijesti za badge u izborniku
   useEffect(() => {
@@ -245,7 +246,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [isLoading, isAuthenticated, user]);
 
-  if (isLoading || !isAuthenticated) {
+  if (isLoading || !isAuthenticated || user?.role === 'MEMBER') {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-gray-500">Učitavanje...</p>

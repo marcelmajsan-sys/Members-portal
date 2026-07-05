@@ -8,18 +8,21 @@ import { useAuth } from '@/lib/auth-context';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (članovi idu na portal, ne u admin)
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isAuthenticated) return;
+    if (user?.role === 'MEMBER') {
+      window.location.href = '/'; // portal root; window.location ne prefiksira basePath
+    } else {
       router.replace('/dashboard');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, user, router]);
 
   if (isAuthenticated) {
     return null;
@@ -32,7 +35,11 @@ export default function LoginPage() {
 
     const result = await login(email, password);
     if (result.success) {
-      router.push('/dashboard');
+      if (result.role === 'MEMBER') {
+        window.location.href = '/'; // član ide na portal, ne u admin
+      } else {
+        router.push('/dashboard');
+      }
     } else {
       setError(result.error || 'Pogreška pri prijavi');
       setLoading(false);
