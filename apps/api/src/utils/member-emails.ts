@@ -22,7 +22,7 @@ export function buildRenewalConfirmationEmail(
   member: EmailMember,
   amount: number,
   newExpiresAt: Date,
-  benefits: string[],
+  _benefits: string[],
 ): { subject: string; html: string } {
   const formattedDate = newExpiresAt.toLocaleDateString('hr-HR');
   return {

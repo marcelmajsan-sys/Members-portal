@@ -54,7 +54,8 @@ async function main() {
   const emailOwner = new Map<string, string>();
   for (const u of allUsers) emailOwner.set(u.email.toLowerCase(), u.id);
 
-  let matchedOib = 0, matchedName = 0, unmatched: string[] = [];
+  let matchedOib = 0, matchedName = 0;
+  const unmatched: string[] = [];
   let userUpdates = 0, memberUpdates = 0, companyUpdates = 0, scUpserts = 0;
   const emailConflicts: string[] = [];
   const multiMember: string[] = [];
@@ -62,7 +63,7 @@ async function main() {
   const plannedOps: (() => Promise<unknown>)[] = [];
 
   for (const r of recs) {
-    let c = (r.cOib && byOib.get(digits(r.cOib))) || byName.get(norm(r.company));
+    const c = (r.cOib && byOib.get(digits(r.cOib))) || byName.get(norm(r.company));
     if (!c) { unmatched.push(`${r.company} (OIB ${r.cOib || '—'})`); continue; }
     if (r.cOib && byOib.get(digits(r.cOib))) matchedOib++; else matchedName++;
 

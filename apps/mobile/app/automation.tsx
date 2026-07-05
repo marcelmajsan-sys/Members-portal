@@ -11,7 +11,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '@/lib/api';
 import { Colors } from '@/constants/colors';
@@ -70,7 +70,6 @@ const PRESETS: Preset[] = [
 ];
 
 export default function AutomationScreen() {
-  const router = useRouter();
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

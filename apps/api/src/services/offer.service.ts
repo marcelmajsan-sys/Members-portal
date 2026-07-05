@@ -85,7 +85,7 @@ export async function generateOfferPDF(
   },
   offerNumber: string,
   amount: number,
-  step: number,
+  _step: number,
 ): Promise<Buffer> {
   loadFonts();
 
@@ -143,7 +143,7 @@ export async function generateOfferPDF(
         height: logoH,
       });
       logoBottomY = y - logoH;
-    } catch (e) {
+    } catch {
       logger.warn('Failed to embed logo');
     }
   }
@@ -450,7 +450,7 @@ export async function getOffers(
     prisma.offer.count({ where }),
   ]);
 
-  const sanitized = offers.map(({ pdfData, ...rest }) => rest);
+  const sanitized = offers.map(({ pdfData: _pdfData, ...rest }) => rest);
   return { offers: sanitized, total, page, totalPages: Math.ceil(total / limit) };
 }
 

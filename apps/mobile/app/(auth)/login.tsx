@@ -14,6 +14,9 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { Colors } from '@/constants/colors';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const logoSource = require('../../assets/logo.png');
+
 export default function LoginScreen() {
   const router = useRouter();
   const { login } = useAuth();
@@ -45,7 +48,7 @@ export default function LoginScreen() {
     >
       <View style={styles.card}>
         <Image
-          source={require('../../assets/logo.png')}
+          source={logoSource}
           style={styles.logo}
           resizeMode="contain"
         />

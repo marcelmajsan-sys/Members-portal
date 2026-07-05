@@ -15,7 +15,6 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '@/lib/api';
 import { Colors } from '@/constants/colors';
-import { useAuth } from '@/lib/auth-context';
 
 interface TaskComment {
   id: string;
@@ -79,7 +78,6 @@ function getInitials(firstName: string, lastName: string) {
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
 
   const [task, setTask] = useState<Task | null>(null);

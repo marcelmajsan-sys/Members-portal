@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
       orderBy: { date: 'asc' },
     });
     successResponse(res, events);
-  } catch (err) {
+  } catch {
     errorResponse(res, 'FETCH_FAILED', 'Greška pri dohvaćanju događaja', 500);
   }
 });

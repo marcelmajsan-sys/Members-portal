@@ -1,5 +1,5 @@
 import { prisma } from '@ecommerce-hr/db';
-import type { MemberType, MemberTier } from '@ecommerce-hr/db';
+import type { MemberType } from '@ecommerce-hr/db';
 import { sendEmail } from '@ecommerce-hr/email';
 import { logger } from '../utils/logger.js';
 import {
@@ -289,7 +289,6 @@ async function resolveAndSendEmail(
     company: member.company ? { name: member.company.name } : undefined,
   };
   const memberType = member.memberType as MemberType;
-  const memberTier = member.memberTier as MemberTier;
   const to = member.user.email;
 
   let html: string;

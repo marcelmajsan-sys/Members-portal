@@ -13,6 +13,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', '.next/', '.turbo/', '**/*.config.js', '**/*.config.ts', '**/*.config.mjs'],
+    ignores: ['dist/', 'node_modules/', '.next/', '.turbo/', '**/*.config.js', '**/*.config.ts', '**/*.config.mjs', '**/*.bundled.mjs'],
   },
 );

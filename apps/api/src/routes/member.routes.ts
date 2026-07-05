@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { updateMemberSchema, paginationSchema } from '@ecommerce-hr/shared';
+import { paginationSchema } from '@ecommerce-hr/shared';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { validate, validateQuery } from '../middleware/validate.js';
 import { successResponse, errorResponse, paginatedResponse } from '../utils/api-response.js';
@@ -211,7 +211,7 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
           actionUrl: `/members/${member.id}`,
         }),
       ));
-    } catch (err) {
+    } catch {
       // non-fatal
     }
 
@@ -228,7 +228,7 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
         templateName: 'benefit-claim',
         memberId: member.id,
       });
-    } catch (err) {
+    } catch {
       // non-fatal
     }
   }

@@ -6,6 +6,9 @@ import { useAuth } from '@/lib/auth-context';
 import { Colors } from '@/constants/colors';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { useUnreadCount } from '@/hooks/use-unread-count';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const iconSource = require('../../assets/icon.png');
 import { registerForPushNotifications } from '@/lib/push-notifications';
 
 export default function AppLayout() {
@@ -56,7 +59,7 @@ export default function AppLayout() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' }}>
                 <Image
-                  source={require('../../assets/icon.png')}
+                  source={iconSource}
                   style={{ width: 22, height: 22 }}
                   resizeMode="contain"
                 />

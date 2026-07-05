@@ -512,7 +512,7 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
       templateName: 'member-invite',
       memberId: member.id,
     });
-  } catch (err) {
+  } catch {
     errorResponse(res, 'EMAIL_FAILED', 'Slanje emaila nije uspjelo', 500);
     return;
   }
@@ -1021,7 +1021,6 @@ import {
   getOfferPDF,
   getMemberOffers,
   getMemberLastStep,
-  updateOfferStatusByMember,
 } from '../services/offer.service.js';
 
 // POST /members/:id/send-offer — Send structured offer (1st or 2nd notice) with PDF predračun
@@ -1053,7 +1052,6 @@ router.post('/members/:id/send-offer', validateParams(idParamSchema), async (req
 
     // Build email content
     const tierPrice = getMembershipPrice(memberType, memberTier) ?? 0;
-    const benefits = getMembershipBenefits(memberType, memberTier);
 
     const isFirstNotice = nextStep === 1;
     const subject = isFirstNotice
@@ -1063,9 +1061,6 @@ router.post('/members/:id/send-offer', validateParams(idParamSchema), async (req
     const formatCurrency = (n: number) =>
       new Intl.NumberFormat('hr-HR', { style: 'currency', currency: 'EUR' }).format(n);
 
-    const benefitsHtml = benefits.length > 0
-      ? `<ul style="margin:12px 0;padding-left:20px;">${benefits.map(b => `<li style="margin:4px 0;font-size:14px;">${b}</li>`).join('')}</ul>`
-      : '';
 
     const urgencyBlock = !isFirstNotice
       ? `<div style="background:#FEF2F2;border-left:4px solid #DC2626;padding:16px;border-radius:4px;margin:20px 0;">

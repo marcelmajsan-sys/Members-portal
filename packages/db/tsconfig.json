@@ -4,5 +4,12 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/import-members.ts",
+    "src/import-second-members.ts",
+    "src/send-update-email.ts",
+    "src/send-update-email-0327.ts",
+    "src/send-update-email-0407.ts"
+  ]
 }
