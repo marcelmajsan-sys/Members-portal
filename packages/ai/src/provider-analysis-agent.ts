@@ -186,6 +186,10 @@ Tvrtka: ${companyName}
 URL: ${websiteUrl}${pagespeedBlock(pagespeed)}${signalsBlock(signals)}${pageBlock(pages)}`,
     { maxTokens: 16000 },
   );
+  // Normalizacija: model povremeno izostavi "max" na kriterijima → default 10
+  for (const cat of result.categories ?? []) {
+    if (cat.criteria) for (const c of cat.criteria) c.max = c.max ?? 10;
+  }
   result.coreWebVitals = null;
   return result;
 }
