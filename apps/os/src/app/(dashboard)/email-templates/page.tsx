@@ -15,11 +15,21 @@ interface Template {
   ctaUrl: string | null;
   isActive: boolean;
   isDefault: boolean;
+  isSystem: boolean;
+}
+
+// Primjeri vrijednosti za pregled — pri stvarnom slanju API zamjenjuje oznake podacima člana
+function applySampleVars(text: string): string {
+  return text
+    .replace(/\{\{\s*datum_isteka\s*\}\}/g, '31. 12. 2026.')
+    .replace(/\{\{\s*ime\s*\}\}/g, 'Ime')
+    .replace(/\{\{\s*prezime\s*\}\}/g, 'Člana')
+    .replace(/\{\{\s*tvrtka\s*\}\}/g, 'Tvrtka d.o.o.');
 }
 
 function buildPreviewHtml(tpl: Template): string {
   const bodyParagraphs = tpl.body
-    ? tpl.body.split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ')
+    ? applySampleVars(tpl.body).split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ')
     : '<p style="color:#999;">(prazan tekst)</p>';
 
   const ctaHtml = tpl.ctaLabel
@@ -130,6 +140,21 @@ export default function EmailTemplatesPage() {
     fetchTemplates();
   }
 
+  // Trajno brisanje vlastitog (ne-sistemskog) predloška — ista ruta, drugačija semantika:
+  // sistemski slug se nakon brisanja vraća na zadani tekst, prilagođeni nestaje potpuno.
+  async function handleDelete(tpl: Template) {
+    if (!confirm(`Trajno obrisati predložak "${tpl.name}"? Automatizacije koje ga koriste prestat će slati emailove.`)) return;
+    const res = await api.del(`/api/os/email-templates/${tpl.slug}`);
+    if (!res.success) {
+      setError(res.error?.message || 'Brisanje nije uspjelo');
+      return;
+    }
+    setSuccess('Predložak obrisan.');
+    setTimeout(() => setSuccess(''), 3000);
+    setEditing(null);
+    fetchTemplates();
+  }
+
   if (user?.role !== 'OWNER') {
     return null;
   }
@@ -163,6 +188,7 @@ export default function EmailTemplatesPage() {
                 ctaUrl: null,
                 isActive: true,
                 isDefault: false,
+                isSystem: false,
               });
             }}
             className="self-start rounded-lg bg-[#1B365D] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#152a4a] sm:self-auto"
@@ -198,8 +224,10 @@ export default function EmailTemplatesPage() {
                     <h3 className="font-semibold text-gray-900">{tpl.name}</h3>
                     {tpl.isDefault ? (
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">Zadano</span>
-                    ) : (
+                    ) : tpl.isSystem ? (
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">Prilagođeno</span>
+                    ) : (
+                      <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-600">Vlastiti</span>
                     )}
                     {tpl.isActive ? (
                       <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Aktivan</span>
@@ -224,12 +252,20 @@ export default function EmailTemplatesPage() {
                   >
                     Uredi
                   </button>
-                  {!tpl.isDefault && (
+                  {!tpl.isDefault && tpl.isSystem && (
                     <button
                       onClick={() => handleRevert(tpl.slug)}
                       className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
                     >
                       Vrati zadano
+                    </button>
+                  )}
+                  {!tpl.isSystem && (
+                    <button
+                      onClick={() => handleDelete(tpl)}
+                      className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Obriši
                     </button>
                   )}
                 </div>
@@ -273,7 +309,13 @@ export default function EmailTemplatesPage() {
 
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Tekst poruke</label>
-              <p className="mb-2 text-xs text-gray-400">Unesite tekst emaila. Ime člana se automatski dodaje na početku.</p>
+              <p className="mb-2 text-xs text-gray-400">
+                Unesite tekst emaila. Ime člana se automatski dodaje na početku. Dostupne oznake (zamjenjuju se
+                podacima člana pri slanju): <code className="rounded bg-gray-100 px-1">{'{{datum_isteka}}'}</code>{' '}
+                <code className="rounded bg-gray-100 px-1">{'{{ime}}'}</code>{' '}
+                <code className="rounded bg-gray-100 px-1">{'{{prezime}}'}</code>{' '}
+                <code className="rounded bg-gray-100 px-1">{'{{tvrtka}}'}</code>
+              </p>
               <textarea
                 rows={6}
                 value={editing.body}

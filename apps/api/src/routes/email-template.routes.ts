@@ -27,7 +27,10 @@ router.get('/', async (_req, res) => {
     logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Could not fetch email templates from DB — showing defaults only');
   }
 
-  // Merge: DB templates override defaults by slug
+  // Merge: DB templates override defaults by slug.
+  // isSystem = slug postoji u DEFAULT_TEMPLATES (brisanje DB retka ga vraća na zadano);
+  // !isSystem = potpuno prilagođen predložak (brisanje ga trajno uklanja).
+  const defaultSlugs = new Set(DEFAULT_TEMPLATES.map((d) => d.slug));
   const dbSlugs = new Set(dbTemplates.map((t) => t.slug));
   const defaults = DEFAULT_TEMPLATES
     .filter((d) => !dbSlugs.has(d.slug))
@@ -41,6 +44,7 @@ router.get('/', async (_req, res) => {
       ctaUrl: d.ctaUrl || null,
       isActive: true,
       isDefault: true,
+      isSystem: true,
       createdAt: null as string | null,
       updatedAt: null as string | null,
     }));
@@ -56,6 +60,7 @@ router.get('/', async (_req, res) => {
       ctaUrl: t.ctaUrl,
       isActive: t.isActive,
       isDefault: false,
+      isSystem: defaultSlugs.has(t.slug),
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
     })),

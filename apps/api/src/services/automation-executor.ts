@@ -184,6 +184,24 @@ export async function checkEmailCooldown(
   return lastEmail?.sentAt ?? null;
 }
 
+// Placeholderi u predlošcima ({{datum_isteka}}, {{ime}}, {{prezime}}, {{tvrtka}}) —
+// zamjenjuju se stvarnim podacima člana pri slanju (subject i body, DB i default predlošci)
+function applyTemplateVars(
+  text: string,
+  member: {
+    expiresAt: Date | null;
+    user: { firstName: string; lastName: string | null };
+    company: { name: string } | null;
+  },
+): string {
+  const expiry = member.expiresAt ? new Date(member.expiresAt).toLocaleDateString('hr-HR') : 'uskoro';
+  return text
+    .replace(/\{\{\s*datum_isteka\s*\}\}/g, expiry)
+    .replace(/\{\{\s*ime\s*\}\}/g, member.user.firstName)
+    .replace(/\{\{\s*prezime\s*\}\}/g, member.user.lastName ?? '')
+    .replace(/\{\{\s*tvrtka\s*\}\}/g, member.company?.name ?? '');
+}
+
 async function resolveAndSendEmail(
   template: string,
   subject: string,
@@ -229,7 +247,8 @@ async function resolveAndSendEmail(
   // Try DB-first resolution — if Marcel edited the template, use his version
   const dbTpl = await resolveTemplate(template);
   if (dbTpl) {
-    const bodyParagraphs = dbTpl.body.split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ');
+    const bodyText = applyTemplateVars(dbTpl.body, member);
+    const bodyParagraphs = bodyText.split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ');
     const ctaHtml = dbTpl.ctaLabel && dbTpl.ctaUrl
       ? `<div style="text-align:center;margin:32px 0;">
           <a href="${dbTpl.ctaUrl}" style="background:#E8A838;color:#1B365D;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">${dbTpl.ctaLabel}</a>
@@ -252,7 +271,7 @@ async function resolveAndSendEmail(
     <p style="margin:0;color:rgba(255,255,255,0.6);font-size:11px;">Republike Austrije 9, Zagreb · udruga@ecommerce.hr · +385 99 2025707</p>
   </div>
 </body></html>`;
-    finalSubject = subject || dbTpl.subject;
+    finalSubject = applyTemplateVars(subject || dbTpl.subject, member);
     await sendEmail(to, finalSubject, html, { memberId, templateName: template });
     return;
   }
@@ -269,7 +288,8 @@ async function resolveAndSendEmail(
         logger.warn({ template }, 'No default template for renewal reminder — skipping');
         return;
       }
-      const bodyParagraphs = def.body.split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ');
+      const bodyParagraphs = applyTemplateVars(def.body, member)
+        .split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ');
       html = `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   <div style="background:#1B365D;padding:20px 24px;text-align:center;">
@@ -286,7 +306,7 @@ async function resolveAndSendEmail(
     <p style="margin:0;color:rgba(255,255,255,0.6);font-size:11px;">Republike Austrije 9, Zagreb · udruga@ecommerce.hr · +385 99 2025707</p>
   </div>
 </body></html>`;
-      finalSubject = subject || def.subject;
+      finalSubject = applyTemplateVars(subject || def.subject, member);
       break;
     }
 
