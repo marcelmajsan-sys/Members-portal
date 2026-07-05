@@ -130,7 +130,9 @@ Odgovori ISKLJUČIVO JSON-om ovog oblika (bez markdowna, bez code fence-ova):
       "criteria": [{ "label": "Social — Facebook", "score": number, "max": 10, "note": "string" }] }
   ]
 }
-Vrati sve 3 kategorije, istim redoslijedom, sa SVIM navedenim stavkama.`;
+Vrati sve 3 kategorije, istim redoslijedom, sa SVIM navedenim stavkama.
+VAŽNO ZA JSON: unutar string vrijednosti NIKAD ne koristi neescapane dvostruke navodnike — kada
+citiraš poruke s weba, koristi jednostruke navodnike ('...') ili „hrvatske navodnike“.`;
 
 function pageBlock(pages: AnalysisPage[]): string {
   const usable = pages

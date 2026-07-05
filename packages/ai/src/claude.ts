@@ -36,12 +36,27 @@ export async function askJson<T>(
   userMessage: string,
   options?: { maxTokens?: number; temperature?: number },
 ): Promise<T> {
-  const text = await ask(
-    systemPrompt + '\n\nAlways respond with valid JSON only. No markdown, no code fences.',
-    userMessage,
-    options,
-  );
+  const fullSystem =
+    systemPrompt +
+    '\n\nAlways respond with valid JSON only. No markdown, no code fences.' +
+    ' Inside JSON string values NEVER use unescaped double quotes — when quoting text, use single quotes (\') or „croatian quotes“.';
 
-  const cleaned = text.replace(/```json?\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned) as T;
+  const parseAttempt = (text: string): T => {
+    const cleaned = text.replace(/```json?\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned) as T;
+  };
+
+  const text = await ask(fullSystem, userMessage, options);
+  try {
+    return parseAttempt(text);
+  } catch (firstError) {
+    // Model povremeno vrati pokvaren JSON (npr. neescapani navodnici u citatima) —
+    // jedan retry cijelog zahtjeva u pravilu rješava (odgovori su nedeterministički).
+    try {
+      const retryText = await ask(fullSystem, userMessage, options);
+      return parseAttempt(retryText);
+    } catch {
+      throw firstError;
+    }
+  }
 }
