@@ -24,12 +24,15 @@ export const defaultLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: 20,
+  // Uspješne prijave se ne broje — limiter štiti od pogađanja lozinki, ne od normalnog korištenja
+  // (login/logout između člana i admina zna potrošiti kvotu pri testiranju).
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
-    error: { code: 'RATE_LIMIT', message: 'Too many authentication attempts, please try again later' },
+    error: { code: 'RATE_LIMIT', message: 'Previše pokušaja prijave. Pokušajte ponovno za 15 minuta.' },
   },
   // store: redisStore,
 });
