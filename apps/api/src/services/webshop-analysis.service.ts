@@ -332,11 +332,24 @@ export async function requestWebshopAnalysis(userId: string) {
     });
   }
 
-  // Godišnji limit: najviše ANALYSES_PER_YEAR uspješnih analiza u zadnjih 365 dana.
+  const limit = analysesLimitFor(member.user?.email, member.memberTier);
+
+  // Dnevni cap na broj POKRENUTIH analiza (bilo koji status) u zadnjih 24h.
+  // Godišnja kvota broji samo COMPLETED, pa bi bez ovoga kompromitirani račun mogao
+  // beskonačno ponavljati NEuspjele analize (svaka i dalje troši Opus poziv) i nikad
+  // dosegnuti godišnji limit. Cap je iznad legitimne potrebe (nitko ne radi >par/dan).
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const dailyCap = Math.max(limit, 6);
+  const startedToday = await prisma.webshopAnalysis.count({
+    where: { memberId: member.id, createdAt: { gte: new Date(Date.now() - DAY_MS) } },
+  });
+  if (startedToday >= dailyCap) return { error: 'LIMIT_REACHED' } as RequestError;
+
+  // Godišnji limit: najviše `limit` USPJEŠNIH analiza u zadnjih 365 dana.
   const usedThisYear = await prisma.webshopAnalysis.count({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
   });
-  if (usedThisYear >= analysesLimitFor(member.user?.email, member.memberTier)) return { error: 'LIMIT_REACHED' } as RequestError;
+  if (usedThisYear >= limit) return { error: 'LIMIT_REACHED' } as RequestError;
 
   const websiteUrl = normalizeUrl(website);
 
