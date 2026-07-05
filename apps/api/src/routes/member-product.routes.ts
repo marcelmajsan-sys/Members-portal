@@ -26,7 +26,7 @@ async function getMemberId(req: AuthRequest): Promise<string | null> {
 router.post('/', async (req: AuthRequest, res) => {
   try {
     const memberId = await getMemberId(req);
-    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Member not found', 404); return; }
+    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404); return; }
 
     const { name, price, currency, category, productUrl } = req.body;
     if (!name || price === undefined) {
@@ -45,7 +45,7 @@ router.post('/', async (req: AuthRequest, res) => {
 // GET / — list products
 router.get('/', validateQuery(paginationSchema), async (req: AuthRequest, res) => {
   const memberId = await getMemberId(req);
-  if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Member not found', 404); return; }
+  if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404); return; }
 
   const { page, limit } = res.locals.query as { page: number; limit: number };
   const { products, total } = await getMemberProducts(memberId, page, limit);
@@ -56,7 +56,7 @@ router.get('/', validateQuery(paginationSchema), async (req: AuthRequest, res) =
 router.put('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   try {
     const memberId = await getMemberId(req);
-    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Member not found', 404); return; }
+    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404); return; }
 
     const product = await updateMemberProduct(req.params.id as string, memberId, req.body);
     successResponse(res, product);
@@ -70,7 +70,7 @@ router.put('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) 
 router.delete('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   try {
     const memberId = await getMemberId(req);
-    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Member not found', 404); return; }
+    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404); return; }
 
     await deleteMemberProduct(req.params.id as string, memberId);
     successResponse(res, { message: 'Product deactivated' });
@@ -84,7 +84,7 @@ router.delete('/:id', validateParams(idParamSchema), async (req: AuthRequest, re
 router.get('/comparison', async (req: AuthRequest, res) => {
   try {
     const memberId = await getMemberId(req);
-    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Member not found', 404); return; }
+    if (!memberId) { errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404); return; }
 
     const comparison = await getProductComparison(memberId);
     successResponse(res, comparison);

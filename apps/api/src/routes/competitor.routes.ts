@@ -33,7 +33,7 @@ router.use(authenticate);
 // POST / — create competitor (OWNER/OPERATOR)
 router.post(
   '/',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   validate(createCompetitorSchema),
   async (req: AuthRequest, res) => {
     const competitor = await createCompetitor(req.body);
@@ -66,7 +66,7 @@ router.get('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) 
 // PUT /:id — update competitor (OWNER/OPERATOR)
 router.put(
   '/:id',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   validateParams(idParamSchema),
   validate(updateCompetitorSchema),
   async (req: AuthRequest, res) => {
@@ -78,7 +78,7 @@ router.put(
 // DELETE /:id — soft delete (OWNER/OPERATOR)
 router.delete(
   '/:id',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   validateParams(idParamSchema),
   async (req: AuthRequest, res) => {
     await deleteCompetitor(req.params.id as string);
@@ -89,7 +89,7 @@ router.delete(
 // POST /:id/scan — AI scan (OWNER/OPERATOR)
 router.post(
   '/:id/scan',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   validateParams(idParamSchema),
   async (req: AuthRequest, res) => {
     try {
@@ -117,7 +117,7 @@ router.get(
 // POST /:id/schedules — create/enable auto-scan schedule
 router.post(
   '/:id/schedules',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   validateParams(idParamSchema),
   async (req: AuthRequest, res) => {
     try {
@@ -144,7 +144,7 @@ router.get('/:id/schedules', validateParams(idParamSchema), async (req: AuthRequ
 // DELETE /schedules/:id — disable schedule
 router.delete(
   '/schedules/:id',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   validateParams(idParamSchema),
   async (req: AuthRequest, res) => {
     try {
@@ -160,7 +160,7 @@ router.delete(
 // POST /auto-scan — run all stale scan schedules (lazy approach)
 router.post(
   '/auto-scan',
-  requireRole('OWNER', 'OPERATOR', 'MEMBER'),
+  requireRole('OWNER', 'OPERATOR'),
   async (_req: AuthRequest, res) => {
     try {
       const result = await runStaleScanSchedules();

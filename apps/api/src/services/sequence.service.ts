@@ -4,8 +4,11 @@ import type { CreateSequenceInput, UpdateSequenceInput } from '@ecommerce-hr/sha
 export async function getSequences(page: number, limit: number) {
   const skip = (page - 1) * limit;
 
+  // CANCELLED = "obrisane" automatizacije — ne vraćaju se u listu (UI ih briše preko statusa)
+  const where = { status: { not: 'CANCELLED' as const } };
   const [sequences, total] = await Promise.all([
     prisma.sequence.findMany({
+      where,
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
@@ -13,7 +16,7 @@ export async function getSequences(page: number, limit: number) {
         _count: { select: { logs: true } },
       },
     }),
-    prisma.sequence.count(),
+    prisma.sequence.count({ where }),
   ]);
 
   return { sequences, total };

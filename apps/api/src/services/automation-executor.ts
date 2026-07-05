@@ -9,7 +9,7 @@ import {
   buildEventInvitationEmail,
 } from '../utils/member-emails.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
-import { resolveTemplate } from '../utils/resolve-template.js';
+import { resolveTemplate, DEFAULT_TEMPLATES } from '../utils/resolve-template.js';
 
 const COOLDOWN_DAYS = 7;
 
@@ -261,8 +261,33 @@ async function resolveAndSendEmail(
     case 'renewal_reminder':
     case 'renewal_urgent':
     case 'renewal_final': {
-      logger.info({ template }, 'Skipping renewal reminder — handled manually via send-offer with PDF');
-      return;
+      // Bez DB predloška šaljemo default tekst — UI ove automatizacije prikazuje kao aktivne,
+      // pa tiho preskakanje znači da "podsjetnik 14/7 dana" nikad ne ode. Predračun s PDF-om
+      // i dalje ide ručno preko send-offer; ovo je samo tekstualni podsjetnik.
+      const def = DEFAULT_TEMPLATES.find((t) => t.slug === template);
+      if (!def) {
+        logger.warn({ template }, 'No default template for renewal reminder — skipping');
+        return;
+      }
+      const bodyParagraphs = def.body.split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ');
+      html = `<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
+  <div style="background:#1B365D;padding:20px 24px;text-align:center;">
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;" />
+  </div>
+  <div style="padding:24px;">
+    <p>Poštovani <strong>${member.user.firstName}</strong>,</p>
+    ${bodyParagraphs}
+    <p>Za sva pitanja kontaktirajte nas na <a href="mailto:udruga@ecommerce.hr" style="color:#E8A838;">udruga@ecommerce.hr</a> ili +385 99 2025707.</p>
+    <p>Srdačan pozdrav,<br/><strong>Tim eCommerce Hrvatska</strong></p>
+  </div>
+  <div style="background:#1B365D;padding:20px 24px;text-align:center;">
+    <p style="margin:0 0 6px;color:#E8A838;font-size:12px;font-weight:bold;">eCommerce Hrvatska</p>
+    <p style="margin:0;color:rgba(255,255,255,0.6);font-size:11px;">Republike Austrije 9, Zagreb · udruga@ecommerce.hr · +385 99 2025707</p>
+  </div>
+</body></html>`;
+      finalSubject = subject || def.subject;
+      break;
     }
 
     case 'welcome': {
@@ -318,7 +343,7 @@ async function resolveAndSendEmail(
     <p>Poštovani <strong>${member.user.firstName}</strong>,</p>
     <p>${subject}</p>
     <div style="text-align:center;margin:32px 0;">
-      <a href="https://ecommerce-hr-os.vercel.app/dashboard" style="background:#E8A838;color:#1B365D;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Otvori Dashboard</a>
+      <a href="https://members.ecommerce.hr/" style="background:#E8A838;color:#1B365D;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Otvori članski portal</a>
     </div>
     <p>Srdačan pozdrav,<br/><strong>Tim eCommerce Hrvatska</strong></p>
   </div>

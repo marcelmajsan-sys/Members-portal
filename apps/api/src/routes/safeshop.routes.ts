@@ -31,7 +31,7 @@ router.post(
   async (req: AuthRequest, res) => {
     const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
     if (!member) {
-      errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+      errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
       return;
     }
     const certification = await submitCertification(member.id, req.body);
@@ -53,7 +53,7 @@ router.get(
     } else {
       const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
       if (!member) {
-        errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+        errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
         return;
       }
       const certs = await getMemberCertifications(member.id);
@@ -62,7 +62,7 @@ router.get(
   },
 );
 
-// GET /certifications/:id — get single certification
+// GET /certifications/:id — get single certification (MEMBER smije vidjeti samo svoje)
 router.get(
   '/certifications/:id',
   validateParams(idParamSchema),
@@ -71,6 +71,14 @@ router.get(
     if (!cert) {
       errorResponse(res, 'NOT_FOUND', 'Certification not found', 404);
       return;
+    }
+    const role = req.user!.role;
+    if (role !== 'OWNER' && role !== 'OPERATOR') {
+      const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
+      if (!member || cert.memberId !== member.id) {
+        errorResponse(res, 'NOT_FOUND', 'Certification not found', 404);
+        return;
+      }
     }
     successResponse(res, cert);
   },

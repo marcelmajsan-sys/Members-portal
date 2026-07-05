@@ -33,38 +33,49 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res)
 
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
-    errorResponse(res, 'CONFLICT', 'A user with this email already exists', 409);
+    errorResponse(res, 'CONFLICT', 'Korisnik s ovim emailom već postoji', 409);
+    return;
+  }
+
+  const existingCompany = await prisma.company.findUnique({ where: { oib } });
+  if (existingCompany) {
+    errorResponse(res, 'CONFLICT', 'Tvrtka s ovim OIB-om već postoji', 409);
     return;
   }
 
   const passwordHash = await hashPassword(password);
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      firstName,
-      lastName,
-      role: 'MEMBER',
-    },
-  });
+  // Transakcija — bez nje mid-flow greška ostavlja "orphan" usera koji trajno blokira email
+  const { user, member } = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        role: 'MEMBER',
+      },
+    });
 
-  const company = await prisma.company.create({
-    data: {
-      name: companyName,
-      oib,
-      address: '',
-      city: '',
-      zip: '',
-    },
-  });
+    const company = await tx.company.create({
+      data: {
+        name: companyName,
+        oib,
+        address: '',
+        city: '',
+        zip: '',
+      },
+    });
 
-  const member = await prisma.member.create({
-    data: {
-      userId: user.id,
-      companyId: company.id,
-      memberType,
-    },
+    const member = await tx.member.create({
+      data: {
+        userId: user.id,
+        companyId: company.id,
+        memberType,
+      },
+    });
+
+    return { user, member };
   });
 
   const accessToken = generateAccessToken(user);
@@ -77,13 +88,17 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res)
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 
-  // Emit member registered event (fire-and-forget)
-  emitEvent(DomainEvents.MEMBER_REGISTERED, {
-    userId: user.id,
-    memberId: member.id,
-    email: user.email,
-    firstName: user.firstName,
-  }).catch((err) => logger.error(err, 'Failed to emit MEMBER_REGISTERED event'));
+  // Emit member registered event — await prije odgovora (serverless freeze), greška ne ruši registraciju
+  try {
+    await emitEvent(DomainEvents.MEMBER_REGISTERED, {
+      userId: user.id,
+      memberId: member.id,
+      email: user.email,
+      firstName: user.firstName,
+    });
+  } catch (err) {
+    logger.error(err, 'Failed to emit MEMBER_REGISTERED event');
+  }
 
   // Inbox: notify staff about the new member self-registration (await — serverless freeze)
   try {
@@ -123,18 +138,18 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
-    errorResponse(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
+    errorResponse(res, 'INVALID_CREDENTIALS', 'Neispravan email ili lozinka', 401);
     return;
   }
 
   if (!user.isActive) {
-    errorResponse(res, 'ACCOUNT_DISABLED', 'Account is disabled', 403);
+    errorResponse(res, 'ACCOUNT_DISABLED', 'Račun je deaktiviran', 403);
     return;
   }
 
   const isValid = await comparePassword(password, user.passwordHash);
   if (!isValid) {
-    errorResponse(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
+    errorResponse(res, 'INVALID_CREDENTIALS', 'Neispravan email ili lozinka', 401);
     return;
   }
 
@@ -250,11 +265,12 @@ router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), asy
 
   // Determine reset URL based on user role
   const baseUrl = user.role === 'MEMBER'
-    ? (process.env.MEMBER_APP_URL ?? 'https://member.ecommerce.hr')
+    ? (process.env.MEMBER_APP_URL ?? 'https://members.ecommerce.hr')
     : (process.env.OS_APP_URL ?? 'https://members.ecommerce.hr/admin');
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
-  logger.info({ resetToken, email }, 'Password reset token generated');
+  // Token se NE logira — log je ekvivalentan sesiji
+  logger.info({ email }, 'Password reset token generated');
 
   // Send password reset email
   try {
@@ -278,7 +294,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     if (stored) {
       await prisma.refreshToken.delete({ where: { id: stored.id } });
     }
-    errorResponse(res, 'INVALID_TOKEN', 'Invalid or expired reset token', 400);
+    errorResponse(res, 'INVALID_TOKEN', 'Link je nevažeći ili je istekao', 400);
     return;
   }
 
@@ -289,7 +305,8 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     data: { passwordHash },
   });
 
-  await prisma.refreshToken.delete({ where: { id: stored.id } });
+  // Poništi SVE tokene korisnika (uklj. iskorišteni reset) — stare sesije ne smiju preživjeti reset lozinke
+  await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } });
 
   successResponse(res, { message: 'Password reset successfully' });
 });
@@ -308,7 +325,7 @@ router.post('/change-password', authenticate, async (req: any, res) => {
     return;
   }
 
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
   if (!user) {
     errorResponse(res, 'NOT_FOUND', 'User not found', 404);
     return;

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { prisma } from '@ecommerce-hr/db';
 import type { Conference, ConferenceTicket, Member, TicketType, User, Company } from '@ecommerce-hr/db';
 import bwipjs from 'bwip-js';
@@ -39,8 +40,12 @@ export function getTicketQuota(conference: Conference, member: Member): Record<T
 }
 
 // Iskorištenost kvote — broje se sve ne-otkazane ulaznice člana po tipu
-export async function getTicketUsage(conferenceId: string, memberId: string): Promise<Record<TicketType, number>> {
-  const grouped = await prisma.conferenceTicket.groupBy({
+export async function getTicketUsage(
+  conferenceId: string,
+  memberId: string,
+  client: Pick<typeof prisma, 'conferenceTicket'> = prisma,
+): Promise<Record<TicketType, number>> {
+  const grouped = await client.conferenceTicket.groupBy({
     by: ['type'],
     where: { conferenceId, memberId, status: { not: 'CANCELLED' } },
     _count: { _all: true },
@@ -60,7 +65,11 @@ export async function getActiveConference(): Promise<Conference | null> {
 }
 
 export function isEditOpen(conference: Conference): boolean {
-  return !conference.editDeadline || new Date() <= conference.editDeadline;
+  if (!conference.editDeadline) return true;
+  // Deadline se sprema kao datum (ponoć UTC) — rok vrijedi DO KRAJA tog dana,
+  // inače bi "do 13.10." u praksi značilo da 13.10. više ništa ne prolazi.
+  const deadlineEnd = new Date(conference.editDeadline.getTime() + 24 * 60 * 60 * 1000);
+  return new Date() < deadlineEnd;
 }
 
 export async function getMemberTickets(conferenceId: string, memberId: string): Promise<ConferenceTicket[]> {
@@ -85,6 +94,7 @@ export type TicketError =
   | { error: 'DEADLINE_PASSED' }
   | { error: 'DUPLICATE_EMAIL' }
   | { error: 'TICKET_NOT_FOUND' }
+  | { error: 'CHECKED_IN' }
   | { error: 'INACTIVE' };
 
 // Dodavanje osobe: unutar kvote → CONFIRMED, preko kvote → PENDING.
@@ -111,22 +121,42 @@ export async function createTicket(
   }
 
   const quota = getTicketQuota(conference, member);
-  const usage = await getTicketUsage(conferenceId, member.id);
-  const overQuota = usage[input.type] >= quota[input.type];
-  const status = overQuota ? 'PENDING' : 'CONFIRMED';
 
-  const data = {
-    fullName: input.fullName.trim(),
-    jobTitle: input.jobTitle?.trim() || null,
-    email,
-    phone: input.phone.trim(),
-    type: input.type,
-    status,
-  } as const;
+  // Provjera kvote i upis u ISTOJ serializable transakciji — dva paralelna zahtjeva
+  // (dupli klik, skripta) inače oba prođu ispod kvote i preskoče PENDING/ponuda flow.
+  const runCreate = () =>
+    prisma.$transaction(
+      async (tx) => {
+        const usage = await getTicketUsage(conferenceId, member.id, tx);
+        const overQuota = usage[input.type] >= quota[input.type];
+        const status = overQuota ? 'PENDING' : 'CONFIRMED';
 
-  const ticket = existing
-    ? await prisma.conferenceTicket.update({ where: { id: existing.id }, data })
-    : await prisma.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id } });
+        const data = {
+          fullName: input.fullName.trim(),
+          jobTitle: input.jobTitle?.trim() || null,
+          email,
+          phone: input.phone.trim(),
+          type: input.type,
+          status,
+        } as const;
+
+        // Token generiramo kriptografski (cuid default je djelomično predvidljiv, a token je javni URL)
+        const ticket = existing
+          ? await tx.conferenceTicket.update({ where: { id: existing.id }, data })
+          : await tx.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id, token: crypto.randomUUID() } });
+        return { ticket, overQuota, status };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+
+  let created: Awaited<ReturnType<typeof runCreate>>;
+  try {
+    created = await runCreate();
+  } catch {
+    // Serializacijski konflikt (paralelni upis) — jedan retry
+    created = await runCreate();
+  }
+  const { ticket, overQuota, status } = created;
 
   // Emailovi + obavijest osoblju — await prije odgovora (serverless), ali ne ruše operaciju
   try {
@@ -157,9 +187,17 @@ export async function updateTicket(
   memberId: string,
   input: TicketInput,
 ): Promise<{ ticket: ConferenceTicket } | TicketError> {
-  const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
+  // Isti guardovi kao kod kreiranja — API je ugovor, ne UI (koji gumbe samo sakrije)
+  const conference = await prisma.conference.findFirst({ where: { id: conferenceId, isActive: true } });
   if (!conference) return { error: 'CONFERENCE_NOT_FOUND' };
   if (!isEditOpen(conference)) return { error: 'DEADLINE_PASSED' };
+
+  const member = await prisma.member.findUnique({
+    where: { id: memberId },
+    include: { user: true, company: true },
+  });
+  if (!member) return { error: 'TICKET_NOT_FOUND' };
+  if (member.status !== 'ACTIVE') return { error: 'INACTIVE' };
 
   // Vlasništvo: ulaznica mora pripadati članu iz tokena
   const ticket = await prisma.conferenceTicket.findFirst({
@@ -178,8 +216,6 @@ export async function updateTicket(
   // Promjena tipa ulaznice ponovno prolazi kroz kvotu (ostale izmjene ne diraju status)
   let status = ticket.status;
   if (input.type !== ticket.type) {
-    const member = await prisma.member.findUnique({ where: { id: memberId } });
-    if (!member) return { error: 'TICKET_NOT_FOUND' };
     const quota = getTicketQuota(conference, member);
     const usage = await getTicketUsage(conferenceId, memberId);
     // usage ne uključuje ovu ulaznicu u novom tipu; u starom tipu ju isključujemo
@@ -197,6 +233,32 @@ export async function updateTicket(
       status,
     },
   });
+
+  // Iste posljedice kao kod kreiranja: prijelaz statusa šalje emailove / obavještava staff,
+  // a promjena email adrese na CONFIRMED ulaznici šalje QR novoj osobi. Await, ne ruši operaciju.
+  try {
+    if (updated.status !== ticket.status) {
+      if (updated.status === 'CONFIRMED') {
+        await sendTicketConfirmedEmail(conference, updated, member);
+        await sendMemberAddedEmail(conference, updated, member, false);
+      } else {
+        await sendMemberAddedEmail(conference, updated, member, true);
+        const memberName = `${member.user.firstName} ${member.user.lastName}`.trim();
+        const company = member.company?.name ? ` (${member.company.name})` : '';
+        await notifyStaff({
+          type: 'ACTION',
+          title: 'Zatražena dodatna ulaznica',
+          message: `${memberName}${company} je promjenom tipa ulaznice (${updated.fullName}) prešao/la kvotu za ${conference.name} — poslati ponudu s ${conference.extraDiscount}% popusta.`,
+          actionUrl: `/tickets`,
+        });
+      }
+    } else if (updated.status === 'CONFIRMED' && updated.email !== ticket.email) {
+      await sendTicketConfirmedEmail(conference, updated, member);
+    }
+  } catch (err) {
+    logger.error(err, 'Ticket update notification/email failed');
+  }
+
   return { ticket: updated };
 }
 
@@ -205,14 +267,19 @@ export async function deleteTicket(
   ticketId: string,
   memberId: string,
 ): Promise<{ ok: true } | TicketError> {
-  const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
+  const conference = await prisma.conference.findFirst({ where: { id: conferenceId, isActive: true } });
   if (!conference) return { error: 'CONFERENCE_NOT_FOUND' };
   if (!isEditOpen(conference)) return { error: 'DEADLINE_PASSED' };
+
+  const member = await prisma.member.findUnique({ where: { id: memberId } });
+  if (!member || member.status !== 'ACTIVE') return { error: 'INACTIVE' };
 
   const ticket = await prisma.conferenceTicket.findFirst({
     where: { id: ticketId, conferenceId, memberId },
   });
   if (!ticket) return { error: 'TICKET_NOT_FOUND' };
+  // Iskorištena (skenirana) ulaznica se ne smije obrisati — trag check-ina mora ostati
+  if (ticket.checkedInAt) return { error: 'CHECKED_IN' };
 
   await prisma.conferenceTicket.delete({ where: { id: ticket.id } });
   return { ok: true };

@@ -10,7 +10,7 @@ export function requireRole(...roles: string[]) {
     }
 
     if (!roles.includes(req.user.role)) {
-      errorResponse(res, 'FORBIDDEN', 'Insufficient permissions', 403);
+      errorResponse(res, 'FORBIDDEN', 'Nemate ovlasti za ovu radnju', 403);
       return;
     }
 

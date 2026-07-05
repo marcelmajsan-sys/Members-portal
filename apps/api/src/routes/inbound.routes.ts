@@ -6,8 +6,8 @@ import { successResponse, errorResponse } from '../utils/api-response.js';
 const router = Router();
 
 function checkCronSecret(req: import('express').Request): boolean {
+  // Samo headeri — secret u query stringu završava u logovima/analitici
   const provided =
-    (req.query.secret as string) ||
     (req.headers['x-cron-secret'] as string) ||
     (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   return !!process.env.CRON_SECRET && provided === process.env.CRON_SECRET;

@@ -53,6 +53,11 @@ export function verifyAccessToken(token: string): JwtPayload {
 export async function rotateRefreshToken(
   oldToken: string,
 ): Promise<{ accessToken: string; refreshToken: string }> {
+  // Reset/invite tokeni dijele tablicu (prefiks "reset_") — ne smiju prolaziti kao refresh tokeni
+  if (oldToken.startsWith('reset_')) {
+    throw new Error('Invalid refresh token');
+  }
+
   const stored = await prisma.refreshToken.findUnique({
     where: { token: oldToken },
     include: { user: true },
@@ -65,6 +70,12 @@ export async function rotateRefreshToken(
   if (stored.expiresAt < new Date()) {
     await prisma.refreshToken.delete({ where: { id: stored.id } });
     throw new Error('Refresh token expired');
+  }
+
+  // Deaktiviran račun ne smije obnavljati sesiju
+  if (!stored.user.isActive) {
+    await prisma.refreshToken.delete({ where: { id: stored.id } });
+    throw new Error('Account is disabled');
   }
 
   // Revoke old token

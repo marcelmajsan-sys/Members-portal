@@ -9,8 +9,16 @@ import { env } from '../config/env.js';
 
 const router = Router();
 
-// POST /payment — receive payment webhook from provider
+// POST /payment — receive payment webhook from provider.
+// Zaštićen shared secretom (x-webhook-secret header); bez postavljenog WEBHOOK_SECRET
+// env-a endpoint je zatvoren (fail closed) — nitko ne smije anonimno mijenjati status plaćanja.
 router.post('/payment', validate(webhookPaymentSchema), async (req, res) => {
+  const secret = process.env.WEBHOOK_SECRET;
+  if (!secret || req.headers['x-webhook-secret'] !== secret) {
+    errorResponse(res, 'UNAUTHORIZED', 'Invalid webhook secret', 401);
+    return;
+  }
+
   const { paymentId, status } = req.body;
 
   try {

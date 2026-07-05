@@ -3,10 +3,16 @@ import { runAuditSchema, paginationSchema, idParamSchema } from '@ecommerce-hr/s
 import { validate, validateQuery, validateParams } from '../middleware/validate.js';
 import { successResponse, errorResponse, paginatedResponse } from '../utils/api-response.js';
 import { runAudit, getAuditById, getAudits } from '../services/audit.service.js';
+import { authenticate } from '../middleware/auth.js';
+import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-// POST / — run AI audit (public)
+// Samo osoblje — pokreće Claude pozive (trošak) i čita izvještaje; ne smije biti javno
+router.use(authenticate);
+router.use(requireRole('OWNER', 'OPERATOR'));
+
+// POST / — run AI audit
 router.post('/', validate(runAuditSchema), async (req, res) => {
   try {
     const report = await runAudit(req.body.websiteUrl);

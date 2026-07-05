@@ -61,7 +61,7 @@ export async function processPaymentWebhook(
       },
     });
 
-    emitEvent(DomainEvents.PAYMENT_COMPLETED, {
+    await emitEvent(DomainEvents.PAYMENT_COMPLETED, {
       paymentId: updated.id,
       memberId: updated.memberId,
       amount: Number(updated.amount),
@@ -76,7 +76,7 @@ export async function processPaymentWebhook(
     data: { status: 'FAILED' },
   });
 
-  emitEvent(DomainEvents.PAYMENT_FAILED, {
+  await emitEvent(DomainEvents.PAYMENT_FAILED, {
     paymentId: updated.id,
     memberId: updated.memberId,
     amount: Number(updated.amount),

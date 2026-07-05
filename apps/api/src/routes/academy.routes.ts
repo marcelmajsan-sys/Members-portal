@@ -48,7 +48,7 @@ router.get('/modules/:id', validateParams(idParamSchema), async (req: AuthReques
 router.post('/enroll', validate(enrollModuleSchema), async (req: AuthRequest, res) => {
   const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
   const enrollment = await enrollMember(member.id, req.body.moduleId);
@@ -59,7 +59,7 @@ router.post('/enroll', validate(enrollModuleSchema), async (req: AuthRequest, re
 router.get('/enrollments', async (req: AuthRequest, res) => {
   const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
   const enrollments = await getEnrollments(member.id);
@@ -74,7 +74,7 @@ router.patch(
   async (req: AuthRequest, res) => {
     const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
     if (!member) {
-      errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+      errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
       return;
     }
     try {
@@ -90,7 +90,7 @@ router.patch(
 router.post('/exams/submit', validate(submitExamSchema), async (req: AuthRequest, res) => {
   const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
   try {
@@ -106,7 +106,7 @@ router.post('/exams/submit', validate(submitExamSchema), async (req: AuthRequest
 router.get('/certificates', async (req: AuthRequest, res) => {
   const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
   const certificates = await getCertificates(member.id);

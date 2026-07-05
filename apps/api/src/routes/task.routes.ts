@@ -106,7 +106,7 @@ router.get('/stats', async (_req: AuthRequest, res) => {
 router.get('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   const task = await getTaskById(req.params.id as string);
   if (!task) {
-    errorResponse(res, 'NOT_FOUND', 'Task not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Zadatak nije pronađen', 404);
     return;
   }
   successResponse(res, task);
@@ -137,7 +137,7 @@ router.patch(
   async (req: AuthRequest, res) => {
     const oldTask = await getTaskById(req.params.id as string);
     if (!oldTask) {
-      errorResponse(res, 'NOT_FOUND', 'Task not found', 404);
+      errorResponse(res, 'NOT_FOUND', 'Zadatak nije pronađen', 404);
       return;
     }
 
@@ -185,7 +185,7 @@ router.post(
   async (req: AuthRequest, res) => {
     const task = await getTaskById(req.params.id as string);
     if (!task) {
-      errorResponse(res, 'NOT_FOUND', 'Task not found', 404);
+      errorResponse(res, 'NOT_FOUND', 'Zadatak nije pronađen', 404);
       return;
     }
 

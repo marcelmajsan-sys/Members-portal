@@ -29,7 +29,7 @@ router.post('/', async (req: AuthRequest, res) => {
   };
 
   if (!email || !password || !firstName || !lastName) {
-    errorResponse(res, 'VALIDATION_ERROR', 'email, password, firstName, and lastName are required', 400);
+    errorResponse(res, 'VALIDATION_ERROR', 'Email, lozinka, ime i prezime su obavezni', 400);
     return;
   }
 
@@ -37,7 +37,7 @@ router.post('/', async (req: AuthRequest, res) => {
     const employee = await createEmployee({ email, password, firstName, lastName });
     successResponse(res, employee, 201);
   } catch {
-    errorResponse(res, 'CONFLICT', 'User with this email already exists', 409);
+    errorResponse(res, 'CONFLICT', 'Korisnik s ovim emailom već postoji', 409);
   }
 });
 
@@ -51,7 +51,7 @@ router.get('/', async (_req: AuthRequest, res) => {
 router.get('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   const employee = await getEmployeeById(req.params.id as string);
   if (!employee) {
-    errorResponse(res, 'NOT_FOUND', 'Employee not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Zaposlenik nije pronađen', 404);
     return;
   }
   successResponse(res, employee);
@@ -68,7 +68,13 @@ router.patch('/:id', validateParams(idParamSchema), async (req: AuthRequest, res
   };
 
   if (role && !['OPERATOR', 'OWNER'].includes(role)) {
-    errorResponse(res, 'VALIDATION_ERROR', 'Role must be OPERATOR or OWNER', 400);
+    errorResponse(res, 'VALIDATION_ERROR', 'Uloga mora biti OPERATOR ili OWNER', 400);
+    return;
+  }
+
+  // Vlasnik ne smije sam sebi skinuti ulogu ili se deaktivirati — zaključao bi se van
+  if (req.params.id === req.user!.userId && (role === 'OPERATOR' || isActive === false)) {
+    errorResponse(res, 'FORBIDDEN', 'Ne možete deaktivirati ili degradirati vlastiti račun', 403);
     return;
   }
 
@@ -76,7 +82,7 @@ router.patch('/:id', validateParams(idParamSchema), async (req: AuthRequest, res
     const employee = await updateEmployee(req.params.id as string, { firstName, lastName, email, role, isActive });
     successResponse(res, employee);
   } catch {
-    errorResponse(res, 'NOT_FOUND', 'Employee not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Zaposlenik nije pronađen', 404);
   }
 });
 
@@ -92,17 +98,21 @@ router.patch('/:id/password', validateParams(idParamSchema), async (req: AuthReq
     await changeEmployeePassword(req.params.id as string, password);
     successResponse(res, { message: 'Lozinka promijenjena' });
   } catch {
-    errorResponse(res, 'NOT_FOUND', 'Employee not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Zaposlenik nije pronađen', 404);
   }
 });
 
 // DELETE /:id — Deactivate employee (soft delete)
 router.delete('/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  if (req.params.id === req.user!.userId) {
+    errorResponse(res, 'FORBIDDEN', 'Ne možete deaktivirati vlastiti račun', 403);
+    return;
+  }
   try {
     const employee = await deactivateEmployee(req.params.id as string);
     successResponse(res, employee);
   } catch {
-    errorResponse(res, 'NOT_FOUND', 'Employee not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Zaposlenik nije pronađen', 404);
   }
 });
 

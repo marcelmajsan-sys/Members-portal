@@ -63,7 +63,54 @@ router.get('/profile', async (req: AuthRequest, res) => {
 });
 
 // PUT /profile — update profile (personal + company data)
-router.put('/profile', async (req: AuthRequest, res) => {
+const optStr = (max = 500) => z.string().trim().max(max).optional();
+const optDate = z
+  .string()
+  .refine((v) => v === '' || !Number.isNaN(Date.parse(v)), 'Neispravan datum')
+  .optional()
+  .nullable();
+
+const profileUpdateSchema = z.object({
+  firstName: optStr(100),
+  lastName: optStr(100),
+  email: z.string().trim().email('Neispravna email adresa').optional(),
+  companyName: optStr(200),
+  oib: optStr(20),
+  address: optStr(),
+  city: optStr(100),
+  postalCode: optStr(20),
+  country: optStr(100),
+  phone: optStr(50),
+  website: optStr(200),
+  companyEmail: z.union([z.literal(''), z.string().trim().email('Neispravna email adresa tvrtke')]).optional().nullable(),
+  companyNote: optStr(2000),
+  personalAddress: optStr().nullable(),
+  personalZip: optStr(20).nullable(),
+  personalCity: optStr(100).nullable(),
+  personalCountry: optStr(100).nullable(),
+  personalOib: optStr(20).nullable(),
+  personalPhone: optStr(50).nullable(),
+  personalNote: optStr(2000).nullable(),
+  dateOfBirth: optDate,
+  secondaryContact: z
+    .object({
+      firstName: optStr(100).nullable(),
+      lastName: optStr(100).nullable(),
+      address: optStr().nullable(),
+      zip: optStr(20).nullable(),
+      city: optStr(100).nullable(),
+      country: optStr(100).nullable(),
+      oib: optStr(20).nullable(),
+      dateOfBirth: optDate,
+      phone: optStr(50).nullable(),
+      email: z.union([z.literal(''), z.string().trim().email('Neispravna email adresa kontakta')]).optional().nullable(),
+      note: optStr(2000).nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+router.put('/profile', validate(profileUpdateSchema), async (req: AuthRequest, res) => {
   try {
     const updated = await updateMemberProfile(req.user!.userId, req.body);
     if (!updated) {
@@ -77,7 +124,8 @@ router.put('/profile', async (req: AuthRequest, res) => {
       errorResponse(res, 'CONFLICT', 'Email adresa je već u upotrebi.', 409);
       return;
     }
-    errorResponse(res, 'UPDATE_FAILED', message, 500);
+    // Sirova (engleska/Prisma) poruka se ne prosljeđuje članu
+    errorResponse(res, 'UPDATE_FAILED', 'Spremanje profila nije uspjelo, pokušajte ponovno.', 500);
   }
 });
 
@@ -266,6 +314,9 @@ function ticketErrorResponse(res: Parameters<typeof errorResponse>[0], error: st
       return;
     case 'INACTIVE':
       errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste dodavali osobe za ulaznice', 403);
+      return;
+    case 'CHECKED_IN':
+      errorResponse(res, 'CONFLICT', 'Ulaznica je već iskorištena na ulazu i ne može se ukloniti', 409);
       return;
     default:
       errorResponse(res, 'NOT_FOUND', 'Ulaznica nije pronađena', 404);

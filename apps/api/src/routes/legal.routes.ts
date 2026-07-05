@@ -33,7 +33,7 @@ router.get('/queries', validateQuery(paginationSchema), async (req: AuthRequest,
   } else {
     const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
     if (!member) {
-      errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+      errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
       return;
     }
     const { queries, total } = await getQueries(page, limit, member.id);
@@ -41,12 +41,20 @@ router.get('/queries', validateQuery(paginationSchema), async (req: AuthRequest,
   }
 });
 
-// GET /queries/:id — get single query
+// GET /queries/:id — get single query (MEMBER smije vidjeti samo svoje)
 router.get('/queries/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   const query = await getQueryById(req.params.id as string);
   if (!query) {
     errorResponse(res, 'NOT_FOUND', 'Legal query not found', 404);
     return;
+  }
+  const role = req.user!.role;
+  if (role !== 'OWNER' && role !== 'OPERATOR') {
+    const member = await prisma.member.findFirst({ where: { userId: req.user!.userId } });
+    if (!member || query.memberId !== member.id) {
+      errorResponse(res, 'NOT_FOUND', 'Legal query not found', 404);
+      return;
+    }
   }
   successResponse(res, query);
 });

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import { prisma } from '@ecommerce-hr/db';
@@ -230,7 +231,7 @@ router.post('/:id/tickets', validate(adminCreateTicketSchema), async (req: AuthR
   // Otkazana ulaznica s istim emailom se oživljava (unique [conferenceId, email])
   const ticket = existing
     ? await prisma.conferenceTicket.update({ where: { id: existing.id }, data: { ...data, memberId: member.id } })
-    : await prisma.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id } });
+    : await prisma.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id, token: crypto.randomUUID() } });
 
   if (ticket.status === 'CONFIRMED') {
     try {

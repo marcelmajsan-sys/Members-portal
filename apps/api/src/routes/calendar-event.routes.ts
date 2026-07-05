@@ -107,20 +107,26 @@ router.post('/:id/trigger', async (req, res) => {
       select: { id: true, userId: true },
     });
 
-    let triggered = 0;
-    for (const member of members) {
-      executeAutomationEvent(`calendar_event.${id}`, {
-        memberId: member.id,
-        userId: member.userId,
-        eventId: event.id,
-        eventTitle: event.title,
-        eventDate: event.date.toISOString(),
-        eventLocation: event.location || '',
-      }).catch((err) => {
-        logger.error({ eventId: id, memberId: member.id, error: String(err) }, 'Calendar event trigger failed');
-      });
-      triggered++;
-    }
+    // MORA se awaitati prije odgovora — Vercel zamrzne funkciju nakon successResponse,
+    // pa bi fire-and-forget slanja bila presječena (emailovi ne bi otišli).
+    const results = await Promise.allSettled(
+      members.map((member) =>
+        executeAutomationEvent(`calendar_event.${id}`, {
+          memberId: member.id,
+          userId: member.userId,
+          eventId: event.id,
+          eventTitle: event.title,
+          eventDate: event.date.toISOString(),
+          eventLocation: event.location || '',
+        }),
+      ),
+    );
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        logger.error({ eventId: id, memberId: members[i]?.id, error: String(r.reason) }, 'Calendar event trigger failed');
+      }
+    });
+    const triggered = results.filter((r) => r.status === 'fulfilled').length;
 
     successResponse(res, { triggered, eventTitle: event.title });
   } catch {

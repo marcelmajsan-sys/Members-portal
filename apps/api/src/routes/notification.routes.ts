@@ -8,7 +8,6 @@ import { successResponse, paginatedResponse, errorResponse } from '../utils/api-
 import type { AuthRequest } from '../middleware/auth.js';
 import {
   getNotifications,
-  markAsRead,
   markAllAsRead,
   getUnreadCount,
 } from '../services/notification.service.js';
@@ -45,19 +44,30 @@ router.get('/unread-count', async (req: AuthRequest, res) => {
   successResponse(res, { count });
 });
 
-// PATCH /:id/read — mark single as read
+// PATCH /:id/read — mark single as read (samo vlastite — updateMany s userId scopeom)
 router.patch('/:id/read', validateParams(idParamSchema), async (req: AuthRequest, res) => {
-  const notification = await markAsRead(req.params.id as string);
-  successResponse(res, notification);
+  const { count } = await prisma.notification.updateMany({
+    where: { id: req.params.id as string, userId: req.user!.userId },
+    data: { isRead: true },
+  });
+  if (count === 0) {
+    errorResponse(res, 'NOT_FOUND', 'Obavijest nije pronađena', 404);
+    return;
+  }
+  successResponse(res, { id: req.params.id, isRead: true });
 });
 
-// PATCH /:id/unread — mark single as unread
+// PATCH /:id/unread — mark single as unread (samo vlastite)
 router.patch('/:id/unread', validateParams(idParamSchema), async (req: AuthRequest, res) => {
-  const notification = await prisma.notification.update({
-    where: { id: req.params.id as string },
+  const { count } = await prisma.notification.updateMany({
+    where: { id: req.params.id as string, userId: req.user!.userId },
     data: { isRead: false },
   });
-  successResponse(res, notification);
+  if (count === 0) {
+    errorResponse(res, 'NOT_FOUND', 'Obavijest nije pronađena', 404);
+    return;
+  }
+  successResponse(res, { id: req.params.id, isRead: false });
 });
 
 // DELETE /:id — delete a notification (own)
@@ -102,7 +112,7 @@ router.delete('/push-token', async (req: AuthRequest, res) => {
     return;
   }
 
-  await prisma.pushToken.deleteMany({ where: { token } });
+  await prisma.pushToken.deleteMany({ where: { token, userId: req.user!.userId } });
   successResponse(res, { message: 'Push token removed' });
 });
 

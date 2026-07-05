@@ -249,7 +249,9 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
       return;
     }
 
-    const passwordHash = await hashPassword('Member123!');
+    // Random neupotrebljiva lozinka — pristup se dobiva isključivo preko "Pošalji pristup članu"
+    // (invite/reset flow). Fiksni default bi značio da svatko tko zna email člana može ući.
+    const passwordHash = await hashPassword(crypto.randomBytes(32).toString('base64url'));
     const finalOib = oib && oib.trim() ? oib.trim() : String(Date.now()).slice(-11).padStart(11, '0');
     const tier = memberTier || 'FREE';
     const now = new Date();
@@ -398,7 +400,7 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
   });
 
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
 
@@ -518,7 +520,7 @@ router.patch('/members/:id/status', validateParams(idParamSchema), async (req: A
   const { status } = req.body as { status: string };
   const validStatuses = ['ACTIVE', 'PENDING', 'SUSPENDED', 'EXPIRED'];
   if (!validStatuses.includes(status)) {
-    errorResponse(res, 'VALIDATION_ERROR', `Status must be one of: ${validStatuses.join(', ')}`, 400);
+    errorResponse(res, 'VALIDATION_ERROR', `Status mora biti jedan od: ${validStatuses.join(', ')}`, 400);
     return;
   }
 
@@ -549,7 +551,7 @@ router.patch('/members/:id/status', validateParams(idParamSchema), async (req: A
 
     successResponse(res, member);
   } catch {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
   }
 });
 
@@ -566,7 +568,7 @@ router.patch('/members/:id/tier', validateParams(idParamSchema), async (req: Aut
     const { member, charged } = await updateMemberTier(req.params.id as string, tier as MemberTier, { charge });
     successResponse(res, { ...member, charged });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Member not found';
+    const message = err instanceof Error ? err.message : 'Član nije pronađen';
     const status = message.includes('nije dostupna') ? 400 : 404;
     errorResponse(res, status === 400 ? 'VALIDATION_ERROR' : 'NOT_FOUND', message, status);
   }
@@ -600,7 +602,7 @@ router.patch('/members/:id/certificates', validateParams(idParamSchema), async (
     });
     successResponse(res, member);
   } catch {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
   }
 });
 
@@ -622,7 +624,7 @@ router.patch('/members/:id/profile', validateParams(idParamSchema), async (req: 
       ...(expiresAt && { expiresAt: new Date(expiresAt) }),
     });
     if (!member) {
-      errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+      errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
       return;
     }
     successResponse(res, member);
@@ -672,7 +674,7 @@ router.post('/members/:id/renew', requireRole('OWNER'), validateParams(idParamSc
 
     successResponse(res, member);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Member not found';
+    const message = err instanceof Error ? err.message : 'Član nije pronađen';
     const status = message.includes('Besplatni') ? 400 : 404;
     errorResponse(res, status === 400 ? 'VALIDATION_ERROR' : 'NOT_FOUND', message, status);
   }
@@ -684,7 +686,7 @@ router.delete('/members/:id', requireRole('OWNER'), validateParams(idParamSchema
     await deleteMember(req.params.id as string);
     successResponse(res, { message: 'Član obrisan' });
   } catch {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
   }
 });
 
@@ -696,7 +698,7 @@ router.post('/members/:id/reminder', validateParams(idParamSchema), async (req: 
   });
 
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
 
@@ -801,7 +803,7 @@ router.post('/members/:id/notify', validateParams(idParamSchema), async (req: Au
   });
 
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
 
@@ -830,7 +832,7 @@ router.post('/members/:id/notify', validateParams(idParamSchema), async (req: Au
         <p>Poštovani <strong>${member.user.firstName}</strong>,</p>
         <p>${message}</p>
         <div style="text-align:center;margin:32px 0;">
-          <a href="https://ecommerce-hr-os.vercel.app/dashboard" style="background:#E8A838;color:#1B365D;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Otvori Dashboard</a>
+          <a href="https://members.ecommerce.hr/" style="background:#E8A838;color:#1B365D;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Otvori članski portal</a>
         </div>
         <p>Srdačan pozdrav,<br/><strong>Tim eCommerce Hrvatska</strong></p>
       </div>
@@ -907,7 +909,7 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
     select: { id: true, user: { select: { email: true, firstName: true, lastName: true } } },
   });
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
 
@@ -924,10 +926,10 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
     },
   });
 
-  // Fire-and-forget: notify udruga@ecommerce.hr about the new note
+  // Email na udruga@ecommerce.hr — await (serverless bi fire-and-forget presjekao), greška ne ruši bilješku
   const memberEmail = member.user.email;
   const authorName = `${note.author.firstName} ${note.author.lastName}`.trim();
-  sendEmail(
+  await sendEmail(
     'udruga@ecommerce.hr',
     `Dodana bilješka na ${memberEmail}`,
     `<!DOCTYPE html>
@@ -941,12 +943,12 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
       <p style="margin:0;white-space:pre-wrap;">${content.trim()}</p>
     </div>
     <p style="font-size:13px;color:#6B7280;">
-      <a href="https://ecommerce-hr-os.vercel.app/members/${req.params.id}" style="color:#E8A838;">Otvori profil člana</a>
+      <a href="https://members.ecommerce.hr/admin/members/${req.params.id}" style="color:#E8A838;">Otvori profil člana</a>
     </p>
   </div>
 </body></html>`,
     {},
-  ).catch(() => {}); // fire-and-forget — don't block note creation
+  ).catch(() => {}); // greška slanja ne smije blokirati kreiranje bilješke
 
   // Inbox: notify staff about the new note (uključujući autora — u praksi je često jedini admin).
   // MORA biti await: na serverlessu se fire-and-forget posao prekida kad funkcija pošalje odgovor.
@@ -987,7 +989,7 @@ router.get('/members/:id/emails', validateParams(idParamSchema), async (req: Aut
   });
 
   if (!member) {
-    errorResponse(res, 'NOT_FOUND', 'Member not found', 404);
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
     return;
   }
 

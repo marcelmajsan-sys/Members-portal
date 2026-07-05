@@ -71,22 +71,25 @@ osRouter.post('/:token/checkin', async (req: AuthRequest, res) => {
     errorResponse(res, 'FORBIDDEN', 'Ulaznica nije potvrđena (status: ' + ticket.status + ')', 403);
     return;
   }
-  if (ticket.checkedInAt) {
-    const t = ticket.checkedInAt;
+  // Atomarno: uvjet checkedInAt=null je u WHERE, pa dva istovremena skena ne mogu oba proći
+  const now = new Date();
+  const { count } = await prisma.conferenceTicket.updateMany({
+    where: { id: ticket.id, checkedInAt: null },
+    data: { checkedInAt: now },
+  });
+
+  if (count === 0) {
+    const t = ticket.checkedInAt ?? now;
     const when = `${String(t.getDate()).padStart(2, '0')}.${String(t.getMonth() + 1).padStart(2, '0')}.${t.getFullYear()}. u ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
     errorResponse(res, 'CONFLICT', `Ulaznica je već skenirana ${when}`, 409);
     return;
   }
 
-  const updated = await prisma.conferenceTicket.update({
-    where: { id: ticket.id },
-    data: { checkedInAt: new Date() },
-  });
   successResponse(res, {
     fullName: ticket.fullName,
     company: ticket.member.company?.name ?? null,
     type: ticket.type,
-    checkedInAt: updated.checkedInAt,
+    checkedInAt: now,
   });
 });
 

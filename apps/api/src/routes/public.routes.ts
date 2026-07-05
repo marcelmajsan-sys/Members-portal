@@ -1,8 +1,5 @@
 import { Router } from 'express';
-import { runAuditSchema } from '@ecommerce-hr/shared';
-import { validate } from '../middleware/validate.js';
-import { successResponse, errorResponse } from '../utils/api-response.js';
-import { runAudit } from '../services/audit.service.js';
+import { successResponse } from '../utils/api-response.js';
 import { prisma } from '@ecommerce-hr/db';
 import { sendEmail } from '@ecommerce-hr/email';
 import { logger } from '../utils/logger.js';
@@ -25,16 +22,6 @@ router.get('/stats', (_req, res) => {
     totalCertifications: 0,
     totalPartners: 0,
   });
-});
-
-// POST /audit — public audit endpoint (delegates to audit service)
-router.post('/audit', validate(runAuditSchema), async (req, res) => {
-  try {
-    const report = await runAudit(req.body.websiteUrl);
-    successResponse(res, report, 201);
-  } catch {
-    errorResponse(res, 'AUDIT_FAILED', 'Failed to generate audit report', 500);
-  }
 });
 
 // POST /newsletter
@@ -241,12 +228,20 @@ router.get('/public/track/click/:trackingId', async (req, res) => {
   } catch {
     // Silent fail
   }
-  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
-    res.redirect(302, url);
-  } else {
-    res.redirect(302, 'https://ecommerce.hr');
-  }
+  // Open-redirect zaštita: preusmjeravamo samo na vlastite domene
+  res.redirect(302, isAllowedRedirect(url) ? url : 'https://ecommerce.hr');
 });
+
+function isAllowedRedirect(url: string | undefined): url is string {
+  if (!url) return false;
+  try {
+    const { protocol, hostname } = new URL(url);
+    if (protocol !== 'https:' && protocol !== 'http:') return false;
+    return hostname === 'ecommerce.hr' || hostname.endsWith('.ecommerce.hr');
+  } catch {
+    return false;
+  }
+}
 
 function htmlPage(title: string, body: string): string {
   return `<!DOCTYPE html>
