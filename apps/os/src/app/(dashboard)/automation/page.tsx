@@ -8,7 +8,47 @@ import { useAuth } from '@/lib/auth-context';
 interface EmailTemplate {
   slug: string;
   name: string;
+  subject: string;
+  body: string;
+  ctaLabel: string | null;
   isActive: boolean;
+}
+
+// Pregled emaila s primjerima vrijednosti oznaka (isto kao na stranici predložaka)
+function applySampleVars(text: string): string {
+  return text
+    .replace(/\{\{\s*datum_isteka\s*\}\}/g, '31. 12. 2026.')
+    .replace(/\{\{\s*ime\s*\}\}/g, 'Ime')
+    .replace(/\{\{\s*prezime\s*\}\}/g, 'Člana')
+    .replace(/\{\{\s*tvrtka\s*\}\}/g, 'Tvrtka d.o.o.');
+}
+
+function buildPreviewHtml(tpl: EmailTemplate): string {
+  const bodyParagraphs = tpl.body
+    ? applySampleVars(tpl.body).split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ')
+    : '<p style="color:#999;">(prazan tekst)</p>';
+  const ctaHtml = tpl.ctaLabel
+    ? `<div style="text-align:center;margin:32px 0;">
+        <a href="#" style="background:#E8A838;color:#1B365D;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">${tpl.ctaLabel}</a>
+      </div>`
+    : '';
+  return `<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;background:#fff;">
+  <div style="background:#1B365D;padding:20px 24px;text-align:center;">
+    <img src="https://members.ecommerce.hr/admin/logo.png" alt="eCommerce Hrvatska" style="height:44px;display:inline-block;" />
+  </div>
+  <div style="padding:24px;">
+    <p>Poštovani <strong>Ime Člana</strong>,</p>
+    ${bodyParagraphs}
+    ${ctaHtml}
+    <p>Za sva pitanja kontaktirajte nas na <a href="#" style="color:#E8A838;">udruga@ecommerce.hr</a> ili +385 99 2025707.</p>
+    <p>Srdačan pozdrav,<br/><strong>Tim eCommerce Hrvatska</strong></p>
+  </div>
+  <div style="background:#1B365D;padding:20px 24px;text-align:center;">
+    <p style="margin:0 0 6px;color:#E8A838;font-size:12px;font-weight:bold;">eCommerce Hrvatska</p>
+    <p style="margin:0;color:rgba(255,255,255,0.6);font-size:11px;">Republike Austrije 9, Zagreb · udruga@ecommerce.hr · +385 99 2025707</p>
+  </div>
+</body></html>`;
 }
 
 interface CalendarEventTrigger {
@@ -144,6 +184,7 @@ export default function AutomationPage() {
   const [customOperator, setCustomOperator] = useState<'eq' | 'lte'>('eq');
   const [customSubject, setCustomSubject] = useState('');
   const [customTemplate, setCustomTemplate] = useState('custom');
+  const [previewTpl, setPreviewTpl] = useState<EmailTemplate | null>(null);
 
   function resetForm() {
     setEditingSeq(null);
@@ -464,6 +505,24 @@ export default function AutomationPage() {
                       </option>
                     ))}
                   </select>
+                  {emailTemplates.some((t) => t.slug === customTemplate) && (
+                    <div className="mt-1.5 flex gap-3 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTpl(emailTemplates.find((t) => t.slug === customTemplate) || null)}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Pregled emaila
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/email-templates?edit=${customTemplate}`)}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Uredi predložak
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm text-gray-600">Naslov emaila (opcionalno)</label>
@@ -544,6 +603,24 @@ export default function AutomationPage() {
                       }`}
                     />
                   </button>
+                  {/* Preview email template of this sequence */}
+                  {(() => {
+                    const mail = seq.steps?.find((s) => ['send_email', 'email'].includes(s.type.toLowerCase()));
+                    const tpl = mail && emailTemplates.find((t) => t.slug === mail.config?.template);
+                    return tpl ? (
+                      <button
+                        onClick={() => setPreviewTpl(tpl)}
+                        disabled={!!actionLoading}
+                        className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
+                        title="Pregled emaila"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                        </svg>
+                      </button>
+                    ) : null;
+                  })()}
                   {/* Test send */}
                   <button
                     onClick={() => testSequence(seq)}
@@ -581,6 +658,40 @@ export default function AutomationPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Email preview modal */}
+      {previewTpl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPreviewTpl(null)}>
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-gray-900">{previewTpl.name}</p>
+                <p className="truncate text-xs text-gray-500">Predmet: {applySampleVars(previewTpl.subject)}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => router.push(`/email-templates?edit=${previewTpl.slug}`)}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Uredi
+                </button>
+                <button onClick={() => setPreviewTpl(null)} aria-label="Zatvori" className="p-1 text-gray-400 hover:text-gray-700">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <iframe
+              title="Pregled emaila"
+              srcDoc={buildPreviewHtml(previewTpl)}
+              className="w-full flex-1 border-0"
+              style={{ minHeight: '420px' }}
+              sandbox="allow-same-origin"
+            />
+          </div>
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -89,6 +89,18 @@ export default function EmailTemplatesPage() {
   }
 
   useEffect(() => { fetchTemplates(); }, []);
+
+  // ?edit=<slug> — direktno otvaranje editora (npr. link "Uredi predložak" s Automatizacije)
+  const searchParams = useSearchParams();
+  const editParamHandled = useRef(false);
+  useEffect(() => {
+    if (editParamHandled.current || loading) return;
+    const slug = searchParams.get('edit');
+    if (!slug) return;
+    editParamHandled.current = true;
+    const t = templates.find((x) => x.slug === slug);
+    if (t) setEditing({ ...t });
+  }, [loading, templates, searchParams]);
 
   async function handleSave() {
     if (!editing) return;
