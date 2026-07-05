@@ -225,7 +225,8 @@ export default function PortalHome() {
       .querySelectorAll<HTMLDetailsElement>('#analiza-print details')
       .forEach((d) => { d.open = true; });
     const prevTitle = document.title;
-    document.title = `Analiza webshopa - ${analysis?.websiteUrl ?? ''}`.replace(/https?:\/\//, '');
+    const analysisTitle = profile?.memberType === 'SERVICE_PROVIDER' ? 'Analiza online prisutnosti' : 'Analiza webshopa';
+    document.title = `${analysisTitle} - ${analysis?.websiteUrl ?? ''}`.replace(/https?:\/\//, '');
     window.print();
     document.title = prevTitle;
   }
@@ -338,29 +339,46 @@ export default function PortalHome() {
               />
             )}
 
-            {/* Stručna analiza webshopa (AI) — samo za Web trgovce */}
-            {profile.memberType === 'WEB_TRADER' && (
+            {/* Stručna analiza (AI) — Web trgovci: webshop (6 kategorija); Nuditelji: online prisutnost (Best Web/Copy/Marketing) */}
+            {(profile.memberType === 'WEB_TRADER' || profile.memberType === 'SERVICE_PROVIDER') && (
             <section className="rounded-xl border border-gray-200 bg-white p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Stručna analiza webshopa</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    {profile.memberType === 'SERVICE_PROVIDER' ? 'Stručna analiza online prisutnosti' : 'Stručna analiza webshopa'}
+                  </h2>
                   <p className="mt-1 text-xs text-gray-500">
-                    Besplatna AI analiza vašeg webshopa po 6 područja: UX, CRO &amp; Content, SEO,
-                    Buyer&apos;s Journey, Analytics i Legal.
+                    {profile.memberType === 'SERVICE_PROVIDER' ? (
+                      <>Besplatna AI analiza vaše online prisutnosti u 3 područja žirija: Best Web, Best Copy i Best Marketing.</>
+                    ) : (
+                      <>Besplatna AI analiza vašeg webshopa po 6 područja: UX, CRO &amp; Content, SEO, Buyer&apos;s Journey, Analytics i Legal.</>
+                    )}
                   </p>
                   <p className="mt-2 max-w-2xl text-xs leading-relaxed text-gray-500">
-                    AI model je treniran na bazi 73 webshopa koji su sudjelovali u zadnjem eCommAwards
-                    natjecanju (travanj 2025.) —{' '}
-                    <a
-                      href="https://ecommerce.hr/proglasenjem-najboljih-web-trgovaca-udruga-ecommerce-hrvatska-proslavila-10-godina-rada/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline hover:no-underline"
-                    >
-                      pogledajte izvještaj
-                    </a>
-                    . Zbog napretka AI alata ručne analize više ne radimo, no svaki član ima pravo
-                    napraviti 2 AI analize svog webshopa godišnje.
+                    {profile.memberType === 'SERVICE_PROVIDER' ? (
+                      <>
+                        AI model radi po kriterijima žirija Udruge iz Stručne analize webova za nuditelje
+                        (lipanj 2025.): ocjena prezentacije ponude, dizajna, osnovnog SEO-a i brzine (Best
+                        Web), analiza copyja (Best Copy) te marketinških signala (Best Marketing). Zbog
+                        napretka AI alata ručne analize više ne radimo, no svaki član ima pravo napraviti
+                        2 AI analize godišnje.
+                      </>
+                    ) : (
+                      <>
+                        AI model je treniran na bazi 73 webshopa koji su sudjelovali u zadnjem eCommAwards
+                        natjecanju (travanj 2025.) —{' '}
+                        <a
+                          href="https://ecommerce.hr/proglasenjem-najboljih-web-trgovaca-udruga-ecommerce-hrvatska-proslavila-10-godina-rada/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline hover:no-underline"
+                        >
+                          pogledajte izvještaj
+                        </a>
+                        . Zbog napretka AI alata ručne analize više ne radimo, no svaki član ima pravo
+                        napraviti 2 AI analize svog webshopa godišnje.
+                      </>
+                    )}
                   </p>
                 </div>
                 {profile.status === 'ACTIVE' && profile.company.website && (
@@ -378,7 +396,7 @@ export default function PortalHome() {
                           Preostalo analiza {quota.remaining}/{quota.limit}
                         </p>
                         <p className="max-w-[220px] text-right text-[11px] leading-snug text-gray-400">
-                          Dostupne su {quota.limit} analize webshopa godišnje po članu.
+                          Dostupne su {quota.limit} analize godišnje po članu.
                         </p>
                       </>
                     )}
@@ -398,7 +416,9 @@ export default function PortalHome() {
               ) : analyzing ? (
                 <div className="mt-4 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-6 text-sm text-gray-500">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
-                  Analiziram webshop po 6 područja, ovo može potrajati nekoliko minuta…
+                  {profile.memberType === 'SERVICE_PROVIDER'
+                    ? 'Analiziram online prisutnost (Best Web, Best Copy, Best Marketing), ovo može potrajati nekoliko minuta…'
+                    : 'Analiziram webshop po 6 područja, ovo može potrajati nekoliko minuta…'}
                 </div>
               ) : analysisError ? (
                 <p className="mt-4 rounded-md bg-danger-light px-4 py-3 text-sm font-medium text-danger">{analysisError}</p>
@@ -416,7 +436,9 @@ export default function PortalHome() {
                       konzultantima prije donošenja poslovnih odluka.
                     </p>
                     <img src="/logo-full.png" alt="eCommerce Hrvatska" style={{ height: 48, marginTop: 10 }} />
-                    <h1 style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>Stručna analiza webshopa</h1>
+                    <h1 style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>
+                      {profile.memberType === 'SERVICE_PROVIDER' ? 'Stručna analiza online prisutnosti' : 'Stručna analiza webshopa'}
+                    </h1>
                     <p style={{ fontSize: 12, color: '#555', margin: 0 }}>{analysis.websiteUrl}</p>
                     <p style={{ fontSize: 12, color: '#555', margin: 0 }}>
                       Analiza izrađena: {fmtDate(analysis.createdAt)}
@@ -484,7 +506,7 @@ export default function PortalHome() {
                                   <p className="text-xs font-medium text-gray-700">{c.label}</p>
                                   {c.note && <p className="text-[11px] text-gray-400">{c.note}</p>}
                                 </div>
-                                <span className={`shrink-0 text-xs font-bold ${c.score >= 4 ? 'text-success' : c.score >= 2 ? 'text-warning' : 'text-danger'}`}>{c.score}/{c.max}</span>
+                                <span className={`shrink-0 text-xs font-bold ${c.score / (c.max || 5) >= 0.8 ? 'text-success' : c.score / (c.max || 5) >= 0.4 ? 'text-warning' : 'text-danger'}`}>{c.score}/{c.max}</span>
                               </li>
                             ))}
                           </ul>
@@ -522,8 +544,9 @@ export default function PortalHome() {
                 </div>
               ) : (
                 <p className="mt-4 text-sm text-gray-500">
-                  Kliknite &quot;Aktiviraj besplatnu analizu&quot; i AI će pregledati vaš webshop te
-                  predložiti konkretna poboljšanja po 6 područja.
+                  {profile.memberType === 'SERVICE_PROVIDER'
+                    ? 'Kliknite "Aktiviraj besplatnu analizu" i AI će pregledati vaš web te predložiti konkretna poboljšanja po područjima Best Web, Best Copy i Best Marketing.'
+                    : 'Kliknite "Aktiviraj besplatnu analizu" i AI će pregledati vaš webshop te predložiti konkretna poboljšanja po 6 područja.'}
                 </p>
               )}
             </section>

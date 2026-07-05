@@ -1,6 +1,17 @@
 import { prisma } from '@ecommerce-hr/db';
-import { runWebshopAnalysis, type AnalysisPage, type CoreWebVitals } from '@ecommerce-hr/ai';
+import {
+  runWebshopAnalysis,
+  runProviderAnalysis,
+  type AnalysisPage,
+  type CoreWebVitals,
+  type PagespeedScores,
+  type ProviderSiteSignals,
+} from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
+
+// Tko ima pravo na analizu: Web trgovci (analiza webshopa, 6 kategorija) i
+// Nuditelji usluga (analiza online prisutnosti po uzoru na žiri: Best Web/Copy/Marketing).
+const ANALYZABLE_TYPES = ['WEB_TRADER', 'SERVICE_PROVIDER'];
 
 type RequestError = {
   error: 'NOT_FOUND' | 'INACTIVE' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED' | 'NOT_TRADER';
@@ -24,7 +35,7 @@ export async function getWebshopAnalysisQuota(userId: string) {
     where: { userId },
     select: { id: true, memberType: true, user: { select: { email: true } } },
   });
-  if (!member || member.memberType !== 'WEB_TRADER') return null;
+  if (!member || !ANALYZABLE_TYPES.includes(member.memberType)) return null;
   const limit = analysesLimitFor(member.user?.email);
   const used = await prisma.webshopAnalysis.count({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
@@ -115,6 +126,114 @@ function discoverSubpages(homepageUrl: string, html: string): AnalysisPage[] {
   return pages;
 }
 
+// ─── Nuditelji: otkrivanje podstranica usluga + deterministički signali ───────
+
+// Web nuditelja nema kategorije/proizvode — tražimo stranice usluga/referenci/o nama.
+const PROVIDER_HINTS: Array<{ re: RegExp; label: string }> = [
+  { re: /(\/usluge|\/services|\/ponuda|\/rjesenja|\/solutions|\/sto-radimo|\/what-we-do)/i, label: 'Stranica usluga' },
+  { re: /(\/o-nama|\/about|\/tko-smo)/i, label: 'O nama' },
+  { re: /(\/reference|\/portfolio|\/case-stud|\/radovi|\/projekti|\/clients|\/klijenti)/i, label: 'Reference / portfolio' },
+  { re: /(\/cjenik|\/pricing|\/paketi|\/plans)/i, label: 'Cjenik / paketi' },
+];
+const PROVIDER_SKIP = /(prijav|login|register|registr|account|kontakt|contact|uvjeti|terms|privatnost|privacy|kolacic|cookie|faq|\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|xml|css|js))(\/|$|\?)/i;
+
+function discoverProviderSubpages(homepageUrl: string, html: string): AnalysisPage[] {
+  let origin: string;
+  try {
+    origin = new URL(homepageUrl).origin;
+  } catch {
+    return [];
+  }
+  const hrefs: string[] = [];
+  const seen = new Set<string>();
+  const re = /href\s*=\s*["']([^"'#]+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) && seen.size < 400) {
+    const raw = m[1].trim();
+    if (!raw || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+    let abs: URL;
+    try {
+      abs = new URL(raw, homepageUrl);
+    } catch {
+      continue;
+    }
+    if (abs.origin !== origin) continue;
+    if (abs.pathname === '/' || abs.pathname === '') continue;
+    if (PROVIDER_SKIP.test(abs.pathname)) continue;
+    const key = abs.origin + abs.pathname;
+    if (!seen.has(key)) {
+      seen.add(key);
+      hrefs.push(key);
+    }
+  }
+  const pages: AnalysisPage[] = [];
+  for (const hint of PROVIDER_HINTS) {
+    if (pages.length >= 3) break;
+    const url = hrefs.find((u) => hint.re.test(u) && !pages.some((p) => p.url === u));
+    if (url) pages.push({ url, label: hint.label, html: '' });
+  }
+  // Fallback: bar jedna smislena podstranica ako hintovi ništa nisu našli
+  if (pages.length === 0) {
+    const fallback = hrefs.find((u) => {
+      try {
+        return new URL(u).pathname.split('/').filter(Boolean).length >= 1;
+      } catch {
+        return false;
+      }
+    });
+    if (fallback) pages.push({ url: fallback, label: 'Podstranica', html: '' });
+  }
+  return pages;
+}
+
+// Signali koje detektiramo deterministički iz SIROVOG HTML-a (sanitizacija briše skripte,
+// pa se tracking mora prepoznati prije nje). Model dobiva ove činjenice u promptu.
+function detectProviderSignals(html: string): ProviderSiteSignals {
+  const h = html.toLowerCase();
+  return {
+    socialLinks: {
+      facebook: /facebook\.com\//.test(h),
+      instagram: /instagram\.com\//.test(h),
+      linkedin: /linkedin\.com\//.test(h),
+      youtube: /(youtube\.com\/|youtu\.be\/)/.test(h),
+      tiktok: /tiktok\.com\//.test(h),
+    },
+    tracking: {
+      googleAnalytics: /(gtag\(|google-analytics\.com|googletagmanager\.com\/gtag)/.test(h),
+      googleTagManager: /googletagmanager\.com\/gtm/.test(h),
+      metaPixel: /(fbevents\.js|fbq\(|connect\.facebook\.net)/.test(h),
+      linkedinInsight: /(snap\.licdn\.com|_linkedin_partner_id)/.test(h),
+      hotjar: /(hotjar\.com|hj\()/.test(h),
+    },
+  };
+}
+
+// Lighthouse performance score (0–100) za zadanu strategiju — za "Page speed" kriterije
+// žirijeve analize (žiri koristi pagespeed.web.dev i score dijeli s 10).
+async function fetchPagespeedScore(url: string, strategy: 'desktop' | 'mobile'): Promise<number | null> {
+  const key = process.env.PAGESPEED_API_KEY;
+  const endpoint = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed');
+  endpoint.searchParams.set('url', url);
+  endpoint.searchParams.set('strategy', strategy);
+  endpoint.searchParams.set('category', 'performance');
+  if (key) endpoint.searchParams.set('key', key);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 40000);
+  try {
+    const res = await fetch(endpoint.toString(), { signal: controller.signal });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const score = data?.lighthouseResult?.categories?.performance?.score;
+    return typeof score === 'number' ? Math.round(score * 100) : null;
+  } catch (error) {
+    logger.warn({ error: String(error), url, strategy }, 'PageSpeed score: fetch failed');
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const CWV_GOOD = { lcp: 2500, inp: 200, cls: 0.1 };
 
 // Stvarni Core Web Vitals preko Google PageSpeed Insights API-ja (mobilni).
@@ -187,7 +306,7 @@ export async function requestWebshopAnalysis(userId: string) {
   });
 
   if (!member) return { error: 'NOT_FOUND' } as RequestError;
-  if (member.memberType !== 'WEB_TRADER') return { error: 'NOT_TRADER' } as RequestError;
+  if (!ANALYZABLE_TYPES.includes(member.memberType)) return { error: 'NOT_TRADER' } as RequestError;
   if (member.status !== 'ACTIVE') return { error: 'INACTIVE' } as RequestError;
 
   const website = member.company?.website?.trim();
@@ -222,13 +341,26 @@ export async function requestWebshopAnalysis(userId: string) {
   });
 
   try {
-    // Core Web Vitals i HTML naslovnice idu paralelno (oboje trebaju samo URL).
-    const cwvPromise = fetchCoreWebVitals(websiteUrl);
+    const isProvider = member.memberType === 'SERVICE_PROVIDER';
+
+    // Mjerenja i HTML naslovnice idu paralelno (trebaju samo URL).
+    // Trgovci: Core Web Vitals (mobile). Nuditelji: PageSpeed score desktop + mobile
+    // (žirijeva "Page speed" kriterija dijele score s 10).
+    const cwvPromise = isProvider ? Promise.resolve(null) : fetchCoreWebVitals(websiteUrl);
+    const psPromise: Promise<PagespeedScores | null> = isProvider
+      ? Promise.all([
+          fetchPagespeedScore(websiteUrl, 'desktop'),
+          fetchPagespeedScore(websiteUrl, 'mobile'),
+        ]).then(([desktop, mobile]) => ({ desktop, mobile }))
+      : Promise.resolve(null);
+
     const homepageHtml = await fetchHtml(websiteUrl);
 
-    // Naslovnica + best-effort kategorija/proizvod (paralelno).
+    // Naslovnica + best-effort podstranice (trgovci: kategorija/proizvod; nuditelji: usluge/reference).
     const pages: AnalysisPage[] = [{ url: websiteUrl, label: 'Naslovnica', html: homepageHtml }];
-    const subpages = homepageHtml ? discoverSubpages(websiteUrl, homepageHtml) : [];
+    const subpages = homepageHtml
+      ? (isProvider ? discoverProviderSubpages(websiteUrl, homepageHtml) : discoverSubpages(websiteUrl, homepageHtml))
+      : [];
     if (subpages.length) {
       const fetched = await Promise.all(
         subpages.map(async (p) => ({ ...p, html: await fetchHtml(p.url, 7000) })),
@@ -236,15 +368,23 @@ export async function requestWebshopAnalysis(userId: string) {
       pages.push(...fetched.filter((p) => p.html));
     }
 
-    const coreWebVitals = await cwvPromise;
+    const [coreWebVitals, pagespeed] = await Promise.all([cwvPromise, psPromise]);
 
-    const result = await runWebshopAnalysis(
-      websiteUrl,
-      member.company?.name ?? '',
-      pages,
-      coreWebVitals,
-      member.hasCertificate,
-    );
+    const result = isProvider
+      ? await runProviderAnalysis(
+          websiteUrl,
+          member.company?.name ?? '',
+          pages,
+          pagespeed,
+          homepageHtml ? detectProviderSignals(homepageHtml) : null,
+        )
+      : await runWebshopAnalysis(
+          websiteUrl,
+          member.company?.name ?? '',
+          pages,
+          coreWebVitals,
+          member.hasCertificate,
+        );
 
     return prisma.webshopAnalysis.update({
       where: { id: record.id },

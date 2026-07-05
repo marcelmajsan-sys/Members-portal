@@ -13,6 +13,11 @@ export { runCompetitorScan, type CompetitorMetrics } from './competitor-scan-age
 export { extractPricesFromHtml, cleanHtml, computePriceDiff, type ProductPrice, type PriceDiff } from './price-extract-agent.js';
 export { generateMemberSummary, type MemberContext } from './member-summary-agent.js';
 export {
+  runProviderAnalysis,
+  type PagespeedScores,
+  type ProviderSiteSignals,
+} from './provider-analysis-agent.js';
+export {
   runWebshopAnalysis,
   type WebshopAnalysisResult,
   type WebshopCategory,

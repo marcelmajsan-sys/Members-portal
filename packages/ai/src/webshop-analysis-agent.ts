@@ -27,7 +27,11 @@ export type WebshopCategoryKey =
   | 'SEO'
   | 'BUYERS_JOURNEY'
   | 'ANALYTICS'
-  | 'LEGAL';
+  | 'LEGAL'
+  // Analiza online prisutnosti za nuditelje usluga (provider-analysis-agent)
+  | 'BEST_WEB'
+  | 'BEST_COPY'
+  | 'BEST_MARKETING';
 
 export interface WebshopRecommendation {
   title: string;

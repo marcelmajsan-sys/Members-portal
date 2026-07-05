@@ -258,7 +258,7 @@ router.post('/webshop-analysis', async (req: AuthRequest, res) => {
   if (!('id' in result)) {
     switch (result.error) {
       case 'NOT_TRADER':
-        errorResponse(res, 'FORBIDDEN', 'Analiza webshopa dostupna je samo članovima tipa Web trgovac', 403);
+        errorResponse(res, 'FORBIDDEN', 'Analiza je dostupna članovima tipa Web trgovac i Nuditelj usluga', 403);
         return;
       case 'LIMIT_REACHED':
         errorResponse(res, 'RATE_LIMITED', 'Dosegli ste godišnji limit od 2 analize webshopa', 429);
