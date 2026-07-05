@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/lib/auth-context';
 import SwRegister from './sw-register';
+import InstallPrompt from './install-prompt';
 
 export const metadata: Metadata = {
   title: 'Članski portal — eCommerce Hrvatska',
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body>
         <AuthProvider>{children}</AuthProvider>
         <SwRegister />
+        <InstallPrompt />
       </body>
     </html>
   );
