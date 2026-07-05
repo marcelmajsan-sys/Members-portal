@@ -11,10 +11,12 @@ export interface ResolvedTemplate {
 /**
  * Try to load an email template from the DB by slug.
  * Returns null if not found or inactive — caller falls back to hardcoded.
+ * Returns 'HIDDEN' if the template was deleted by the admin — caller must NOT send at all.
  */
-export async function resolveTemplate(slug: string): Promise<ResolvedTemplate | null> {
+export async function resolveTemplate(slug: string): Promise<ResolvedTemplate | 'HIDDEN' | null> {
   try {
     const tpl = await prisma.emailTemplate.findUnique({ where: { slug } });
+    if (tpl?.isHidden) return 'HIDDEN';
     if (!tpl || !tpl.isActive) return null;
     return {
       subject: tpl.subject,

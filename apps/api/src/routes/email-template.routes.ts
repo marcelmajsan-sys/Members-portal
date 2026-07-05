@@ -15,7 +15,7 @@ router.use(requireRole('OWNER'));
 router.get('/', async (_req, res) => {
   let dbTemplates: Array<{
     id: string; slug: string; name: string; subject: string; body: string;
-    ctaLabel: string | null; ctaUrl: string | null; isActive: boolean;
+    ctaLabel: string | null; ctaUrl: string | null; isActive: boolean; isHidden: boolean;
     createdAt: Date; updatedAt: Date;
   }> = [];
 
@@ -28,10 +28,12 @@ router.get('/', async (_req, res) => {
   }
 
   // Merge: DB templates override defaults by slug.
-  // isSystem = slug postoji u DEFAULT_TEMPLATES (brisanje DB retka ga vraća na zadano);
-  // !isSystem = potpuno prilagođen predložak (brisanje ga trajno uklanja).
+  // isSystem = slug postoji u DEFAULT_TEMPLATES; isHidden = admin ga je "obrisao"
+  // (skriven s liste + email se ne šalje). dbSlugs uključuje i skrivene retke,
+  // pa skriveni sistemski predložak ne "uskrsne" kroz defaults.
   const defaultSlugs = new Set(DEFAULT_TEMPLATES.map((d) => d.slug));
   const dbSlugs = new Set(dbTemplates.map((t) => t.slug));
+  const visibleDbTemplates = dbTemplates.filter((t) => !t.isHidden);
   const defaults = DEFAULT_TEMPLATES
     .filter((d) => !dbSlugs.has(d.slug))
     .map((d) => ({
@@ -50,7 +52,7 @@ router.get('/', async (_req, res) => {
     }));
 
   const merged = [
-    ...dbTemplates.map((t) => ({
+    ...visibleDbTemplates.map((t) => ({
       id: t.id,
       slug: t.slug,
       name: t.name,
@@ -99,6 +101,7 @@ router.put('/:slug', async (req, res) => {
         ctaLabel: ctaLabel || null,
         ctaUrl: ctaUrl || null,
         isActive: isActive !== false,
+        isHidden: false, // spremanje predloška ga "odskriva" ako je bio obrisan
       },
     });
 
@@ -108,10 +111,37 @@ router.put('/:slug', async (req, res) => {
   }
 });
 
-// DELETE /:slug — remove DB override, revert to default
+// DELETE /:slug — dva moda:
+//  - ?hide=true na SISTEMSKOM slugu: "obriši" — skriva ga s liste i email se više ne šalje
+//    (upsert retka s isHidden=true; hardcoded default se time gasi)
+//  - inače: briše DB redak (sistemski se time vraća na default — "Vrati zadano";
+//    vlastiti predložak se trajno uklanja)
 router.delete('/:slug', async (req, res) => {
   try {
-    const { slug } = req.params;
+    const slug = req.params.slug as string;
+    const hide = req.query.hide === 'true';
+    const isSystem = DEFAULT_TEMPLATES.some((d) => d.slug === slug);
+
+    if (hide && isSystem) {
+      const def = DEFAULT_TEMPLATES.find((d) => d.slug === slug)!;
+      await prisma.emailTemplate.upsert({
+        where: { slug },
+        create: {
+          slug,
+          name: def.name,
+          subject: def.subject,
+          body: def.body,
+          ctaLabel: def.ctaLabel || null,
+          ctaUrl: def.ctaUrl || null,
+          isActive: false,
+          isHidden: true,
+        },
+        update: { isHidden: true, isActive: false },
+      });
+      successResponse(res, { slug, hidden: true });
+      return;
+    }
+
     await prisma.emailTemplate.delete({ where: { slug } }).catch(() => {});
     successResponse(res, { slug, reverted: true });
   } catch {

@@ -804,6 +804,9 @@ model EmailTemplate {
   ctaLabel  String?
   ctaUrl    String?
   isActive  Boolean  @default(true)
+  // "Obrisan" sistemski predlozak: skriven s liste i email se uopce ne salje
+  // (za razliku od isActive=false koji samo vraca default tekst)
+  isHidden  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -283,6 +283,11 @@ async function resolveAndSendEmail(
 
   // Try DB-first resolution — if Marcel edited the template, use his version
   const dbTpl = await resolveTemplate(template);
+  if (dbTpl === 'HIDDEN') {
+    // Admin je obrisao predložak — email s tim predloškom se uopće ne šalje
+    logger.info({ template, memberId }, 'Template deleted by admin — skipping email');
+    return;
+  }
   if (dbTpl) {
     const bodyText = applyTemplateVars(dbTpl.body, member);
     const bodyParagraphs = bodyText.split('\n').filter(Boolean).map((p) => `<p>${p}</p>`).join('\n    ');

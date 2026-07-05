@@ -140,11 +140,14 @@ export default function EmailTemplatesPage() {
     fetchTemplates();
   }
 
-  // Trajno brisanje vlastitog (ne-sistemskog) predloška — ista ruta, drugačija semantika:
-  // sistemski slug se nakon brisanja vraća na zadani tekst, prilagođeni nestaje potpuno.
+  // Brisanje predloška. Sistemski: skriva se s liste i email s njim se VIŠE NE ŠALJE
+  // (?hide=true); ponovno ga vraćaš kreiranjem predloška s istim nazivom. Vlastiti: trajno brisanje.
   async function handleDelete(tpl: Template) {
-    if (!confirm(`Trajno obrisati predložak "${tpl.name}"? Automatizacije koje ga koriste prestat će slati emailove.`)) return;
-    const res = await api.del(`/api/os/email-templates/${tpl.slug}`);
+    const msg = tpl.isSystem
+      ? `Obrisati predložak "${tpl.name}"? Predložak nestaje s liste i automatski email s njim se VIŠE NEĆE slati.`
+      : `Trajno obrisati predložak "${tpl.name}"? Automatizacije koje ga koriste prestat će slati emailove.`;
+    if (!confirm(msg)) return;
+    const res = await api.del(`/api/os/email-templates/${tpl.slug}${tpl.isSystem ? '?hide=true' : ''}`);
     if (!res.success) {
       setError(res.error?.message || 'Brisanje nije uspjelo');
       return;
@@ -260,14 +263,12 @@ export default function EmailTemplatesPage() {
                       Vrati zadano
                     </button>
                   )}
-                  {!tpl.isSystem && (
-                    <button
-                      onClick={() => handleDelete(tpl)}
-                      className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-                    >
-                      Obriši
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleDelete(tpl)}
+                    className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Obriši
+                  </button>
                 </div>
               </div>
             </div>
@@ -395,6 +396,7 @@ export default function EmailTemplatesPage() {
       <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
         <p className="font-medium">Kako radi?</p>
         <p className="mt-1">Kada sustav šalje email, prvo provjerava imate li prilagođen predložak u bazi. Ako ne, koristi zadani tekst. Možete bilo koji predložak prilagoditi i uvijek se vratiti na zadano.</p>
+        <p className="mt-1">Brisanjem sistemskog predloška email s njim se <strong>prestaje slati</strong>; natrag ga vraćate tako da kreirate novi predložak s istim nazivom. Vlastiti predlošci se brišu trajno.</p>
       </div>
     </div>
   );
