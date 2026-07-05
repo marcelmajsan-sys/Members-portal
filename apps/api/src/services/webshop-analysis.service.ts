@@ -17,26 +17,30 @@ type RequestError = {
   error: 'NOT_FOUND' | 'INACTIVE' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED' | 'NOT_TRADER';
 };
 
-// Najviše ovoliko USPJEŠNIH analiza po članu u kliznom prozoru od 365 dana.
+// Najviše ovoliko USPJEŠNIH analiza po članu u kliznom prozoru od 365 dana,
+// ovisno o paketu članstva: STANDARD (i FREE) → 2, PREMIUM → 12.
 export const ANALYSES_PER_YEAR = 2;
+export const ANALYSES_PER_YEAR_PREMIUM = 12;
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 // Pojedini članovi (npr. testni/admin) imaju povišeni limit.
 const ANALYSES_LIMIT_OVERRIDES: Record<string, number> = {
   'marcel.majsan@gmail.com': 100,
 };
-function analysesLimitFor(email?: string | null): number {
-  return (email ? ANALYSES_LIMIT_OVERRIDES[email.toLowerCase()] : undefined) ?? ANALYSES_PER_YEAR;
+function analysesLimitFor(email?: string | null, memberTier?: string | null): number {
+  const override = email ? ANALYSES_LIMIT_OVERRIDES[email.toLowerCase()] : undefined;
+  if (override !== undefined) return override;
+  return memberTier === 'PREMIUM' ? ANALYSES_PER_YEAR_PREMIUM : ANALYSES_PER_YEAR;
 }
 
 // Koliko je analiza član iskoristio u zadnjih godinu dana + koliko ih je preostalo.
 export async function getWebshopAnalysisQuota(userId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    select: { id: true, memberType: true, user: { select: { email: true } } },
+    select: { id: true, memberType: true, memberTier: true, user: { select: { email: true } } },
   });
   if (!member || !ANALYZABLE_TYPES.includes(member.memberType)) return null;
-  const limit = analysesLimitFor(member.user?.email);
+  const limit = analysesLimitFor(member.user?.email, member.memberTier);
   const used = await prisma.webshopAnalysis.count({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
   });
@@ -332,7 +336,7 @@ export async function requestWebshopAnalysis(userId: string) {
   const usedThisYear = await prisma.webshopAnalysis.count({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
   });
-  if (usedThisYear >= analysesLimitFor(member.user?.email)) return { error: 'LIMIT_REACHED' } as RequestError;
+  if (usedThisYear >= analysesLimitFor(member.user?.email, member.memberTier)) return { error: 'LIMIT_REACHED' } as RequestError;
 
   const websiteUrl = normalizeUrl(website);
 

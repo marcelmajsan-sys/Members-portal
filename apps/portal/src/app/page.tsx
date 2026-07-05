@@ -360,8 +360,8 @@ export default function PortalHome() {
                         AI model radi po kriterijima žirija Udruge iz Stručne analize webova za nuditelje
                         (lipanj 2025.): ocjena prezentacije ponude, dizajna, osnovnog SEO-a i brzine (Best
                         Web), analiza copyja (Best Copy) te marketinških signala (Best Marketing). Zbog
-                        napretka AI alata ručne analize više ne radimo, no svaki član ima pravo napraviti
-                        2 AI analize godišnje.
+                        napretka AI alata ručne analize više ne radimo, no svaki član ima pravo na AI analize
+                        godišnje prema paketu članstva (Standard 2, Premium 12).
                       </>
                     ) : (
                       <>
@@ -375,8 +375,8 @@ export default function PortalHome() {
                         >
                           pogledajte izvještaj
                         </a>
-                        . Zbog napretka AI alata ručne analize više ne radimo, no svaki član ima pravo
-                        napraviti 2 AI analize svog webshopa godišnje.
+                        . Zbog napretka AI alata ručne analize više ne radimo, no svaki član ima pravo na AI
+                        analize godišnje prema paketu članstva (Standard 2, Premium 12).
                       </>
                     )}
                   </p>
@@ -396,7 +396,7 @@ export default function PortalHome() {
                           Preostalo analiza {quota.remaining}/{quota.limit}
                         </p>
                         <p className="max-w-[220px] text-right text-[11px] leading-snug text-gray-400">
-                          Dostupne su {quota.limit} analize godišnje po članu.
+                          Dostupno: {quota.limit} {quota.limit === 1 ? 'analiza' : quota.limit < 5 ? 'analize' : 'analiza'} godišnje po članu.
                         </p>
                       </>
                     )}
