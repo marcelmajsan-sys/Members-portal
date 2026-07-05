@@ -62,32 +62,34 @@ function plural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
+// Uvjet je "eq" (točno taj dan) — cron dnevno okida event za sve koji ističu unutar 30 dana,
+// pa bi "lte" slao podsjetnik svakih 7 dana (cooldown) umjesto točno na 30/14/7.
 const PRESET_AUTOMATIONS = [
   {
     name: 'Podsjetnik 30 dana prije isteka',
-    description: 'Automatski šalje email podsjetnik članovima 30 dana prije isteka članstva.',
+    description: 'Automatski šalje podsjetnik s predračunom u privitku točno 30 dana prije isteka članstva.',
     triggerEvent: 'member.expiry_reminder',
     steps: [
-      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'lte', value: 30 }, order: 0 },
-      { type: 'SEND_EMAIL', config: { template: 'renewal_reminder', subject: 'Vaše članstvo uskoro ističe' }, order: 1 },
+      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'eq', value: 30 }, order: 0 },
+      { type: 'SEND_EMAIL', config: { template: 'renewal_reminder' }, order: 1 },
     ],
   },
   {
     name: 'Podsjetnik 14 dana prije isteka',
-    description: 'Drugi podsjetnik — 14 dana prije isteka s urgentnim tonom.',
+    description: 'Drugi podsjetnik s predračunom — točno 14 dana prije isteka.',
     triggerEvent: 'member.expiry_reminder',
     steps: [
-      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'lte', value: 14 }, order: 0 },
-      { type: 'SEND_EMAIL', config: { template: 'renewal_urgent', subject: 'Hitno: Članstvo ističe za 14 dana' }, order: 1 },
+      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'eq', value: 14 }, order: 0 },
+      { type: 'SEND_EMAIL', config: { template: 'renewal_urgent' }, order: 1 },
     ],
   },
   {
     name: 'Podsjetnik 7 dana prije isteka',
-    description: 'Zadnji podsjetnik — 7 dana prije isteka.',
+    description: 'Zadnji podsjetnik s predračunom — točno 7 dana prije isteka.',
     triggerEvent: 'member.expiry_reminder',
     steps: [
-      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'lte', value: 7 }, order: 0 },
-      { type: 'SEND_EMAIL', config: { template: 'renewal_final', subject: 'Zadnji poziv: Obnovite članstvo' }, order: 1 },
+      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'eq', value: 7 }, order: 0 },
+      { type: 'SEND_EMAIL', config: { template: 'renewal_final' }, order: 1 },
     ],
   },
   {

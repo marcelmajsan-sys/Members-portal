@@ -67,7 +67,10 @@ packages/ai/src/claude.ts                 — Anthropic SDK ask() (claude-opus-4
 - `GET /api/cron/fetch-inbound` — `0 * * * *` (dohvat dolaznih mailova).
 - `GET /api/cron/daily-renewal` — `0 8 * * *` (podsjetnici za istek + auto-EXPIRED).
 
-Automatizacije na događaje rade INLINE u API-ju (event-bus → automation-executor), ne trebaju worker. **`emitEvent()` interno AWAITA executor** (serverless freeze — fire-and-forget bi bio presječen); svi pozivatelji ga awaitaju u try/catch. Predlošci `renewal_urgent` (14 dana) i `renewal_final` (7 dana) šalju default tekst i bez DB predloška (prije su se tiho preskakali); predračun s PDF-om i dalje ide ručno preko send-offer.
+Automatizacije na događaje rade INLINE u API-ju (event-bus → automation-executor), ne trebaju worker. **`emitEvent()` interno AWAITA executor** (serverless freeze — fire-and-forget bi bio presječen); svi pozivatelji ga awaitaju u try/catch.
+- **Podsjetnici za obnovu (30/14/7 dana)**: cron dnevno emitira `member.expiry_reminder` (s `daysUntilExpiry`) za sve koji ističu unutar 30 dana — preset automatizacije koriste uvjet **`eq`** (točan dan), NE `lte` (inače bi cooldown slao svakih 7 dana). Cooldown za renewal grupu je **6 dana** (razmak 14→7 je točno 7). `member.expired` se emitira tek kad članstvo stvarno istekne.
+- **Svaki podsjetnik nosi predračun (PDF) u privitku**: executor za renewal predloške zove `createOffer` (step≥2 ponovno koristi postojeći SENT predračun — isti broj/PDF); FREE članovi nemaju predračun pa podsjetnik ide bez privitka. Placeholder `{{datum_isteka}}` (+ ime/prezime/tvrtka) zamjenjuje se podacima člana u subjectu i bodyju.
+- 5 preset automatizacija (30/14/7, dobrodošlica, istek) seedano je u bazu kao **PAUSED** — aktiviraju se ručno na `/admin/automation`.
 
 ### AI (Anthropic)
 `packages/ai/src/claude.ts` `ask()` koristi **`claude-opus-4-8`** (bez `temperature` — Opus ga odbija s 400). Svi AI agenti (member-summary, audit, safeshop, inbox, academy, competitor, price) idu kroz isti `ask()`. Env: `ANTHROPIC_API_KEY`.

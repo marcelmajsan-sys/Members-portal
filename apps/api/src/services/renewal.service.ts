@@ -33,10 +33,14 @@ async function checkExpiringMembers(stats: RenewalStats): Promise<void> {
         actionUrl: '/membership/renew',
       },
     });
-    await emitEvent(DomainEvents.MEMBER_EXPIRED, {
+    // 'member.expiry_reminder' — isti event kao ručni /renewal-check; na njega slušaju
+    // automatizacije podsjetnika (30/14/7 dana). Prije se ovdje krivo emitirao
+    // 'member.expired' pa bi "Obavijest o isteku" išla mjesec dana prerano.
+    await emitEvent('member.expiry_reminder', {
       memberId: m.id, userId: m.userId, email: m.user.email,
       firstName: m.user.firstName, lastName: m.user.lastName,
       companyName: m.company.name, daysUntilExpiry: days, expiresAt: m.expiresAt!.toISOString(),
+      memberTier: m.memberTier,
     });
     stats.remindersSent++;
   }
@@ -61,6 +65,8 @@ async function expireOverdueMembers(stats: RenewalStats): Promise<void> {
         actionUrl: '/membership/renew',
       },
     });
+    // Tek OVDJE članstvo stvarno istječe — okida automatizaciju "Obavijest o isteku"
+    await emitEvent(DomainEvents.MEMBER_EXPIRED, { memberId: m.id, userId: m.userId });
     stats.expired++;
   }
 }

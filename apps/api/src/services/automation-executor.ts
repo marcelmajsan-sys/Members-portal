@@ -10,8 +10,14 @@ import {
 } from '../utils/member-emails.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
 import { resolveTemplate, DEFAULT_TEMPLATES } from '../utils/resolve-template.js';
+import { createOffer, getMemberLastStep } from './offer.service.js';
 
 const COOLDOWN_DAYS = 7;
+
+// Podsjetnici za obnovu idu na 30/14/7 dana — razmak 14→7 je TOČNO 7 dana,
+// pa bi cooldown od 7 dana blokirao zadnji podsjetnik. Za njih vrijedi 6 dana.
+const RENEWAL_TEMPLATES = ['renewal_reminder', 'renewal_urgent', 'renewal_final'];
+const RENEWAL_COOLDOWN_DAYS = 6;
 
 // Group similar templates — cooldown only applies within the same group
 const COOLDOWN_GROUPS: Record<string, string[]> = {
@@ -214,7 +220,11 @@ async function resolveAndSendEmail(
   }
 
   // Cooldown check — skip if a similar email was sent recently
-  const lastSent = await checkEmailCooldown(memberId, template);
+  const lastSent = await checkEmailCooldown(
+    memberId,
+    template,
+    RENEWAL_TEMPLATES.includes(template) ? RENEWAL_COOLDOWN_DAYS : COOLDOWN_DAYS,
+  );
   if (lastSent) {
     logger.info({ memberId, template, lastSent }, 'Skipping email — cooldown active');
     return;
@@ -244,6 +254,30 @@ async function resolveAndSendEmail(
   let html: string;
   let finalSubject: string;
 
+  // Podsjetnici za obnovu UVIJEK nose predračun (PDF) u privitku.
+  // createOffer za step>=2 ponovno koristi postojeći SENT predračun (isti broj/PDF),
+  // pa tri podsjetnika ne stvaraju tri različita predračuna. Ako generiranje ne uspije
+  // (npr. FREE član nema predračun), podsjetnik ide bez privitka.
+  let attachments: { filename: string; content: string; contentType: string; encoding: string }[] | undefined;
+  if (RENEWAL_TEMPLATES.includes(template)) {
+    try {
+      const lastStep = await getMemberLastStep(memberId);
+      const step = lastStep < 2 ? lastStep + 1 : 2;
+      const { offer, pdfBuffer } = await createOffer(memberId, step);
+      attachments = [{
+        filename: `Predracun-${offer.offerNumber}.pdf`,
+        content: pdfBuffer.toString('base64'),
+        contentType: 'application/pdf',
+        encoding: 'base64',
+      }];
+    } catch (err) {
+      logger.warn(
+        { memberId, template, error: err instanceof Error ? err.message : String(err) },
+        'Predračun za podsjetnik nije generiran — email ide bez privitka',
+      );
+    }
+  }
+
   // Try DB-first resolution — if Marcel edited the template, use his version
   const dbTpl = await resolveTemplate(template);
   if (dbTpl) {
@@ -272,7 +306,7 @@ async function resolveAndSendEmail(
   </div>
 </body></html>`;
     finalSubject = applyTemplateVars(subject || dbTpl.subject, member);
-    await sendEmail(to, finalSubject, html, { memberId, templateName: template });
+    await sendEmail(to, finalSubject, html, { memberId, templateName: template, attachments });
     return;
   }
 
@@ -386,5 +420,5 @@ async function resolveAndSendEmail(
     }
   }
 
-  await sendEmail(to, finalSubject, html, { memberId, templateName: template });
+  await sendEmail(to, finalSubject, html, { memberId, templateName: template, attachments });
 }
