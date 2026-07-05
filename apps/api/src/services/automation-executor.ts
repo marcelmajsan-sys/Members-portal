@@ -19,6 +19,9 @@ const COOLDOWN_DAYS = 7;
 const RENEWAL_TEMPLATES = ['renewal_reminder', 'renewal_urgent', 'renewal_final'];
 const RENEWAL_COOLDOWN_DAYS = 6;
 
+// Predlošci koji u privitku nose predračun za obnovu (podsjetnici + obavijest o isteku)
+const OFFER_ATTACHMENT_TEMPLATES = [...RENEWAL_TEMPLATES, 'expired'];
+
 // Group similar templates — cooldown only applies within the same group
 const COOLDOWN_GROUPS: Record<string, string[]> = {
   reminder: ['renewal_reminder', 'renewal_urgent', 'renewal_final', 'offer_step_1', 'offer_step_2'],
@@ -259,7 +262,7 @@ async function resolveAndSendEmail(
   // pa tri podsjetnika ne stvaraju tri različita predračuna. Ako generiranje ne uspije
   // (npr. FREE član nema predračun), podsjetnik ide bez privitka.
   let attachments: { filename: string; content: string; contentType: string; encoding: string }[] | undefined;
-  if (RENEWAL_TEMPLATES.includes(template)) {
+  if (OFFER_ATTACHMENT_TEMPLATES.includes(template)) {
     try {
       const lastStep = await getMemberLastStep(memberId);
       const step = lastStep < 2 ? lastStep + 1 : 2;

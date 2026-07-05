@@ -51,9 +51,9 @@ export const DEFAULT_TEMPLATES: Array<{
     slug: 'expired',
     name: 'Isteklo članstvo',
     subject: 'Vaše članstvo je isteklo — eCommerce Hrvatska',
-    body: 'Obavještavamo Vas da je Vaše članstvo u udruzi eCommerce Hrvatska isteklo.\n\nObnovite članstvo kako biste zadržali pristup svim pogodnostima.',
-    ctaLabel: 'Obnovite članstvo',
-    ctaUrl: 'https://ecommerce.hr/clanstvo',
+    body: 'Obavještavamo Vas da je Vaše članstvo u udruzi eCommerce Hrvatska isteklo {{datum_isteka}}, čime gubite pristup benefitima za članove (popis: https://ecommerce.hr/o-udruzi/clanstvo/).\n\nPredračun za obnovu članstva nalazi se u privitku ovog emaila — možete ga platiti internet bankarstvom ili skeniranjem HUB-3 barkoda.\n\nJavite nam kada izvršite uplatu kako bismo Vam produžili članstvo — dovoljno je odgovoriti na ovaj email.',
+    ctaLabel: undefined,
+    ctaUrl: undefined,
   },
   {
     slug: 'renewal_confirmation',
