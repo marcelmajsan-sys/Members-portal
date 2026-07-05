@@ -71,6 +71,8 @@ export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [busyId, setBusyId] = useState('');
   const [toast, setToast] = useState('');
 
   // Filteri: Set<string> obrazac, backend prima comma-separated
@@ -89,24 +91,35 @@ export default function TicketsPage() {
     if (res.success && res.data) {
       setConferences(res.data);
       setSelectedId((prev) => prev || res.data!.find((c) => c.isActive)?.id || res.data![0]?.id || '');
+    } else {
+      setLoadError(res.error?.message || 'Greška pri učitavanju konferencija');
     }
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchConferences(); }, [fetchConferences]);
 
-  const fetchTickets = useCallback(async () => {
-    if (!selectedId) return;
-    setLoadingTickets(true);
+  const buildFilterParams = useCallback(() => {
     const params = new URLSearchParams();
     if (statusFilter.size > 0) params.set('status', [...statusFilter].join(','));
     if (typeFilter.size > 0) params.set('type', [...typeFilter].join(','));
     if (search.trim()) params.set('q', search.trim());
-    const qs = params.toString();
+    return params;
+  }, [statusFilter, typeFilter, search]);
+
+  const fetchTickets = useCallback(async () => {
+    if (!selectedId) return;
+    setLoadingTickets(true);
+    const qs = buildFilterParams().toString();
     const res = await api.get<Ticket[]>(`/api/os/conferences/${selectedId}/tickets${qs ? `?${qs}` : ''}`);
-    if (res.success && res.data) setTickets(res.data);
+    if (res.success && res.data) {
+      setTickets(res.data);
+      setLoadError('');
+    } else {
+      setLoadError(res.error?.message || 'Greška pri učitavanju ulaznica');
+    }
     setLoadingTickets(false);
-  }, [selectedId, statusFilter, typeFilter, search]);
+  }, [selectedId, buildFilterParams]);
 
   useEffect(() => {
     const t = setTimeout(fetchTickets, search ? 300 : 0);
@@ -121,19 +134,23 @@ export default function TicketsPage() {
   }
 
   async function updateTicket(t: Ticket, data: Partial<Pick<Ticket, 'status' | 'type'>>) {
+    if (busyId) return;
+    setBusyId(t.id);
     const res = await api.put(`/api/os/conferences/${selectedId}/tickets/${t.id}`, data);
     if (res.success) {
       showToast(data.status === 'CONFIRMED' ? `Ulaznica potvrđena — ${t.fullName} (email poslan)` : 'Ulaznica ažurirana');
-      fetchTickets(); fetchConferences();
+      await Promise.all([fetchTickets(), fetchConferences()]);
     } else {
       showToast(res.error?.message || 'Greška');
     }
+    setBusyId('');
   }
 
   async function exportXlsx() {
     if (!selectedId) return;
     const token = localStorage.getItem('accessToken');
-    const res = await fetch(`${BASE_URL}/api/os/conferences/${selectedId}/tickets/export`, {
+    const qs = buildFilterParams().toString();
+    const res = await fetch(`${BASE_URL}/api/os/conferences/${selectedId}/tickets/export${qs ? `?${qs}` : ''}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) { showToast('Export nije uspio'); return; }
@@ -179,21 +196,27 @@ export default function TicketsPage() {
               </button>
             </>
           )}
-          <button
-            onClick={() => setShowSettings(true)}
-            className={selected ? 'hidden' : 'rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-dark'}
-          >
-            + Nova konferencija
-          </button>
+          {!selected && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-dark"
+            >
+              + Nova konferencija
+            </button>
+          )}
         </div>
       </div>
 
       {toast && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{toast}</div>}
 
       {!selected ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
-          Nema konferencije. Kliknite „+ Nova konferencija" i postavite kvote ulaznica.
-        </div>
+        loadError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-12 text-center text-red-600">{loadError}</div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
+            Nema konferencije. Kliknite „+ Nova konferencija" i postavite kvote ulaznica.
+          </div>
+        )
       ) : (
         <>
           {/* Stat kartice — live brojka check-ina */}
@@ -243,15 +266,17 @@ export default function TicketsPage() {
           {/* Tablice: prijave članova + ručno dodane (admin) */}
           {loadingTickets ? (
             <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">Učitavanje ulaznica...</div>
+          ) : loadError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-12 text-center text-red-600">{loadError}</div>
           ) : tickets.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">Nema prijava za odabrane filtere.</div>
           ) : (
             <>
-              <TicketTable tickets={tickets.filter((t) => !t.addedByStaff)} onUpdate={updateTicket} emptyText="Članovi još nisu dodali nijednu osobu (za odabrane filtere)." />
+              <TicketTable tickets={tickets.filter((t) => !t.addedByStaff)} onUpdate={updateTicket} busyId={busyId} emptyText="Članovi još nisu dodali nijednu osobu (za odabrane filtere)." />
               {tickets.some((t) => t.addedByStaff) && (
                 <div>
                   <h2 className="mb-2 mt-6 text-xs font-bold uppercase tracking-widest text-gray-400">Ručno dodane</h2>
-                  <TicketTable tickets={tickets.filter((t) => t.addedByStaff)} onUpdate={updateTicket} emptyText="" />
+                  <TicketTable tickets={tickets.filter((t) => t.addedByStaff)} onUpdate={updateTicket} busyId={busyId} emptyText="" />
                 </div>
               )}
             </>
@@ -273,10 +298,12 @@ export default function TicketsPage() {
 function TicketTable({
   tickets,
   onUpdate,
+  busyId,
   emptyText,
 }: {
   tickets: Ticket[];
   onUpdate: (t: Ticket, data: Partial<Pick<Ticket, 'status' | 'type'>>) => void;
+  busyId: string;
   emptyText: string;
 }) {
   if (tickets.length === 0) {
@@ -324,10 +351,11 @@ function TicketTable({
                   {t.status === 'PENDING' && (
                     <button
                       onClick={() => onUpdate(t, { status: 'CONFIRMED' })}
-                      className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                      disabled={busyId === t.id}
+                      className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
                       title="Potvrdi ulaznicu (šalje email osobi i članu)"
                     >
-                      Odobri
+                      {busyId === t.id ? '...' : 'Odobri'}
                     </button>
                   )}
                   {t.status === 'CONFIRMED' && (
@@ -336,13 +364,14 @@ function TicketTable({
                   {t.status !== 'CANCELLED' && (
                     <button
                       onClick={() => { if (confirm(`Otkazati ulaznicu za ${t.fullName}?`)) onUpdate(t, { status: 'CANCELLED' }); }}
-                      className="text-xs text-gray-400 hover:text-red-500"
+                      disabled={busyId === t.id}
+                      className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50"
                     >
                       Otkaži
                     </button>
                   )}
                   {t.status === 'CANCELLED' && (
-                    <button onClick={() => onUpdate(t, { status: 'CONFIRMED' })} className="text-xs text-gray-400 hover:text-emerald-600">
+                    <button onClick={() => onUpdate(t, { status: 'CONFIRMED' })} disabled={busyId === t.id} className="text-xs text-gray-400 hover:text-emerald-600 disabled:opacity-50">
                       Vrati
                     </button>
                   )}

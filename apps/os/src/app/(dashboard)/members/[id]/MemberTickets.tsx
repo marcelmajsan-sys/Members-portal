@@ -30,7 +30,16 @@ const STATUS_STYLES: Record<string, string> = {
 };
 const TYPE_STYLES: Record<string, string> = { VIP: 'bg-amber-100 text-amber-800', STANDARD: 'bg-gray-100 text-gray-600' };
 
-const emptyForm = { fullName: '', jobTitle: '', email: '', phone: '', type: 'STANDARD', status: 'CONFIRMED' };
+interface TicketForm {
+  fullName: string;
+  jobTitle: string;
+  email: string;
+  phone: string;
+  type: 'VIP' | 'STANDARD';
+  status: 'CONFIRMED' | 'PENDING';
+}
+
+const emptyForm: TicketForm = { fullName: '', jobTitle: '', email: '', phone: '', type: 'STANDARD', status: 'CONFIRMED' };
 
 // Ulaznice člana na profilu — ručno dodavanje od strane admina (bez kvote)
 export default function MemberTickets({ memberId }: { memberId: string }) {
@@ -38,16 +47,23 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<TicketForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState(false);
+  const [busyId, setBusyId] = useState('');
   const [toast, setToast] = useState('');
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3500); }
 
   const fetchTickets = useCallback(async (confId: string) => {
     const res = await api.get<Ticket[]>(`/api/os/conferences/${confId}/tickets?memberId=${memberId}`);
-    if (res.success && res.data) setTickets(res.data);
+    if (res.success && res.data) {
+      setTickets(res.data);
+      setLoadError(false);
+    } else {
+      setLoadError(true);
+    }
   }, [memberId]);
 
   useEffect(() => {
@@ -57,6 +73,8 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
         const active = res.data.find((c) => c.isActive) || res.data[0] || null;
         setConference(active);
         if (active) await fetchTickets(active.id);
+      } else {
+        setLoadError(true);
       }
       setLoading(false);
     })();
@@ -80,8 +98,10 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
   }
 
   async function updateStatus(t: Ticket, status: Ticket['status']) {
-    if (!conference) return;
+    if (!conference || busyId) return;
     if (status === 'CANCELLED' && !confirm(`Otkazati ulaznicu za ${t.fullName}?`)) return;
+    if (status === 'CONFIRMED' && !confirm(`Potvrditi ulaznicu za ${t.fullName}? Osobi će biti poslan email s ulaznicom.`)) return;
+    setBusyId(t.id);
     const res = await api.put(`/api/os/conferences/${conference.id}/tickets/${t.id}`, { status });
     if (res.success) {
       showToast(status === 'CONFIRMED' ? 'Ulaznica potvrđena (email poslan)' : 'Ulaznica ažurirana');
@@ -89,9 +109,21 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
     } else {
       showToast(res.error?.message || 'Greška');
     }
+    setBusyId('');
   }
 
-  if (loading || !conference) return null;
+  if (loading) return null;
+
+  if (loadError) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-6">
+        <h2 className="font-semibold text-gray-900">Ulaznice</h2>
+        <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Nije moguće učitati ulaznice</p>
+      </div>
+    );
+  }
+
+  if (!conference) return null;
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-6">
@@ -126,13 +158,13 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
               <input required value={form.phone} onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
             </Field>
             <Field label="Tip ulaznice">
-              <select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
+              <select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value as TicketForm['type'] }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
                 <option value="STANDARD">STANDARD</option>
                 <option value="VIP">VIP</option>
               </select>
             </Field>
             <Field label="Status">
-              <select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
+              <select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value as TicketForm['status'] }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
                 <option value="CONFIRMED">Potvrđena (odmah šalje email s ulaznicom)</option>
                 <option value="PENDING">Na čekanju</option>
               </select>
@@ -169,12 +201,12 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
                   <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Ulaznica</a>
                 )}
                 {t.status === 'PENDING' && (
-                  <button onClick={() => updateStatus(t, 'CONFIRMED')} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700">Odobri</button>
+                  <button onClick={() => updateStatus(t, 'CONFIRMED')} disabled={busyId === t.id} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{busyId === t.id ? '...' : 'Odobri'}</button>
                 )}
                 {t.status !== 'CANCELLED' ? (
-                  <button onClick={() => updateStatus(t, 'CANCELLED')} className="text-xs text-gray-400 hover:text-red-500">Otkaži</button>
+                  <button onClick={() => updateStatus(t, 'CANCELLED')} disabled={busyId === t.id} className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50">Otkaži</button>
                 ) : (
-                  <button onClick={() => updateStatus(t, 'CONFIRMED')} className="text-xs text-gray-400 hover:text-emerald-600">Vrati</button>
+                  <button onClick={() => updateStatus(t, 'CONFIRMED')} disabled={busyId === t.id} className="text-xs text-gray-400 hover:text-emerald-600 disabled:opacity-50">Vrati</button>
                 )}
               </div>
             </li>

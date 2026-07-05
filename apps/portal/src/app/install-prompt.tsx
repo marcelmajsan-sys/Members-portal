@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 // Chrome/Edge na Androidu: hvatamo beforeinstallprompt i nudimo vlastiti gumb za instalaciju.
 // Event ne postoji u TS lib-u pa ga minimalno tipiziramo.
@@ -12,6 +13,7 @@ interface BeforeInstallPromptEvent extends Event {
 const DISMISS_KEY = 'pwa-install-dismissed';
 
 export default function InstallPrompt() {
+  const pathname = usePathname();
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
@@ -24,6 +26,8 @@ export default function InstallPrompt() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  // Na javnoj stranici ulaznice ne nudimo instalaciju aplikacije
+  if (pathname?.startsWith('/ulaznica')) return null;
   if (!promptEvent) return null;
 
   async function install() {

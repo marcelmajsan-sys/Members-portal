@@ -76,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Obavijesti server da opozove refresh token (fire-and-forget)
+    api.post('/api/auth/logout', { refreshToken: localStorage.getItem('refreshToken') }).catch(() => {});
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');

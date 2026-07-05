@@ -4,12 +4,16 @@
    - API pozivi (druga domena, /api/): uvijek mreža, bez keširanja
    Scope je /admin/ (SW se servira s /admin/sw.js). */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const STATIC_CACHE = `os-static-${VERSION}`;
 const PAGE_CACHE = `os-pages-${VERSION}`;
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+  // Precache početne stranice — offline fallback za navigacije inače nema što poslužiti
+  event.waitUntil(
+    caches.open(PAGE_CACHE).then((cache) => cache.add('/admin')).catch(() => {}),
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -29,8 +33,8 @@ self.addEventListener('fetch', (event) => {
   // API i sve s drugih domena — uvijek mreža
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  // Statika (hashirani Next assets, slike, ikone) — cache-first
-  if (url.pathname.startsWith('/admin/_next/static/') || /\.(png|jpg|jpeg|svg|ico|woff2?)$/.test(url.pathname)) {
+  // Hashirani Next asseti — immutable, čisti cache-first
+  if (url.pathname.startsWith('/admin/_next/static/')) {
     event.respondWith(
       caches.open(STATIC_CACHE).then((cache) =>
         cache.match(req).then(
@@ -41,6 +45,25 @@ self.addEventListener('fetch', (event) => {
               return res;
             }),
         ),
+      ),
+    );
+    return;
+  }
+
+  // Ostale slike/ikone (nemaju hash u imenu) — stale-while-revalidate,
+  // da zamjena npr. logo.png pod istim imenom ne ostane zauvijek stara
+  if (/\.(png|jpg|jpeg|svg|ico|woff2?)$/.test(url.pathname)) {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then((cache) =>
+        cache.match(req).then((hit) => {
+          const refresh = fetch(req)
+            .then((res) => {
+              if (res.ok) cache.put(req, res.clone());
+              return res;
+            })
+            .catch(() => hit);
+          return hit || refresh;
+        }),
       ),
     );
     return;

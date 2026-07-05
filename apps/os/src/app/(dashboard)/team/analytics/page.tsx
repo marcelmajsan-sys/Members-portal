@@ -88,7 +88,7 @@ export default function TeamAnalyticsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Analitika tima</h1>
-          <p className="mt-1 text-sm text-gray-500">Pregled performansi zaposlenika</p>
+          <p className="mt-1 text-sm text-gray-500">Pregled performansi zaposlenika <span className="text-gray-400">(prikazani su samo operateri)</span></p>
         </div>
         <Link
           href="/team"

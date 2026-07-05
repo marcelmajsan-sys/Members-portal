@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 interface Offer {
@@ -46,6 +47,7 @@ export default function PonudePage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadOffers();
@@ -53,15 +55,22 @@ export default function PonudePage() {
 
   async function loadOffers() {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('search', search);
       const res = await api.get<Offer[]>(`/api/os/offers?${params}`) as any;
-      setOffers(res.data || []);
-      setTotalPages(res.meta?.totalPages || 1);
+      if (!res.success) {
+        setOffers([]);
+        setError(res.error?.message || 'Greška pri učitavanju ponuda');
+      } else {
+        setOffers(res.data || []);
+        setTotalPages(res.meta?.totalPages || 1);
+      }
     } catch {
       setOffers([]);
+      setError('Greška pri učitavanju ponuda');
     }
     setLoading(false);
   }
@@ -138,6 +147,8 @@ export default function PonudePage() {
       {/* Table */}
       {loading ? (
         <p className="text-gray-500">Učitavanje...</p>
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>
       ) : offers.length === 0 ? (
         <p className="text-gray-500">Nema ponuda.</p>
       ) : (
@@ -160,9 +171,9 @@ export default function PonudePage() {
                 <tr key={offer.id} className="border-b hover:bg-gray-50">
                   <td className="py-3 px-2 font-mono text-xs hidden sm:table-cell">{offer.offerNumber}</td>
                   <td className="py-3 px-2">
-                    <a href={`/members/${offer.member.id}`} className="text-[#1B365D] hover:underline">
+                    <Link href={`/members/${offer.member.id}`} className="text-[#1B365D] hover:underline">
                       {offer.member.user.firstName} {offer.member.user.lastName}
-                    </a>
+                    </Link>
                   </td>
                   <td className="py-3 px-2 text-gray-600 hidden md:table-cell">{offer.member.company.name}</td>
                   <td className="py-3 px-2 font-medium">{formatAmount(Number(offer.amount))}</td>

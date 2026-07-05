@@ -75,7 +75,7 @@ async function request<T>(
       localStorage.removeItem('user');
       window.location.href = '/login';
 
-      return { success: false, error: { code: 'UNAUTHORIZED', message: 'Session expired' } };
+      return { success: false, error: { code: 'UNAUTHORIZED', message: 'Sesija je istekla, prijavite se ponovno' } };
     }
 
     const data: ApiResponse<T> = await res.json();

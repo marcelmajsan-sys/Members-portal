@@ -76,20 +76,29 @@ export default function NotificationsPage() {
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
+  // Obavijesti sidebar layoutu da osvježi badge s brojem nepročitanih
+  function notifyBadge() {
+    window.dispatchEvent(new Event('notifs-changed'));
+  }
+
   async function markRead(id: string, read: boolean) {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: read } : n)));
     if (read) await api.patch(`/api/notifications/${id}/read`);
     else await api.patch(`/api/notifications/${id}/unread`);
+    notifyBadge();
   }
 
   async function markAllRead() {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     await api.post('/api/notifications/mark-all-read');
+    notifyBadge();
   }
 
   async function deleteNotif(id: string) {
+    if (!confirm('Obrisati obavijest?')) return;
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     await api.del(`/api/notifications/${id}`);
+    notifyBadge();
   }
 
   const withType = notifications.map((n) => ({ ...n, notifType: getNotifType(n) }));
@@ -180,9 +189,13 @@ export default function NotificationsPage() {
                   </div>
                   <p className="mt-1 text-sm text-gray-600">{n.message}</p>
                   <div className="mt-2 flex items-center gap-4">
-                    {n.actionUrl && n.actionUrl.startsWith('/members/') && (
+                    {n.actionUrl && n.actionUrl.startsWith('/') && (
                       <button onClick={() => router.push(n.actionUrl!)} className="text-xs font-medium text-primary hover:underline">
-                        Otvori člana →
+                        {n.actionUrl.startsWith('/members/')
+                          ? 'Otvori člana →'
+                          : n.actionUrl.startsWith('/tasks/')
+                            ? 'Otvori zadatak →'
+                            : 'Otvori →'}
                       </button>
                     )}
                     <button

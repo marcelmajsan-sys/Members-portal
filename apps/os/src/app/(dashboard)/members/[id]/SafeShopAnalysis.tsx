@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 
 interface Checkpoint {
@@ -43,6 +43,7 @@ export default function SafeShopAnalysis({
   const [quota, setQuota] = useState<Quota | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+  const aliveRef = useRef(true);
 
   // Uređivanje
   const [editing, setEditing] = useState(false);
@@ -58,13 +59,16 @@ export default function SafeShopAnalysis({
   }
 
   useEffect(() => {
+    aliveRef.current = true;
     refreshQuota();
     api.get<SafeShopAnalysisData | null>(`/api/os/members/${memberId}/safeshop-analysis`).then((res) => {
+      if (!aliveRef.current) return;
       if (res.success && res.data) {
         setAnalysis(res.data);
         if (res.data.status === 'PENDING') poll();
       }
     });
+    return () => { aliveRef.current = false; };
   }, [memberId]);
 
   async function poll(maxMs = 180000) {
@@ -72,9 +76,11 @@ export default function SafeShopAnalysis({
     const start = Date.now();
     while (Date.now() - start < maxMs) {
       await new Promise((r) => setTimeout(r, 5000));
+      if (!aliveRef.current) return;
       const res = await api.get<SafeShopAnalysisData | null>(`/api/os/members/${memberId}/safeshop-analysis`);
+      if (!aliveRef.current) return;
       if (res.success && res.data) {
-        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); refreshQuota(); return; }
+        if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setError(''); setRunning(false); refreshQuota(); return; }
         if (res.data.status === 'FAILED') { setAnalysis(res.data); setError('Analiza nije uspjela. Pokušajte ponovno.'); setRunning(false); return; }
       }
     }
@@ -87,7 +93,7 @@ export default function SafeShopAnalysis({
     setEditing(false);
     setRunning(true);
     const res = await api.post<SafeShopAnalysisData>(`/api/os/members/${memberId}/safeshop-analysis`).catch(() => null);
-    if (res && res.success && res.data?.status === 'COMPLETED') { setAnalysis(res.data); setRunning(false); refreshQuota(); return; }
+    if (res && res.success && res.data?.status === 'COMPLETED') { setAnalysis(res.data); setError(''); setRunning(false); refreshQuota(); return; }
     if (res && !res.success && res.error && res.error.code !== 'CONFLICT' && res.error.code !== 'NETWORK_ERROR') {
       setError(res.error.message || 'Analiza nije uspjela.');
       setRunning(false);
@@ -99,6 +105,7 @@ export default function SafeShopAnalysis({
 
   function startEdit() {
     if (!analysis) return;
+    setError('');
     setEditSummary(analysis.summary ?? '');
     setEditAnalyst(analysis.analyst ?? DEFAULT_ANALYST);
     setEditCheckpoints((analysis.result ?? []).map((c) => ({ ...c })));
@@ -107,6 +114,7 @@ export default function SafeShopAnalysis({
 
   async function save() {
     if (!analysis) return;
+    setError('');
     setSaving(true);
     const res = await api
       .patch<SafeShopAnalysisData>(`/api/os/safeshop-analysis/${analysis.id}`, {
@@ -139,7 +147,8 @@ export default function SafeShopAnalysis({
   const checkpoints = editing ? editCheckpoints : analysis?.result ?? [];
   const summary = editing ? editSummary : analysis?.summary ?? '';
   const score = editing ? editCheckpoints.filter((c) => c.pass).length : analysis?.score ?? 0;
-  const passed = score >= 9;
+  // Izvan edita koristi passed iz API-ja; u editu lokalni izračun kao pregled nespremljenih izmjena.
+  const passed = editing ? score >= 9 : analysis?.passed ?? score >= 9;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -155,7 +164,7 @@ export default function SafeShopAnalysis({
             {analysis?.status === 'COMPLETED' && !editing && (
               <>
                 <button onClick={downloadPdf} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
-                  Preuzmi PDF
+                  Ispiši / Spremi PDF
                 </button>
                 <button onClick={startEdit} className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-gray-100">
                   Uredi
@@ -196,13 +205,15 @@ export default function SafeShopAnalysis({
         </div>
       </div>
 
+      {error && !running && (
+        <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</p>
+      )}
+
       {running ? (
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-6 text-sm text-gray-500">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
           Provjeravam webshop po 10 kriterija, može potrajati nekoliko minuta…
         </div>
-      ) : error ? (
-        <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</p>
       ) : analysis && analysis.status === 'COMPLETED' && checkpoints.length > 0 ? (
         <div id="safeshop-print" className="mt-5">
           {/* Zaglavlje vidljivo samo u PDF ispisu */}
@@ -315,7 +326,7 @@ export default function SafeShopAnalysis({
             ))}
           </ul>
 
-          <div className="print-only safeshop-pdf-footer">© Copyright 2026. - eCommerce Hrvatska</div>
+          <div className="print-only safeshop-pdf-footer">© Copyright {new Date().getFullYear()}. - eCommerce Hrvatska</div>
         </div>
       ) : (
         <p className="mt-4 text-sm text-gray-500">

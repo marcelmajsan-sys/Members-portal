@@ -231,7 +231,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
     load();
     const t = setInterval(load, 60000);
-    return () => { cancelled = true; clearInterval(t); };
+    // Stranica obavijesti javlja promjene (pročitano/obrisano) — odmah osvježi badge
+    const onNotifsChanged = () => load();
+    window.addEventListener('notifs-changed', onNotifsChanged);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener('notifs-changed', onNotifsChanged); };
   }, [isLoading, isAuthenticated]);
 
   // Auto-start tour on first login for OWNER
@@ -401,7 +404,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <p className="text-sm font-medium text-gray-900">
                 {user?.firstName} {user?.lastName}
               </p>
-              <p className="text-xs text-gray-500">{user?.role}</p>
+              <p className="text-xs text-gray-500">{user?.role === 'OWNER' ? 'Vlasnik' : user?.role === 'OPERATOR' ? 'Operater' : user?.role}</p>
             </div>
             <button
               onClick={() => setShowPasswordModal(true)}

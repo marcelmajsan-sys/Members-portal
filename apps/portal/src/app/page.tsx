@@ -68,6 +68,10 @@ const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-success-light text-success', PENDING: 'bg-gray-100 text-gray-600',
   EXPIRED: 'bg-danger-light text-danger', SUSPENDED: 'bg-warning-light text-warning',
 };
+const OFFER_STATUS_LABELS: Record<string, string> = {
+  SENT: 'Poslano', ACCEPTED: 'Prihvaćeno', DECLINED: 'Odbijeno',
+  EXPIRED: 'Isteklo', NO_RESPONSE: 'Bez odgovora', DRAFT: 'Nacrt',
+};
 const SEVERITY_DOT: Record<string, string> = {
   high: 'bg-danger', medium: 'bg-warning', low: 'bg-gray-400',
 };
@@ -79,6 +83,12 @@ function fmtDate(d: string | null) {
 }
 function fmtCurrency(amount: number, currency = 'EUR') {
   return new Intl.NumberFormat('hr-HR', { style: 'currency', currency }).format(amount);
+}
+// Hrvatska množina riječi "ulaznica": 1 ulaznica, 2-4 ulaznice, 0/5+ ulaznica
+function pluralUlaznica(n: number) {
+  if (n % 10 === 1 && n % 100 !== 11) return 'ulaznica';
+  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) return 'ulaznice';
+  return 'ulaznica';
 }
 // Kompaktni datum bez razmaka: 13.10.2026.
 function fmtDateCompact(d: string | null) {
@@ -98,6 +108,8 @@ export default function PortalHome() {
   const [ticketConf, setTicketConf] = useState<TicketConference | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileErrorCode, setProfileErrorCode] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [preview, setPreview] = useState<EmailItem | null>(null);
   const [editing, setEditing] = useState(false);
   const [analysis, setAnalysis] = useState<WebshopAnalysis | null>(null);
@@ -115,6 +127,8 @@ export default function PortalHome() {
   useEffect(() => {
     if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
     (async () => {
+      setLoading(true);
+      setProfileErrorCode(null);
       const [p, e, n, o, tc, wa, wq] = await Promise.all([
         api.get<Profile>('/api/member/profile'),
         api.get<EmailItem[]>('/api/member/emails'),
@@ -125,6 +139,7 @@ export default function PortalHome() {
         api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota'),
       ]);
       if (p.success && p.data) setProfile(p.data);
+      else setProfileErrorCode(p.error?.code || 'UNKNOWN');
       if (e.success && e.data) setEmails(e.data);
       if (n.success && n.data) setNotifications(n.data);
       if (o.success && o.data) setOffers(o.data);
@@ -139,7 +154,7 @@ export default function PortalHome() {
       // Ako je analiza pokrenuta u prethodnom posjetu i još traje, nastavi pollati.
       if (wa.success && wa.data?.status === 'PENDING') pollAnalysis();
     })();
-  }, [isLoading, isAuthenticated, user]);
+  }, [isLoading, isAuthenticated, user, reloadKey]);
 
   async function refreshTickets() {
     if (!ticketConf) return;
@@ -149,6 +164,11 @@ export default function PortalHome() {
     ]);
     if (t.success && t.data) setTickets(t.data);
     if (tc.success && tc.data) setTicketConf(tc.data);
+  }
+
+  async function markAllNotificationsRead() {
+    const res = await api.post('/api/notifications/mark-all-read');
+    if (res.success) setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   }
 
   async function refreshQuota() {
@@ -182,15 +202,15 @@ export default function PortalHome() {
     setAnalysisError('');
     setAnalyzing(true);
     // Pokreni analizu (na serveru se izvršava sinkrono, ~1 min).
-    const res = await api.post<WebshopAnalysis>('/api/member/webshop-analysis').catch(() => null);
-    if (res && res.success && res.data?.status === 'COMPLETED') {
+    const res = await api.post<WebshopAnalysis>('/api/member/webshop-analysis');
+    if (res.success && res.data?.status === 'COMPLETED') {
       setAnalysis(res.data);
       setAnalyzing(false);
       refreshQuota();
       return;
     }
     // Brze, tvrde greške (neaktivan član / bez web adrese) — odmah prikaži, bez pollanja.
-    if (res && !res.success && res.error && res.error.code !== 'CONFLICT' && res.error.code !== 'NETWORK_ERROR') {
+    if (!res.success && res.error && res.error.code !== 'CONFLICT' && res.error.code !== 'NETWORK_ERROR') {
       setAnalysisError(res.error.message || 'Analiza nije uspjela. Pokušajte ponovno kasnije.');
       setAnalyzing(false);
       return;
@@ -234,16 +254,28 @@ export default function PortalHome() {
 
       <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dobrodošli, {profile?.user.firstName}!</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Dobrodošli{profile ? `, ${profile.user.firstName}` : ''}!</h1>
           <p className="mt-1 text-sm text-gray-500">Pregled vašeg članstva u Udruzi eCommerce Hrvatska</p>
         </div>
 
         {loading ? (
           <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-400">Učitavanje podataka...</div>
         ) : !profile ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500">
-            Profil člana nije pronađen.
-          </div>
+          profileErrorCode === 'NETWORK_ERROR' ? (
+            <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+              <p>Ne mogu se spojiti na server. Provjerite vezu i pokušajte ponovno.</p>
+              <button
+                onClick={() => setReloadKey((k) => k + 1)}
+                className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Pokušaj ponovno
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+              Profil člana nije pronađen.
+            </div>
+          )
         ) : (
           <>
             {/* Membership card */}
@@ -356,7 +388,8 @@ export default function PortalHome() {
 
               {profile.status !== 'ACTIVE' ? (
                 <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-                  Produžite članstvo da biste pokrenuli besplatnu analizu.
+                  Produžite članstvo da biste pokrenuli besplatnu analizu.{' '}
+                  <a href="mailto:udruga@ecommerce.hr" className="underline font-semibold">Kontaktirajte nas za obnovu</a>
                 </p>
               ) : !profile.company.website ? (
                 <p className="mt-4 text-sm text-gray-500">
@@ -499,21 +532,36 @@ export default function PortalHome() {
             {/* Notifications */}
             <Section title="Obavijesti" count={notifications.length}>
               {notifications.length === 0 ? (
-                <Empty>Nemate novih obavijesti.</Empty>
+                <Empty>Nemate obavijesti.</Empty>
               ) : (
-                <ul className="divide-y divide-gray-100">
-                  {notifications.map((n) => (
-                    <li key={n.id} className="py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                          <p className="mt-0.5 text-sm text-gray-600">{n.message}</p>
+                <>
+                  {notifications.some((n) => !n.isRead) && (
+                    <div className="mb-2 flex justify-end">
+                      <button
+                        onClick={markAllNotificationsRead}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        Označi sve pročitanim
+                      </button>
+                    </div>
+                  )}
+                  <ul className="divide-y divide-gray-100">
+                    {notifications.map((n) => (
+                      <li key={n.id} className="py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className={`flex items-center gap-1.5 text-sm text-gray-900 ${n.isRead ? 'font-medium' : 'font-bold'}`}>
+                              {!n.isRead && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Nepročitano" />}
+                              {n.title}
+                            </p>
+                            <p className="mt-0.5 text-sm text-gray-600">{n.message}</p>
+                          </div>
+                          <span className="whitespace-nowrap text-xs text-gray-400">{fmtDate(n.createdAt)}</span>
                         </div>
-                        <span className="whitespace-nowrap text-xs text-gray-400">{fmtDate(n.createdAt)}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </Section>
 
@@ -527,7 +575,7 @@ export default function PortalHome() {
                     <li key={o.id} className="flex items-center justify-between py-3">
                       <div>
                         <p className="text-sm font-medium text-gray-900">Predračun {o.offerNumber}</p>
-                        <p className="text-xs text-gray-500">Vrijedi do {fmtDate(o.validUntil)} · {o.status}</p>
+                        <p className="text-xs text-gray-500">Vrijedi do {fmtDate(o.validUntil)} · {OFFER_STATUS_LABELS[o.status] || o.status}</p>
                       </div>
                       <span className="text-sm font-semibold text-gray-900">{fmtCurrency(Number(o.amount), o.currency)}</span>
                     </li>
@@ -594,16 +642,21 @@ export default function PortalHome() {
             </div>
             <div className="flex-1 overflow-auto bg-gray-50 p-2">
               {preview.body ? (
-                <iframe
-                  title="Sadržaj e-maila"
-                  sandbox=""
-                  className="h-[60vh] w-full rounded-lg border border-gray-200 bg-white"
-                  srcDoc={
-                    /<[a-z][\s\S]*>/i.test(preview.body)
-                      ? preview.body
-                      : `<pre style="white-space:pre-wrap;word-break:break-word;font-family:system-ui,sans-serif;font-size:14px;color:#111827;padding:12px;margin:0;">${preview.body.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))}</pre>`
-                  }
-                />
+                <>
+                  <iframe
+                    title="Sadržaj e-maila"
+                    sandbox=""
+                    className="h-[60vh] w-full rounded-lg border border-gray-200 bg-white"
+                    srcDoc={
+                      /<[a-z][\s\S]*>/i.test(preview.body)
+                        ? preview.body
+                        : `<pre style="white-space:pre-wrap;word-break:break-word;font-family:system-ui,sans-serif;font-size:14px;color:#111827;padding:12px;margin:0;">${preview.body.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))}</pre>`
+                    }
+                  />
+                  <p className="mt-1.5 px-1 text-center text-[11px] text-gray-400">
+                    Poveznice u pregledu su onemogućene radi sigurnosti.
+                  </p>
+                </>
               ) : (
                 <p className="p-6 text-center text-sm text-gray-400">Sadržaj e-maila nije dostupan.</p>
               )}
@@ -620,6 +673,19 @@ export default function PortalHome() {
           onSaved={(updated) => {
             setProfile(updated);
             setEditing(false);
+            // Osvježi i keširanog korisnika u localStorageu da auth kontekst ne ostane zastario
+            try {
+              const stored = localStorage.getItem('user');
+              if (stored) {
+                const u = JSON.parse(stored);
+                localStorage.setItem('user', JSON.stringify({
+                  ...u,
+                  firstName: updated.user.firstName,
+                  lastName: updated.user.lastName,
+                  email: updated.user.email,
+                }));
+              }
+            } catch { /* ignore */ }
           }}
         />
       )}
@@ -685,7 +751,7 @@ function TicketsSection({
                 {quota.VIP > 0 && <strong>{quota.VIP} VIP</strong>}
                 {quota.VIP > 0 && quota.STANDARD > 0 && ' + '}
                 {quota.STANDARD > 0 && <strong>{quota.STANDARD} STANDARD</strong>}
-                {' '}{quota.VIP + quota.STANDARD === 1 ? 'ulaznica' : 'ulaznice'}.{' '}
+                {' '}{pluralUlaznica(quota.VIP + quota.STANDARD)}.{' '}
               </>
             ) : null}
             {conference.editDeadline && (
@@ -707,7 +773,8 @@ function TicketsSection({
 
       {!isActiveMember && (
         <p className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-          Produžite članstvo da biste dodavali osobe za ulaznice.
+          Produžite članstvo da biste dodavali osobe za ulaznice.{' '}
+          <a href="mailto:udruga@ecommerce.hr" className="underline font-semibold">Kontaktirajte nas za obnovu</a>
         </p>
       )}
       {isActiveMember && !editable && (
@@ -730,7 +797,7 @@ function TicketsSection({
                     {t.fullName}
                     {t.jobTitle && <span className="ml-2 font-normal text-gray-400">{t.jobTitle}</span>}
                     <span className={`ml-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${pending ? TICKET_BADGE.PENDING : TICKET_BADGE[t.type]}`}>
-                      {pending ? 'NA ČEKANJU' : t.type}
+                      {pending ? `${t.type} · NA ČEKANJU` : t.type}
                     </span>
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">{t.email} · {t.phone}</p>

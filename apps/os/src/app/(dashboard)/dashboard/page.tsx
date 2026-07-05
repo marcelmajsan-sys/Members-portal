@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -74,9 +74,7 @@ function StatCard({
     <>
       <p className="text-sm font-medium text-gray-500">{label}</p>
       <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
-      <div className={`mt-3 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${colorMap[color]}`}>
-        {label}
-      </div>
+      <div className={`mt-3 inline-block h-1.5 w-8 rounded-full ${colorMap[color]}`} />
     </>
   );
 
@@ -108,6 +106,13 @@ const STATUS_STYLES: Record<string, string> = {
   PENDING: 'bg-warning-light text-warning',
   EXPIRED: 'bg-danger-light text-danger',
   SUSPENDED: 'bg-gray-100 text-gray-500',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Aktivan',
+  PENDING: 'Izbrisan',
+  EXPIRED: 'Istekao',
+  SUSPENDED: 'Pauziran',
 };
 
 interface AnalyticsData {
@@ -311,8 +316,9 @@ function AnalyticsSection() {
   const totalRevenue12m = analytics.revenueByMonth.reduce((s, m) => s + m.amount, 0);
   const totalNew12m = analytics.memberGrowth.reduce((s, m) => s + m.count, 0);
   const totalExpired12m = analytics.churnByMonth.reduce((s, m) => s + m.expired, 0);
-  const latestTotal = analytics.memberTimeline[analytics.memberTimeline.length - 1]?.total ?? 0;
-  const sixMonthsAgoTotal = analytics.memberTimeline[5]?.total ?? 0;
+  const timeline = analytics.memberTimeline;
+  const latestTotal = timeline[timeline.length - 1]?.total ?? 0;
+  const sixMonthsAgoTotal = timeline.length >= 7 ? timeline[timeline.length - 7]?.total ?? 0 : 0;
   const growthPct = sixMonthsAgoTotal > 0
     ? Math.round(((latestTotal - sixMonthsAgoTotal) / sixMonthsAgoTotal) * 100)
     : 0;
@@ -433,12 +439,23 @@ interface OperatorTask {
   dueAt?: string;
 }
 
+interface TaskStats {
+  todo: number;
+  inProgress: number;
+  done: number;
+  overdue: number;
+}
+
 function OperatorDashboard() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<OperatorTask[]>([]);
+  const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    api.get<TaskStats>('/api/os/tasks/stats').then((res) => {
+      if (res.success && res.data) setStats(res.data);
+    });
     api.get<OperatorTask[]>('/api/os/tasks?page=1&limit=100').then((res) => {
       if (res.success && res.data) {
         setTasks(res.data);
@@ -455,10 +472,11 @@ function OperatorDashboard() {
     );
   }
 
-  const todo = tasks.filter((t) => t.status === 'TODO').length;
-  const inProgress = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
-  const done = tasks.filter((t) => t.status === 'DONE').length;
-  const overdue = tasks.filter(
+  // Statistike s /tasks/stats (lista je ograničena na 100); fallback na lokalni izračun
+  const todo = stats?.todo ?? tasks.filter((t) => t.status === 'TODO').length;
+  const inProgress = stats?.inProgress ?? tasks.filter((t) => t.status === 'IN_PROGRESS').length;
+  const done = stats?.done ?? tasks.filter((t) => t.status === 'DONE').length;
+  const overdue = stats?.overdue ?? tasks.filter(
     (t) => t.status !== 'DONE' && t.dueAt && new Date(t.dueAt) < new Date()
   ).length;
 
@@ -470,7 +488,7 @@ function OperatorDashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">
-        Dobrodošla, {user?.firstName}
+        Dobro došli, {user?.firstName}
       </h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -537,10 +555,13 @@ function RenewalsSection({
 }) {
   const [month, setMonth] = useState(defaultMonth);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [fetchError, setFetchError] = useState(false);
+  const latestMonthRef = useRef(defaultMonth);
 
   // Generate 6 months of options (current + 5 future)
   const monthOptions = Array.from({ length: 6 }, (_, i) => {
     const d = new Date();
+    d.setDate(1); // prije setMonth — inače 29./30./31. u mjesecu preskače/duplicira mjesece
     d.setMonth(d.getMonth() + i);
     const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const mon = String(d.getMonth() + 1).padStart(2, '0');
@@ -549,10 +570,16 @@ function RenewalsSection({
   });
 
   useEffect(() => {
+    latestMonthRef.current = month;
     setLoading(true);
+    setFetchError(false);
     api.get<DashboardData['monthlyRenewals']>(`/api/os/dashboard/renewals?month=${month}`).then((res) => {
+      if (latestMonthRef.current !== month) return; // stigao odgovor za stari mjesec — ignoriraj
       if (res.success && res.data) {
         setRenewals(res.data);
+      } else {
+        setRenewals([]);
+        setFetchError(true);
       }
       setLoading(false);
     });
@@ -629,6 +656,10 @@ function RenewalsSection({
               <tr>
                 <td colSpan={4} className="px-5 py-6 text-center text-gray-400">Učitavanje...</td>
               </tr>
+            ) : fetchError ? (
+              <tr>
+                <td colSpan={4} className="px-5 py-6 text-center text-danger">Greška pri učitavanju obnova — pokušajte ponovno</td>
+              </tr>
             ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-5 py-6 text-center text-gray-400">Nema obnova za ovaj filter</td>
@@ -647,7 +678,7 @@ function RenewalsSection({
                   <td className="px-3 py-2.5 text-gray-600 hidden sm:table-cell sm:px-5">{m.company.name}</td>
                   <td className="px-3 py-2.5 sm:px-5">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[m.status] || 'bg-gray-100 text-gray-500'}`}>
-                      {m.status === 'ACTIVE' ? 'Aktivan' : m.status === 'EXPIRED' ? 'Istekao' : m.status}
+                      {STATUS_LABELS[m.status] || m.status}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-danger font-medium sm:px-5">{formatDate(m.expiresAt)}</td>
@@ -727,7 +758,7 @@ export default function DashboardPage() {
         <StatCard label="Ukupno članova" value={data.members.total} color="primary" href="/members" />
         <StatCard label="Aktivni" value={data.members.active} color="success" href="/members?filter=active" />
         <StatCard label="Izbrisani" value={data.members.pending} color="warning" href="/members?filter=pending" />
-        <StatCard label="Poslana ponuda" value={data.offersWithSentStatus ?? 0} color="accent" href="/ponude" />
+        <StatCard label="Poslane ponude" value={data.offersWithSentStatus ?? 0} color="accent" href="/ponude" />
         <StatCard label="Ističu uskoro" value={expiringCount} color="danger" href="/members?filter=expiring_soon" />
       </div>
 
@@ -855,7 +886,7 @@ export default function DashboardPage() {
                   <td className="px-3 py-3 text-gray-600 hidden sm:table-cell sm:px-5">{m.company.name}</td>
                   <td className="px-3 py-3 sm:px-5">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[m.status] || 'bg-gray-100 text-gray-500'}`}>
-                      {m.status}
+                      {STATUS_LABELS[m.status] || m.status}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-gray-500 sm:px-5">{formatDate(m.joinedAt)}</td>
@@ -943,10 +974,14 @@ export default function DashboardPage() {
                                 2. poslana
                               </span>
                             )}
+                            {sending === 'error' && (
+                              <span className="text-xs font-medium text-red-600">Greška — pokušajte ponovno</span>
+                            )}
                             {step < 2 && (
                               <button
                                 disabled={sending === 'sending'}
                                 onClick={async () => {
+                                  if (!confirm(`Poslati ${step + 1}. obavijest i predračun članu ${e.user.firstName} ${e.user.lastName}?`)) return;
                                   setOfferSending((prev) => ({ ...prev, [e.id]: 'sending' }));
                                   const res = await api.post<{ offer: { step: number } }>(`/api/os/members/${e.id}/send-offer`, {});
                                   if (res.success && res.data) {

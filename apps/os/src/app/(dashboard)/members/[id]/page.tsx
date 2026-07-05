@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import SafeShopAnalysis from './SafeShopAnalysis';
 import MemberTickets from './MemberTickets';
 
@@ -86,6 +87,29 @@ const TIER_STYLES: Record<string, string> = {
   PREMIUM: 'bg-purple-50 text-purple-700',
 };
 
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  COMPLETED: 'Plaćeno',
+  PENDING: 'Na čekanju',
+  FAILED: 'Neuspjelo',
+  REFUNDED: 'Povrat',
+};
+
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  COMPLETED: 'bg-green-50 text-green-700',
+  PENDING: 'bg-amber-50 text-amber-700',
+  FAILED: 'bg-red-50 text-red-700',
+  REFUNDED: 'bg-gray-100 text-gray-500',
+};
+
+const OFFER_STATUS_LABELS: Record<string, string> = {
+  SENT: 'Poslano',
+  ACCEPTED: 'Prihvaćeno',
+  DECLINED: 'Odbijeno',
+  DRAFT: 'Nacrt',
+  EXPIRED: 'Isteklo',
+  NO_RESPONSE: 'Bez odgovora',
+};
+
 const TIER_PRICING: Record<string, Record<string, number | null>> = {
   WEB_TRADER: { FREE: 0, STANDARD: 300, PREMIUM: 2000 },
   SERVICE_PROVIDER: { FREE: 0, STANDARD: 400, PREMIUM: 1500 },
@@ -106,6 +130,7 @@ function expiryBadge(expiresAt: string | null): { text: string; style: string } 
   if (!expiresAt) return null;
   const days = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   if (days < 0) return { text: `isteklo prije ${Math.abs(days)} dana`, style: 'bg-red-50 text-red-700' };
+  if (days === 0) return { text: 'ističe danas!', style: 'bg-red-50 text-red-700' };
   if (days <= 14) return { text: `${days} dana!`, style: 'bg-red-50 text-red-700' };
   if (days <= 30) return { text: `${days} dana`, style: 'bg-orange-50 text-orange-700' };
   if (days <= 60) return { text: `${days} dana`, style: 'bg-yellow-50 text-yellow-700' };
@@ -119,6 +144,8 @@ function getTierPrice(memberType: string, tier: string): number | null {
 export default function MemberDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
   const id = params.id as string;
 
   const [member, setMember] = useState<MemberRaw | null>(null);
@@ -186,11 +213,26 @@ export default function MemberDetailPage() {
     setTimeout(() => setToast(''), 3000);
   }
 
+  // Odgovori mutacija ne uključuju payments/secondaryContact — spoji s postojećim stanjem
+  // da edit modal ne obriše stvarnu drugu kontakt osobu.
+  function applyMemberUpdate(data: MemberRaw) {
+    setMember((prev) =>
+      prev
+        ? {
+            ...prev,
+            ...data,
+            payments: data.payments ?? prev.payments,
+            secondaryContact: data.secondaryContact ?? prev.secondaryContact,
+          }
+        : data
+    );
+  }
+
   async function changeStatus(status: string) {
     setActionLoading(status);
     const res = await api.patch<MemberRaw>(`/api/os/members/${id}/status`, { status });
     if (res.success && res.data) {
-      setMember(res.data);
+      applyMemberUpdate(res.data);
       showToast(`Status promijenjen u: ${STATUS_LABELS[status] || status}`);
     } else {
       showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
@@ -215,7 +257,7 @@ export default function MemberDetailPage() {
       charge: chargeDifference,
     });
     if (res.success && res.data) {
-      setMember(res.data);
+      applyMemberUpdate(res.data);
       const chargedMsg = res.data.charged ? ` Naplaćena razlika: ${formatCurrency(res.data.charged)}.` : '';
       showToast(`Razina promijenjena u: ${TIER_LABELS[pendingTier] || pendingTier}.${chargedMsg}`);
     } else {
@@ -307,10 +349,11 @@ export default function MemberDetailPage() {
   async function handleRenew() {
     setShowRenewModal(false);
     setActionLoading('renew');
-    const amount = parseFloat(renewAmount) || undefined;
+    const parsed = parseFloat(renewAmount);
+    const amount = Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
     const res = await api.post<MemberRaw>(`/api/os/members/${id}/renew`, { amount });
     if (res.success && res.data) {
-      setMember(res.data);
+      applyMemberUpdate(res.data);
       showToast('Članstvo uspješno produženo!');
     } else {
       showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
@@ -319,6 +362,7 @@ export default function MemberDetailPage() {
   }
 
   async function sendCustomNotification(title: string, message: string, type: string) {
+    if (!confirm('Poslati obavijest i email članu?')) return;
     setActionLoading('notify');
     const res = await api.post(`/api/os/members/${id}/notify`, { title, message, type });
     if (res.success) {
@@ -330,7 +374,7 @@ export default function MemberDetailPage() {
   }
 
   async function addNote() {
-    if (!newNote.trim()) return;
+    if (!newNote.trim() || notesLoading) return;
     setNotesLoading(true);
     const res = await api.post<typeof notes[0]>(`/api/os/members/${id}/notes`, { content: newNote.trim() });
     if (res.success && res.data) {
@@ -343,14 +387,17 @@ export default function MemberDetailPage() {
   }
 
   async function deleteNote(noteId: string) {
+    if (!confirm('Obrisati bilješku?')) return;
     const res = await api.del(`/api/os/members/${id}/notes/${noteId}`);
     if (res.success) {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Brisanje nije uspjelo'}`);
     }
   }
 
-  async function fetchAiSummary() {
-    if (aiSummary) { setAiSummaryOpen(true); return; }
+  async function fetchAiSummary(force = false) {
+    if (!force && aiSummary) { setAiSummaryOpen(true); return; }
     setAiSummaryLoading(true);
     setAiSummaryOpen(true);
     const res = await api.get<{ summary: string }>(`/api/os/members/${id}/ai-summary`);
@@ -446,7 +493,8 @@ export default function MemberDetailPage() {
       setShowEditModal(false);
       showToast('Podaci člana ažurirani');
     } else {
-      setEditError(res.error?.message || 'Greška pri spremanju');
+      const raw = res.error?.message;
+      setEditError(raw === 'EMAIL_TAKEN' || res.error?.code === 'EMAIL_TAKEN' ? 'Email adresa je već zauzeta' : raw || 'Greška pri spremanju');
     }
     setEditLoading(false);
   }
@@ -500,6 +548,7 @@ export default function MemberDetailPage() {
               <label className="block text-sm font-medium text-gray-700">Iznos (EUR)</label>
               <input
                 type="number"
+                min="0"
                 value={renewAmount}
                 onChange={(e) => setRenewAmount(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -780,14 +829,16 @@ export default function MemberDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={sendInvite}
-            disabled={actionLoading === 'invite'}
-            title="Aktivira pristup i šalje članu email s linkom za postavljanje lozinke (members.ecommerce.hr)"
-            className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-sm font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
-          >
-            {actionLoading === 'invite' ? 'Slanje...' : 'Pošalji pristup članu'}
-          </button>
+          {isOwner && (
+            <button
+              onClick={sendInvite}
+              disabled={actionLoading === 'invite'}
+              title="Aktivira pristup i šalje članu email s linkom za postavljanje lozinke (members.ecommerce.hr)"
+              className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-sm font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
+            >
+              {actionLoading === 'invite' ? 'Slanje...' : 'Pošalji pristup članu'}
+            </button>
+          )}
           <button
             onClick={openEditModal}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
@@ -814,7 +865,7 @@ export default function MemberDetailPage() {
       {/* AI Summary */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <button
-          onClick={fetchAiSummary}
+          onClick={() => fetchAiSummary()}
           className="flex w-full items-center justify-between px-5 py-3 text-left"
         >
           <div className="flex items-center gap-2">
@@ -841,7 +892,7 @@ export default function MemberDetailPage() {
               <div className="space-y-2">
                 <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-line">{aiSummary}</p>
                 <button
-                  onClick={() => { setAiSummary(''); fetchAiSummary(); }}
+                  onClick={() => { setAiSummary(''); fetchAiSummary(true); }}
                   className="text-xs text-violet-600 hover:text-violet-800"
                 >
                   Osvježi sažetak
@@ -1022,7 +1073,7 @@ export default function MemberDetailPage() {
                   onClick={async () => {
                     const val = !member.hasCertificate;
                     const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { hasCertificate: val });
-                    if (res.success && res.data) { setMember(res.data); showToast(val ? 'Certifikat aktiviran' : 'Certifikat deaktiviran'); }
+                    if (res.success && res.data) { applyMemberUpdate(res.data); showToast(val ? 'Certifikat aktiviran' : 'Certifikat deaktiviran'); }
                   }}
                   className={`relative h-6 w-11 rounded-full transition ${member.hasCertificate ? 'bg-emerald-500' : 'bg-gray-300'}`}
                 >
@@ -1037,7 +1088,7 @@ export default function MemberDetailPage() {
                     onChange={async (e) => {
                       const val = e.target.value;
                       const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { safeShopStatus: val });
-                      if (res.success && res.data) { setMember(res.data); showToast(`Branding: ${val}`); }
+                      if (res.success && res.data) { applyMemberUpdate(res.data); showToast(`Branding: ${val}`); }
                     }}
                     className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
                   >
@@ -1069,7 +1120,7 @@ export default function MemberDetailPage() {
                   onClick={async () => {
                     const val = !member.magazinDobrePrice;
                     const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { magazinDobrePrice: val });
-                    if (res.success && res.data) { setMember(res.data); showToast(val ? 'Magazin aktiviran' : 'Magazin deaktiviran'); }
+                    if (res.success && res.data) { applyMemberUpdate(res.data); showToast(val ? 'Magazin aktiviran' : 'Magazin deaktiviran'); }
                   }}
                   className={`relative h-6 w-11 rounded-full transition ${member.magazinDobrePrice ? 'bg-amber-500' : 'bg-gray-300'}`}
                 >
@@ -1096,7 +1147,7 @@ export default function MemberDetailPage() {
                   onClick={async () => {
                     const val = !member.hasAcademy;
                     const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { hasAcademy: val });
-                    if (res.success && res.data) { setMember(res.data); showToast(val ? 'Akademija dodana' : 'Akademija uklonjena'); }
+                    if (res.success && res.data) { applyMemberUpdate(res.data); showToast(val ? 'Akademija dodana' : 'Akademija uklonjena'); }
                   }}
                   className={`relative h-6 w-11 rounded-full transition ${member.hasAcademy ? 'bg-indigo-500' : 'bg-gray-300'}`}
                 >
@@ -1129,7 +1180,7 @@ export default function MemberDetailPage() {
                       checked={value}
                       onChange={async () => {
                         const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { [key]: !value });
-                        if (res.success && res.data) { setMember(res.data); showToast(`${label}: ${!value ? 'Da' : 'Ne'}`); }
+                        if (res.success && res.data) { applyMemberUpdate(res.data); showToast(`${label}: ${!value ? 'Da' : 'Ne'}`); }
                       }}
                       className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                     />
@@ -1146,7 +1197,7 @@ export default function MemberDetailPage() {
                       const val = e.target.value || null;
                       if (val !== member.promoOstalo) {
                         const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { promoOstalo: val });
-                        if (res.success && res.data) { setMember(res.data); showToast('Ostalo spremljeno'); }
+                        if (res.success && res.data) { applyMemberUpdate(res.data); showToast('Ostalo spremljeno'); }
                       }
                     }}
                     onChange={(e) => setMember(prev => prev ? { ...prev, promoOstalo: e.target.value } : prev)}
@@ -1174,7 +1225,7 @@ export default function MemberDetailPage() {
                   onClick={async () => {
                     const val = !member.hasAcademy;
                     const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { hasAcademy: val });
-                    if (res.success && res.data) { setMember(res.data); showToast(val ? 'Akademija dodana' : 'Akademija uklonjena'); }
+                    if (res.success && res.data) { applyMemberUpdate(res.data); showToast(val ? 'Akademija dodana' : 'Akademija uklonjena'); }
                   }}
                   className={`relative h-6 w-11 rounded-full transition ${member.hasAcademy ? 'bg-indigo-500' : 'bg-gray-300'}`}
                 >
@@ -1207,7 +1258,7 @@ export default function MemberDetailPage() {
                 onClick={async () => {
                   const val = !member.hasAcademy;
                   const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, { hasAcademy: val });
-                  if (res.success && res.data) { setMember(res.data); showToast(val ? 'Akademija dodana' : 'Akademija uklonjena'); }
+                  if (res.success && res.data) { applyMemberUpdate(res.data); showToast(val ? 'Akademija dodana' : 'Akademija uklonjena'); }
                 }}
                 className={`relative h-6 w-11 rounded-full transition ${member.hasAcademy ? 'bg-indigo-500' : 'bg-gray-300'}`}
               >
@@ -1254,14 +1305,16 @@ export default function MemberDetailPage() {
           <div className="mx-1 h-8 w-px bg-gray-200" />
 
           {/* Renew */}
-          <button
-            onClick={openRenewModal}
-            disabled={!!actionLoading || isFree}
-            title={isFree ? 'Besplatni članovi ne mogu produžiti članstvo' : undefined}
-            className="rounded-lg bg-[#1B365D] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2A4A7A] disabled:opacity-50"
-          >
-            {actionLoading === 'renew' ? 'Produžavanje...' : isFree ? 'Produži (nadogradi razinu)' : 'Produži članstvo'}
-          </button>
+          {isOwner && (
+            <button
+              onClick={openRenewModal}
+              disabled={!!actionLoading || isFree}
+              title={isFree ? 'Besplatni članovi ne mogu produžiti članstvo' : undefined}
+              className="rounded-lg bg-[#1B365D] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2A4A7A] disabled:opacity-50"
+            >
+              {actionLoading === 'renew' ? 'Produžavanje...' : isFree ? 'Produži (nadogradi razinu)' : 'Produži članstvo'}
+            </button>
+          )}
 
           <div className="mx-1 h-8 w-px bg-gray-200" />
 
@@ -1349,15 +1402,19 @@ export default function MemberDetailPage() {
             {actionLoading === 'notify' ? 'Slanje...' : 'Pošalji obavijest'}
           </button>
 
-          <div className="mx-1 h-8 w-px bg-gray-200" />
+          {isOwner && (
+            <>
+              <div className="mx-1 h-8 w-px bg-gray-200" />
 
-          <button
-            onClick={handleDelete}
-            disabled={!!actionLoading}
-            className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-50"
-          >
-            {actionLoading === 'delete' ? 'Brisanje...' : 'Obriši člana'}
-          </button>
+              <button
+                onClick={handleDelete}
+                disabled={!!actionLoading}
+                className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+              >
+                {actionLoading === 'delete' ? 'Brisanje...' : 'Obriši člana'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1393,14 +1450,10 @@ export default function MemberDetailPage() {
                     <td className="px-5 py-3">
                       <span
                         className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                          p.status === 'PAID'
-                            ? 'bg-green-50 text-green-700'
-                            : p.status === 'PENDING'
-                              ? 'bg-yellow-50 text-yellow-700'
-                              : 'bg-gray-100 text-gray-500'
+                          PAYMENT_STATUS_STYLES[p.status] || 'bg-gray-100 text-gray-500'
                         }`}
                       >
-                        {p.status}
+                        {PAYMENT_STATUS_LABELS[p.status] || p.status}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-gray-500">{formatDate(p.createdAt)}</td>
@@ -1446,7 +1499,7 @@ export default function MemberDetailPage() {
                         o.status === 'SENT' ? 'bg-blue-100 text-blue-700' :
                         'bg-gray-100 text-gray-500'
                       }`}>
-                        {o.status === 'SENT' ? 'Poslano' : o.status === 'ACCEPTED' ? 'Prihvaćeno' : o.status === 'DECLINED' ? 'Odbijeno' : o.status}
+                        {OFFER_STATUS_LABELS[o.status] || o.status}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-gray-500">{formatDate(o.createdAt)}</td>

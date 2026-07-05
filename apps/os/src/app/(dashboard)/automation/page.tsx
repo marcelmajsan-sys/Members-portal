@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 interface EmailTemplate {
   slug: string;
@@ -53,6 +55,13 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Otkazana',
 };
 
+// Hrvatska pluralizacija: 1 aktivna, 2-4 aktivne, 5+ aktivnih (uz iznimke 11-14)
+function plural(n: number, one: string, few: string, many: string): string {
+  if (n % 10 === 1 && n % 100 !== 11) return one;
+  if (n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14)) return few;
+  return many;
+}
+
 const PRESET_AUTOMATIONS = [
   {
     name: 'Podsjetnik 30 dana prije isteka',
@@ -100,6 +109,8 @@ const PRESET_AUTOMATIONS = [
 ];
 
 export default function AutomationPage() {
+  const router = useRouter();
+  const { user } = useAuth();
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
@@ -125,6 +136,12 @@ export default function AutomationPage() {
     setTimeout(() => setToast(''), 3000);
   }
 
+  useEffect(() => {
+    if (user && user.role !== 'OWNER') {
+      router.replace('/dashboard');
+    }
+  }, [user, router]);
+
   const fetchSequences = useCallback(async () => {
     const res = await api.get<Sequence[]>('/api/os/sequences?page=1&limit=50');
     if (res.success && res.data) {
@@ -146,6 +163,8 @@ export default function AutomationPage() {
   }, [fetchSequences]);
 
   async function toggleSequence(seq: Sequence) {
+    // Dozvoli samo ACTIVE ↔ PAUSED (ne diraj COMPLETED/CANCELLED)
+    if (seq.status !== 'ACTIVE' && seq.status !== 'PAUSED') return;
     const newStatus = seq.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
     setActionLoading(seq.id);
     const res = await api.patch(`/api/os/sequences/${seq.id}/status`, { status: newStatus });
@@ -204,7 +223,7 @@ export default function AutomationPage() {
 
     const res = await api.post<Sequence>('/api/os/sequences', {
       name: customName,
-      description: `Prilagođena automatizacija: ${TRIGGER_LABELS[customTrigger] || customTrigger}`,
+      description: `Prilagođena automatizacija: ${TRIGGER_LABELS[customTrigger] || calendarTriggers.find((e) => `calendar_event.${e.id}` === customTrigger)?.title || customTrigger}`,
       triggerEvent: customTrigger,
       steps,
       status: 'ACTIVE',
@@ -220,6 +239,10 @@ export default function AutomationPage() {
       showToastMsg(`Greška: ${res.error?.message}`);
     }
     setActionLoading('');
+  }
+
+  if (user?.role !== 'OWNER') {
+    return null;
   }
 
   if (loading) {
@@ -255,7 +278,7 @@ export default function AutomationPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Automatizacija</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {activeCount} aktivn{activeCount === 1 ? 'a' : 'e'} automatizacij{activeCount === 1 ? 'a' : 'e'}
+            {activeCount} {plural(activeCount, 'aktivna automatizacija', 'aktivne automatizacije', 'aktivnih automatizacija')}
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
@@ -339,7 +362,7 @@ export default function AutomationPage() {
                     )}
                   </select>
                 </div>
-                {customTrigger === 'member.expiry_reminder' && !customTrigger.startsWith('calendar_event.') && (
+                {customTrigger === 'member.expiry_reminder' && (
                   <div>
                     <label className="mb-1 block text-sm text-gray-600">Dana prije isteka</label>
                     <input

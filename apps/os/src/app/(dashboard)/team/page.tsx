@@ -49,6 +49,7 @@ export default function TeamPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<EmployeeFormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
 
@@ -92,6 +93,7 @@ export default function TeamPage() {
   async function handleCreate() {
     if (!form.email.trim() || !form.password.trim() || !form.firstName.trim() || !form.lastName.trim()) return;
     setSaving(true);
+    setCreateError('');
     const res = await api.post<Employee>('/api/os/employees', form);
     if (res.success && res.data) {
       setEmployees((prev) => [...prev, res.data!]);
@@ -99,7 +101,7 @@ export default function TeamPage() {
       setForm(EMPTY_FORM);
       showToast('Zaposlenik kreiran');
     } else {
-      setError(res.error?.message || 'Greška pri kreiranju');
+      setCreateError(res.error?.message || 'Greška pri kreiranju');
     }
     setSaving(false);
   }
@@ -212,6 +214,7 @@ export default function TeamPage() {
           <button
             onClick={() => {
               setForm(EMPTY_FORM);
+              setCreateError('');
               setShowModal(true);
             }}
             className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary-light sm:px-4"
@@ -301,25 +304,27 @@ export default function TeamPage() {
                   </button>
                 </div>
 
-                {/* Role */}
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Rola</p>
-                  <div className="flex gap-2">
-                    {(['OPERATOR', 'OWNER'] as const).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => handleRoleChange(emp.id, r)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                          emp.role === r
-                            ? 'bg-primary text-white'
-                            : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {ROLE_LABELS[r]}
-                      </button>
-                    ))}
+                {/* Role — skriveno na vlastitoj kartici */}
+                {emp.id !== user?.id && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Rola</p>
+                    <div className="flex gap-2">
+                      {(['OPERATOR', 'OWNER'] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => handleRoleChange(emp.id, r)}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                            emp.role === r
+                              ? 'bg-primary text-white'
+                              : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {ROLE_LABELS[r]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Password */}
                 <div className="space-y-2">
@@ -366,7 +371,8 @@ export default function TeamPage() {
                   )}
                 </div>
 
-                {/* Activate / Deactivate */}
+                {/* Activate / Deactivate — skriveno na vlastitoj kartici */}
+                {emp.id !== user?.id && (
                 <div className="border-t border-gray-100 pt-3">
                   {emp.isActive ? (
                     confirmDeactivate === emp.id ? (
@@ -402,6 +408,7 @@ export default function TeamPage() {
                     </button>
                   )}
                 </div>
+                )}
               </div>
             )}
           </div>
@@ -419,6 +426,12 @@ export default function TeamPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-4 text-lg font-bold text-gray-900">Dodaj zaposlenika</h2>
+
+            {createError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {createError}
+              </div>
+            )}
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -469,7 +482,7 @@ export default function TeamPage() {
 
             <div className="mt-6 flex justify-end gap-3">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => { setShowModal(false); setCreateError(''); }}
                 className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
               >
                 Odustani

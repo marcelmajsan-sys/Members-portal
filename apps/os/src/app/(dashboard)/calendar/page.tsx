@@ -39,6 +39,10 @@ const STATUS_DOT: Record<string, string> = {
 
 const WEEKDAYS = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
 
+// Lokalni datum ključ (YYYY-MM-DD) — toISOString() bi pomaknuo dan zbog UTC pomaka
+const toLocalKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 function getEffectiveStatus(task: CalendarTask): string {
   if (task.status === 'DONE') return 'DONE';
   if (task.status === 'IN_PROGRESS') {
@@ -86,17 +90,8 @@ export default function CalendarPage() {
     ]);
 
     if (tasksRes.success && tasksRes.data) {
-      let data = tasksRes.data;
-      if (user?.role === 'OPERATOR') {
-        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-        data = data.filter(
-          (t) =>
-            t.assignedTo &&
-            `${t.assignedTo.firstName} ${t.assignedTo.lastName}` ===
-              `${currentUser.firstName} ${currentUser.lastName}`
-        );
-      }
-      setTasks(data);
+      // API već ograničava OPERATOR-a na vlastite zadatke
+      setTasks(tasksRes.data);
     }
 
     if (eventsRes.success && eventsRes.data) {
@@ -124,7 +119,7 @@ export default function CalendarPage() {
     for (let i = startDow - 1; i >= 0; i--) {
       const d = new Date(year, month, -i);
       days.push({
-        date: d.toISOString().split('T')[0],
+        date: toLocalKey(d),
         day: d.getDate(),
         isCurrentMonth: false,
       });
@@ -133,7 +128,7 @@ export default function CalendarPage() {
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const date = new Date(year, month, d);
       days.push({
-        date: date.toISOString().split('T')[0],
+        date: toLocalKey(date),
         day: d,
         isCurrentMonth: true,
       });
@@ -144,7 +139,7 @@ export default function CalendarPage() {
       for (let i = 1; i <= remaining; i++) {
         const d = new Date(year, month + 1, i);
         days.push({
-          date: d.toISOString().split('T')[0],
+          date: toLocalKey(d),
           day: d.getDate(),
           isCurrentMonth: false,
         });
@@ -177,7 +172,7 @@ export default function CalendarPage() {
 
   const selectedTasks = selectedDay ? (tasksByDate[selectedDay] || []) : [];
   const selectedEvents = selectedDay ? (eventsByDate[selectedDay] || []) : [];
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalKey(new Date());
 
   const monthName = currentDate.toLocaleDateString('hr-HR', { month: 'long', year: 'numeric' });
 
@@ -195,7 +190,7 @@ export default function CalendarPage() {
     setEditingEvent(null);
     setEventForm({
       ...emptyEvent,
-      date: dateStr || new Date().toISOString().split('T')[0],
+      date: dateStr || toLocalKey(new Date()),
     });
     setShowEventForm(true);
   }

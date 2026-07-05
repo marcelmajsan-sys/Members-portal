@@ -3,11 +3,18 @@
    - navigacije: network-first s fallbackom na zadnju keširanu verziju (offline)
    - API pozivi (api.ecommerce.hr, /api/): uvijek mreža, bez keširanja */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const STATIC_CACHE = `static-${VERSION}`;
 const PAGE_CACHE = `pages-${VERSION}`;
 
 self.addEventListener('install', (event) => {
+  // Pre-cache početne stranice da offline fallback (cache.match('/')) ima što pogoditi.
+  event.waitUntil(
+    caches
+      .open(PAGE_CACHE)
+      .then((cache) => cache.add('/'))
+      .catch(() => {}),
+  );
   self.skipWaiting();
 });
 
@@ -28,18 +35,24 @@ self.addEventListener('fetch', (event) => {
   // API i sve s drugih domena — uvijek mreža
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  // Statika (hashirani Next assets, slike, ikone) — cache-first
+  // Statika: hashirani Next asseti — cache-first (immutable);
+  // ostalo (logo, ikone) — stale-while-revalidate (odmah iz cachea, osvježi u pozadini)
   if (url.pathname.startsWith('/_next/static/') || /\.(png|jpg|jpeg|svg|ico|woff2?)$/.test(url.pathname)) {
+    const immutable = url.pathname.startsWith('/_next/static/');
     event.respondWith(
       caches.open(STATIC_CACHE).then((cache) =>
-        cache.match(req).then(
-          (hit) =>
-            hit ||
-            fetch(req).then((res) => {
-              if (res.ok) cache.put(req, res.clone());
-              return res;
-            }),
-        ),
+        cache.match(req).then((hit) => {
+          if (hit && immutable) return hit;
+          const network = fetch(req).then((res) => {
+            if (res.ok) cache.put(req, res.clone());
+            return res;
+          });
+          if (hit) {
+            network.catch(() => {});
+            return hit;
+          }
+          return network;
+        }),
       ),
     );
     return;

@@ -14,7 +14,7 @@ interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  assignee?: { id: string; firstName: string; lastName: string };
+  assignedTo?: { id: string; firstName: string; lastName: string };
   dueAt?: string;
   createdAt: string;
 }
@@ -94,7 +94,7 @@ export default function TasksPage() {
   }, [isOwner]);
 
   const fetchTasks = useCallback(async () => {
-    const res = await api.get<Task[]>('/api/os/tasks');
+    const res = await api.get<Task[]>('/api/os/tasks?page=1&limit=100');
     if (res.success && res.data) {
       setTasks(res.data);
     } else {
@@ -126,7 +126,7 @@ export default function TasksPage() {
           status: task.status,
           priority: task.priority,
           dueAt: task.dueAt ? task.dueAt.split('T')[0] : '',
-          assignedToId: task.assignee?.id || '',
+          assignedToId: task.assignedTo?.id || '',
         });
         setShowModal(true);
         router.replace('/tasks');
@@ -144,35 +144,42 @@ export default function TasksPage() {
       assignedToId: form.assignedToId || undefined,
     };
 
-    if (editingTask) {
-      const res = await api.put<Task>(`/api/os/tasks/${editingTask.id}`, body);
-      if (res.success && res.data) {
-        setTasks((prev) => prev.map((t) => (t.id === editingTask.id ? res.data! : t)));
-      }
-    } else {
-      const res = await api.post<Task>('/api/os/tasks', body);
-      if (res.success && res.data) {
-        setTasks((prev) => [...prev, res.data!]);
-      }
+    const res = editingTask
+      ? await api.put<Task>(`/api/os/tasks/${editingTask.id}`, body)
+      : await api.post<Task>('/api/os/tasks', body);
+    if (res.success && res.data) {
+      const saved = res.data;
+      setTasks((prev) =>
+        editingTask ? prev.map((t) => (t.id === editingTask.id ? saved : t)) : [...prev, saved],
+      );
     }
 
     setSaving(false);
-    setShowModal(false);
+    if (res.success) {
+      setShowModal(false);
+    } else {
+      setError(res.error?.message || 'Spremanje nije uspjelo');
+    }
   }
 
   async function handleDelete() {
     if (!editingTask) return;
+    if (!confirm('Obrisati zadatak?')) return;
     const res = await api.del(`/api/os/tasks/${editingTask.id}`);
     if (res.success) {
       setTasks((prev) => prev.filter((t) => t.id !== editingTask.id));
       setShowModal(false);
+    } else {
+      setError(res.error?.message || 'Brisanje nije uspjelo');
     }
   }
 
   async function changeStatus(task: Task, newStatus: TaskStatus) {
-    const res = await api.patch<Task>(`/api/os/tasks/${task.id}`, { status: newStatus });
+    const res = await api.patch<Task>(`/api/os/tasks/${task.id}/status`, { status: newStatus });
     if (res.success && res.data) {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? res.data! : t)));
+    } else {
+      setError(res.error?.message || 'Promjena statusa nije uspjela');
     }
   }
 
@@ -236,9 +243,9 @@ export default function TasksPage() {
                       </span>
                     </div>
 
-                    {task.assignee && (
+                    {task.assignedTo && (
                       <p className="text-xs text-gray-500">
-                        {task.assignee.firstName} {task.assignee.lastName}
+                        {task.assignedTo.firstName} {task.assignedTo.lastName}
                       </p>
                     )}
 

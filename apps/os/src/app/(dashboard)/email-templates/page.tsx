@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 interface Template {
   id: string | null;
@@ -46,6 +48,8 @@ function buildPreviewHtml(tpl: Template): string {
 }
 
 export default function EmailTemplatesPage() {
+  const router = useRouter();
+  const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Template | null>(null);
@@ -54,6 +58,12 @@ export default function EmailTemplatesPage() {
   const [success, setSuccess] = useState('');
 
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (user && user.role !== 'OWNER') {
+      router.replace('/dashboard');
+    }
+  }, [user, router]);
 
   async function fetchTemplates() {
     setLoading(true);
@@ -75,12 +85,20 @@ export default function EmailTemplatesPage() {
     if (creating && !editing.name.trim()) return;
 
     const slug = creating
-      ? editing.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+      ? editing.name.trim().toLowerCase()
+          // transliteracija hrvatskih dijakritika prije zamjene ne-alfanumerika
+          .replace(/č/g, 'c').replace(/ć/g, 'c').replace(/đ/g, 'd').replace(/š/g, 's').replace(/ž/g, 'z')
+          .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
       : editing.slug;
 
     if (!slug) return;
 
+    if (creating && templates.some((t) => t.slug === slug)) {
+      if (!confirm(`Predložak s oznakom "${slug}" već postoji. Želite li ga prepisati?`)) return;
+    }
+
     setSaving(true);
+    setError('');
     const res = await api.put(`/api/os/email-templates/${slug}`, {
       name: editing.name,
       subject: editing.subject || `${editing.name} — eCommerce Hrvatska`,
@@ -95,15 +113,25 @@ export default function EmailTemplatesPage() {
       setEditing(null);
       setCreating(false);
       fetchTemplates();
+    } else {
+      setError(res.error?.message || 'Spremanje nije uspjelo');
     }
     setSaving(false);
   }
 
   async function handleRevert(slug: string) {
     if (!confirm('Vratiti na zadani predložak? Ovo će obrisati vaše izmjene.')) return;
-    await api.del(`/api/os/email-templates/${slug}`);
+    const res = await api.del(`/api/os/email-templates/${slug}`);
+    if (!res.success) {
+      setError(res.error?.message || 'Vraćanje nije uspjelo');
+      return;
+    }
     setEditing(null);
     fetchTemplates();
+  }
+
+  if (user?.role !== 'OWNER') {
+    return null;
   }
 
   if (loading) {
@@ -300,7 +328,7 @@ export default function EmailTemplatesPage() {
                 disabled={saving}
                 className="rounded-lg bg-[#1B365D] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#152a4a] disabled:opacity-60"
               >
-                {saving ? 'Spremanje...' : 'Spremi promjene'}
+                {saving ? 'Spremanje...' : creating ? 'Kreiraj' : 'Spremi promjene'}
               </button>
             </div>
 

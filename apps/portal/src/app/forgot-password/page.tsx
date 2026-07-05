@@ -8,12 +8,18 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await api.post('/api/auth/forgot-password', { email });
-    setSent(true);
+    setError('');
+    const res = await api.post('/api/auth/forgot-password', { email });
+    if (res.success) {
+      setSent(true);
+    } else {
+      setError(res.error?.message || 'Slanje nije uspjelo, pokušajte ponovno.');
+    }
     setLoading(false);
   }
 
@@ -34,6 +40,7 @@ export default function ForgotPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
+            {error && <div className="rounded-lg bg-danger-light p-3 text-sm text-danger">{error}</div>}
             <div>
               <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">Email</label>
               <input

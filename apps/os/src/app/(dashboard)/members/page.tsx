@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -28,7 +28,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Aktivan',
-  PENDING: 'Izbrisani',
+  PENDING: 'Izbrisan',
   EXPIRED: 'Istekao',
   SUSPENDED: 'Pauziran',
 };
@@ -93,6 +93,7 @@ export default function MembersPage() {
   const [addForm, setAddForm] = useState({ email: '', firstName: '', lastName: '', companyName: '', oib: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' });
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   // Filteri: glavni tab (tip) + podfilteri (status / certifikat / promo) koji ovise o tipu.
   const legacyFilter = searchParams.get('filter'); // dashboard kartice linkaju ?filter=active itd.
@@ -128,6 +129,7 @@ export default function MembersPage() {
       { key: 's-active', label: 'Aktivni', group: 'status', value: 'ACTIVE', count: c[`${pfx}Active`] },
       { key: 's-expired', label: 'Istekli', group: 'status', value: 'EXPIRED', count: c[`${pfx}Expired`] },
       { key: 's-suspended', label: 'Pauzirani', group: 'status', value: 'SUSPENDED', count: c[`${pfx}Suspended`] },
+      { key: 's-pending', label: 'Izbrisani', group: 'status', value: 'PENDING', count: c[`${pfx}Pending`] },
     ];
     const certPills = (pfx: string): SubFilter[] => [
       { key: 'e-cert', label: 'Certificirani', group: 'extra', value: 'cert', count: c[`${pfx}Certified`] },
@@ -158,15 +160,20 @@ export default function MembersPage() {
   // Mjeseci isteka (tekući + 5 idućih) — kao "Obnove" na dashboardu
   const monthOptions = useMemo(() => Array.from({ length: 6 }, (_, i) => {
     const d = new Date();
+    d.setDate(1); // prije setMonth — inače 29./30./31. u mjesecu preskače/duplicira mjesece
     d.setMonth(d.getMonth() + i);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     return { value, label: MONTH_LABELS[String(d.getMonth() + 1).padStart(2, '0')] };
   }), []);
 
+  const fetchRequestId = useRef(0);
+
   const fetchMembers = useCallback(async (
     p: number, t: string, st: string, ex: string, exp: boolean, em: string, filterCompanyId?: string | null,
   ) => {
+    const reqId = ++fetchRequestId.current;
     setLoading(true);
+    setError('');
     const params = new URLSearchParams({ page: String(p), limit: String(limit) });
 
     if (filterCompanyId) params.set('companyId', filterCompanyId);
@@ -182,6 +189,7 @@ export default function MembersPage() {
     else if (ex) params.set(ex, 'true'); // promo* zastavice
 
     const res = await api.get<MemberRaw[]>(`/api/os/members?${params}`);
+    if (reqId !== fetchRequestId.current) return; // stigao odgovor za stariji zahtjev — ignoriraj
     if (res.success && res.data) {
       setMembers(res.data);
       if (res.meta) {
@@ -244,6 +252,7 @@ export default function MembersPage() {
       setShowAddModal(false);
       setAddForm({ email: '', firstName: '', lastName: '', companyName: '', oib: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' });
       fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
+      refreshCounts();
     } else {
       setAddError(res.error?.message || 'Greška pri dodavanju');
     }
@@ -263,23 +272,32 @@ export default function MembersPage() {
         </button>
         <button
           onClick={async () => {
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const token = localStorage.getItem('accessToken');
-            const res = await fetch(`${baseUrl}/api/os/members/export`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) return;
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `clanovi-${new Date().toISOString().slice(0, 10)}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
+            if (exporting) return;
+            setExporting(true);
+            try {
+              const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+              const token = localStorage.getItem('accessToken');
+              const res = await fetch(`${baseUrl}/api/os/members/export`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (!res.ok) { alert('Preuzimanje nije uspjelo'); return; }
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `clanovi-${new Date().toISOString().slice(0, 10)}.csv`;
+              a.click();
+              URL.revokeObjectURL(url);
+            } catch {
+              alert('Preuzimanje nije uspjelo');
+            } finally {
+              setExporting(false);
+            }
           }}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          disabled={exporting}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
         >
-          Preuzmi Excel (CSV)
+          {exporting ? 'Preuzimanje...' : 'Preuzmi CSV'}
         </button>
         </div>
       </div>
