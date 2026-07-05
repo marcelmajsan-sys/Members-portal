@@ -126,12 +126,39 @@ export default function AutomationPage() {
   // Calendar events that are automation triggers
   const [calendarTriggers, setCalendarTriggers] = useState<CalendarEventTrigger[]>([]);
 
-  // Custom automation form
+  // Custom automation form (kreiranje + uređivanje)
+  const [editingSeq, setEditingSeq] = useState<Sequence | null>(null);
   const [customName, setCustomName] = useState('');
   const [customTrigger, setCustomTrigger] = useState('member.expiry_reminder');
   const [customDays, setCustomDays] = useState(30);
+  // 'eq' = točno taj dan (preporučeno uz dnevni cron); 'lte' = unutar X dana (šalje svakih ~7 dana zbog cooldowna)
+  const [customOperator, setCustomOperator] = useState<'eq' | 'lte'>('eq');
   const [customSubject, setCustomSubject] = useState('');
   const [customTemplate, setCustomTemplate] = useState('custom');
+
+  function resetForm() {
+    setEditingSeq(null);
+    setCustomName('');
+    setCustomTrigger('member.expiry_reminder');
+    setCustomDays(30);
+    setCustomOperator('eq');
+    setCustomSubject('');
+    setCustomTemplate('custom');
+  }
+
+  function startEdit(seq: Sequence) {
+    const cond = seq.steps?.find((s) => s.type.toLowerCase() === 'condition');
+    const mail = seq.steps?.find((s) => ['send_email', 'email'].includes(s.type.toLowerCase()));
+    setEditingSeq(seq);
+    setCustomName(seq.name);
+    setCustomTrigger(seq.triggerEvent);
+    setCustomDays(Number(cond?.config?.value ?? 30));
+    setCustomOperator((cond?.config?.operator as 'eq' | 'lte') === 'lte' ? 'lte' : 'eq');
+    setCustomSubject((mail?.config?.subject as string) || '');
+    setCustomTemplate((mail?.config?.template as string) || 'custom');
+    setShowCreate(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   function showToastMsg(msg: string) {
     setToast(msg);
@@ -206,37 +233,43 @@ export default function AutomationPage() {
     setActionLoading('');
   }
 
-  async function createCustom() {
+  async function saveCustom() {
     if (!customName.trim()) return;
     setActionLoading('custom');
     const steps = [
       ...(customTrigger === 'member.expiry_reminder'
-        ? [{ type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'lte', value: customDays }, order: 0 }]
+        ? [{ type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: customOperator, value: customDays }, order: 0 }]
         : []),
       {
         type: 'SEND_EMAIL',
         config: {
           template: customTemplate,
-          subject: customSubject || customName,
+          // Prazno = koristi subject iz email predloška (podržava {{datum_isteka}} i sl.)
+          ...(customSubject.trim() ? { subject: customSubject.trim() } : {}),
         },
         order: customTrigger === 'member.expiry_reminder' ? 1 : 0,
       },
     ];
 
-    const res = await api.post<Sequence>('/api/os/sequences', {
+    const body = {
       name: customName,
-      description: `Prilagođena automatizacija: ${TRIGGER_LABELS[customTrigger] || calendarTriggers.find((e) => `calendar_event.${e.id}` === customTrigger)?.title || customTrigger}`,
+      description: editingSeq?.description || `Prilagođena automatizacija: ${TRIGGER_LABELS[customTrigger] || calendarTriggers.find((e) => `calendar_event.${e.id}` === customTrigger)?.title || customTrigger}`,
       triggerEvent: customTrigger,
       steps,
-      status: 'ACTIVE',
-    });
+    };
+
+    const res = editingSeq
+      ? await api.put<Sequence>(`/api/os/sequences/${editingSeq.id}`, body)
+      : await api.post<Sequence>('/api/os/sequences', { ...body, status: 'ACTIVE' });
+
     if (res.success && res.data) {
-      setSequences((prev) => [res.data!, ...prev]);
-      showToastMsg(`Kreirana: ${customName}`);
+      const saved = res.data;
+      setSequences((prev) =>
+        editingSeq ? prev.map((s) => (s.id === saved.id ? { ...s, ...saved } : s)) : [saved, ...prev],
+      );
+      showToastMsg(editingSeq ? `Spremljena: ${customName}` : `Kreirana: ${customName}`);
       setShowCreate(false);
-      setCustomName('');
-      setCustomSubject('');
-      setCustomTemplate('custom');
+      resetForm();
     } else {
       showToastMsg(`Greška: ${res.error?.message}`);
     }
@@ -300,33 +333,37 @@ export default function AutomationPage() {
         </div>
       </div>
 
-      {/* Create custom automation */}
+      {/* Create/edit custom automation */}
       {showCreate && (
         <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Nova automatizacija</h2>
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">
+            {editingSeq ? `Uređivanje: ${editingSeq.name}` : 'Nova automatizacija'}
+          </h2>
 
-          {/* Presets */}
-          <div className="mb-6">
-            <h3 className="mb-3 text-sm font-medium text-gray-700">Predlošci — klikni za brzo dodavanje:</h3>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {PRESET_AUTOMATIONS.filter(
-                (p) => !sequences.some((s) => s.name === p.name && s.status !== 'CANCELLED')
-              ).map((preset) => (
-                <button
-                  key={preset.name}
-                  onClick={() => createPreset(preset)}
-                  disabled={!!actionLoading}
-                  className="rounded-lg border border-gray-200 p-3 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
-                >
-                  <p className="text-sm font-medium text-gray-900">{preset.name}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{preset.description}</p>
-                </button>
-              ))}
+          {/* Presets — samo pri kreiranju */}
+          {!editingSeq && (
+            <div className="mb-6">
+              <h3 className="mb-3 text-sm font-medium text-gray-700">Predlošci — klikni za brzo dodavanje:</h3>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {PRESET_AUTOMATIONS.filter(
+                  (p) => !sequences.some((s) => s.name === p.name && s.status !== 'CANCELLED')
+                ).map((preset) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => createPreset(preset)}
+                    disabled={!!actionLoading}
+                    className="rounded-lg border border-gray-200 p-3 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+                  >
+                    <p className="text-sm font-medium text-gray-900">{preset.name}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">{preset.description}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="border-t border-gray-100 pt-4">
-            <h3 className="mb-3 text-sm font-medium text-gray-700">Ili kreiraj prilagođenu:</h3>
+          <div className={editingSeq ? '' : 'border-t border-gray-100 pt-4'}>
+            {!editingSeq && <h3 className="mb-3 text-sm font-medium text-gray-700">Ili kreiraj prilagođenu:</h3>}
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-sm text-gray-600">Naziv</label>
@@ -378,6 +415,19 @@ export default function AutomationPage() {
                   </div>
                 )}
               </div>
+              {customTrigger === 'member.expiry_reminder' && (
+                <div>
+                  <label className="mb-1 block text-sm text-gray-600">Uvjet slanja</label>
+                  <select
+                    value={customOperator}
+                    onChange={(e) => setCustomOperator(e.target.value as 'eq' | 'lte')}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="eq">Točno taj dan (preporučeno — šalje jednom)</option>
+                    <option value="lte">Unutar zadanih dana (ponavlja se svakih ~6 dana do isteka)</option>
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm text-gray-600">Email predložak</label>
@@ -406,17 +456,17 @@ export default function AutomationPage() {
               </div>
               <div className="flex justify-end gap-2">
                 <button
-                  onClick={() => setShowCreate(false)}
+                  onClick={() => { setShowCreate(false); resetForm(); }}
                   className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
                 >
                   Odustani
                 </button>
                 <button
-                  onClick={createCustom}
+                  onClick={saveCustom}
                   disabled={!customName.trim() || !!actionLoading}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-light disabled:opacity-50"
                 >
-                  Kreiraj
+                  {editingSeq ? 'Spremi promjene' : 'Kreiraj'}
                 </button>
               </div>
             </div>
@@ -471,6 +521,17 @@ export default function AutomationPage() {
                         seq.status === 'ACTIVE' ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
+                  </button>
+                  {/* Edit */}
+                  <button
+                    onClick={() => startEdit(seq)}
+                    disabled={!!actionLoading}
+                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30"
+                    title="Uredi"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                    </svg>
                   </button>
                   {/* Delete */}
                   <button
