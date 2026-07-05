@@ -356,7 +356,9 @@ export async function createOffer(
   const price = getMembershipPrice(member.memberType, member.memberTier);
   if (price === null || price === 0) throw new Error('Cijena nije dostupna za ovaj tip članstva');
 
-  // For step 2, reuse existing offer (same predračun, just resend)
+  // For step 2, reuse existing offer (same predračun, just resend).
+  // Reuse SAMO ako se iznos poklapa s trenutnim tipom/paketom člana — ako je admin
+  // u međuvremenu promijenio paket, stari predračun je kriv pa se kreira novi.
   if (step >= 2) {
     const existingOffer = await prisma.offer.findFirst({
       where: { memberId, status: 'SENT' },
@@ -364,7 +366,7 @@ export async function createOffer(
       include: { member: { include: { user: true, company: true } } },
     });
 
-    if (existingOffer) {
+    if (existingOffer && Number(existingOffer.amount) === price) {
       // Update the step to 2
       const updated = await prisma.offer.update({
         where: { id: existingOffer.id },

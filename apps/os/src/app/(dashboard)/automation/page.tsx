@@ -93,6 +93,15 @@ const PRESET_AUTOMATIONS = [
     ],
   },
   {
+    name: 'Podsjetnik na dan isteka',
+    description: 'Podsjetnik s predračunom na sam dan isteka članstva — zadnji dan za obnovu bez prekida.',
+    triggerEvent: 'member.expiry_reminder',
+    steps: [
+      { type: 'CONDITION', config: { field: 'daysUntilExpiry', operator: 'eq', value: 0 }, order: 0 },
+      { type: 'SEND_EMAIL', config: { template: 'renewal_expiry_today' }, order: 1 },
+    ],
+  },
+  {
     name: 'Dobrodošlica novom članu',
     description: 'Automatski šalje email dobrodošlice kad se član aktivira.',
     triggerEvent: 'member.activated',
@@ -211,6 +220,19 @@ export default function AutomationPage() {
     if (res.success) {
       setSequences((prev) => prev.filter((s) => s.id !== seq.id));
       showToastMsg('Automatizacija obrisana');
+    }
+    setActionLoading('');
+  }
+
+  async function testSequence(seq: Sequence) {
+    const email = prompt('Pošalji testni email automatizacije na adresu:', user?.email || '');
+    if (!email) return;
+    setActionLoading(seq.id);
+    const res = await api.post<{ sent: string[]; to: string }>(`/api/os/sequences/${seq.id}/test`, { email });
+    if (res.success && res.data) {
+      showToastMsg(`Test poslan na ${res.data.to} (${res.data.sent.join(', ')})`);
+    } else {
+      showToastMsg(`Greška: ${res.error?.message || 'Test nije uspio'}`);
     }
     setActionLoading('');
   }
@@ -521,6 +543,17 @@ export default function AutomationPage() {
                         seq.status === 'ACTIVE' ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
+                  </button>
+                  {/* Test send */}
+                  <button
+                    onClick={() => testSequence(seq)}
+                    disabled={!!actionLoading}
+                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-30"
+                    title="Pošalji testni email"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                    </svg>
                   </button>
                   {/* Edit */}
                   <button

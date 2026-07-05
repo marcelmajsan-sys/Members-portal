@@ -18,6 +18,8 @@ import {
   updateSequenceStatus,
   getSequenceLogs,
 } from '../services/sequence.service.js';
+import { testSequenceEmail } from '../services/automation-executor.js';
+import { z } from 'zod';
 
 const router = Router();
 
@@ -73,6 +75,23 @@ router.patch('/:id/status', validateParams(idParamSchema), validate(updateSequen
 
   const sequence = await updateSequenceStatus(req.params.id as string, req.body.status);
   successResponse(res, sequence);
+});
+
+// POST /:id/test — pošalji testni email sekvence na zadani email (preskače uvjete/cooldown)
+const testSequenceSchema = z.object({ email: z.string().email('Neispravna email adresa') });
+router.post('/:id/test', requireRole('OWNER'), validateParams(idParamSchema), validate(testSequenceSchema), async (req, res) => {
+  const result = await testSequenceEmail(req.params.id as string, req.body.email);
+  if ('error' in result) {
+    const messages: Record<string, [string, number]> = {
+      SEQUENCE_NOT_FOUND: ['Automatizacija nije pronađena', 404],
+      MEMBER_NOT_FOUND: ['Član s tim emailom nije pronađen', 404],
+      NO_EMAIL_STEPS: ['Automatizacija nema email korake', 400],
+    };
+    const [msg, code] = messages[result.error];
+    errorResponse(res, result.error, msg, code);
+    return;
+  }
+  successResponse(res, { sent: result.sent, to: req.body.email });
 });
 
 // GET /:id/logs — get automation logs for a sequence

@@ -98,6 +98,14 @@ export const DEFAULT_TEMPLATES: Array<{
     ctaUrl: undefined,
   },
   {
+    slug: 'renewal_expiry_today',
+    name: 'Podsjetnik na dan isteka',
+    subject: 'Vaše članstvo ističe danas — eCommerce Hrvatska',
+    body: 'Vaše članstvo u udruzi eCommerce Hrvatska ističe danas, {{datum_isteka}}.\n\nDanas je zadnji dan za obnovu bez prekida — nakon isteka gubite pristup pogodnostima, događajima i alatima za članove. Predračun za obnovu nalazi se u privitku ovog emaila (internet bankarstvo ili HUB-3 barkod).\n\nJavite nam kada izvršite uplatu kako bismo Vam produžili članstvo — dovoljno je odgovoriti na ovaj email. Ako ste uplatu već izvršili, slobodno zanemarite ovu poruku.',
+    ctaLabel: undefined,
+    ctaUrl: undefined,
+  },
+  {
     slug: 'offer_step',
     name: 'Ponuda s predračunom (PDF)',
     subject: 'Obnova članstva — eCommerce Hrvatska',

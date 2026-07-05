@@ -11,19 +11,28 @@ export interface RenewalStats {
 
 const DAY = 24 * 60 * 60 * 1000;
 
-// Članovi kojima članstvo ističe unutar 30 dana → obavijest + event (pokreće automatizaciju za podsjetnik).
+// Kalendarski broj dana do isteka (UTC ponoć→ponoć): na sam dan isteka = 0.
+// Ceil po satima bi ovisio o satu crona i nikad ne bi dao 0.
+export function daysUntilExpiry(expiresAt: Date, now = new Date()): number {
+  const dayStart = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return Math.round((dayStart(expiresAt) - dayStart(now)) / DAY);
+}
+
+// Članovi kojima članstvo ističe unutar 30 dana (uključivo s DANAŠNJIM danom isteka)
+// → obavijest + event (pokreće automatizacije podsjetnika, uklj. "na dan isteka").
 async function checkExpiringMembers(stats: RenewalStats): Promise<void> {
   const now = new Date();
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const in30 = new Date(now.getTime() + 30 * DAY);
 
   const expiring = await prisma.member.findMany({
-    where: { status: 'ACTIVE', expiresAt: { gte: now, lte: in30 } },
+    where: { status: 'ACTIVE', expiresAt: { gte: startOfToday, lte: in30 } },
     include: { user: true, company: true },
   });
   stats.expiringFound = expiring.length;
 
   for (const m of expiring) {
-    const days = Math.ceil((m.expiresAt!.getTime() - now.getTime()) / DAY);
+    const days = daysUntilExpiry(m.expiresAt!, now);
     await prisma.notification.create({
       data: {
         userId: m.userId,
@@ -47,10 +56,13 @@ async function checkExpiringMembers(stats: RenewalStats): Promise<void> {
 }
 
 // Članovi kojima je članstvo prošlo → status EXPIRED + obavijest.
+// Istek se računa NAKON isteka cijelog dana (na sam dan isteka član je još ACTIVE
+// i dobiva podsjetnik "ističe danas"; EXPIRED postaje idući dan).
 async function expireOverdueMembers(stats: RenewalStats): Promise<void> {
   const now = new Date();
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const overdue = await prisma.member.findMany({
-    where: { status: 'ACTIVE', expiresAt: { lt: now } },
+    where: { status: 'ACTIVE', expiresAt: { lt: startOfToday } },
     include: { user: true },
   });
 

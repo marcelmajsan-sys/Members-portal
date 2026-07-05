@@ -16,7 +16,7 @@ const COOLDOWN_DAYS = 7;
 
 // Podsjetnici za obnovu idu na 30/14/7 dana — razmak 14→7 je TOČNO 7 dana,
 // pa bi cooldown od 7 dana blokirao zadnji podsjetnik. Za njih vrijedi 6 dana.
-const RENEWAL_TEMPLATES = ['renewal_reminder', 'renewal_urgent', 'renewal_final'];
+const RENEWAL_TEMPLATES = ['renewal_reminder', 'renewal_urgent', 'renewal_final', 'renewal_expiry_today'];
 const RENEWAL_COOLDOWN_DAYS = 6;
 
 // Predlošci koji u privitku nose predračun za obnovu (podsjetnici + obavijest o isteku)
@@ -24,7 +24,7 @@ const OFFER_ATTACHMENT_TEMPLATES = [...RENEWAL_TEMPLATES, 'expired'];
 
 // Group similar templates — cooldown only applies within the same group
 const COOLDOWN_GROUPS: Record<string, string[]> = {
-  reminder: ['renewal_reminder', 'renewal_urgent', 'renewal_final', 'offer_step_1', 'offer_step_2'],
+  reminder: ['renewal_reminder', 'renewal_urgent', 'renewal_final', 'renewal_expiry_today', 'offer_step_1', 'offer_step_2'],
   upgrade: ['free_upgrade'],
   welcome: ['welcome'],
   expired: ['expired'],
@@ -136,6 +136,41 @@ export async function executeAutomationEvent(
   }
 }
 
+/**
+ * Testno slanje: izvrši SEND_EMAIL korake sekvence prema članu s danim emailom.
+ * Preskače status sekvence, CONDITION korake i cooldown — namijenjeno admin testu.
+ */
+export async function testSequenceEmail(
+  sequenceId: string,
+  targetEmail: string,
+): Promise<{ sent: string[] } | { error: 'SEQUENCE_NOT_FOUND' | 'MEMBER_NOT_FOUND' | 'NO_EMAIL_STEPS' }> {
+  const sequence = await prisma.sequence.findUnique({ where: { id: sequenceId } });
+  if (!sequence) return { error: 'SEQUENCE_NOT_FOUND' };
+
+  const member = await prisma.member.findFirst({
+    where: { user: { email: targetEmail } },
+    select: { id: true, userId: true },
+  });
+  if (!member) return { error: 'MEMBER_NOT_FOUND' };
+
+  const steps = (sequence.steps as unknown as StepConfig[])
+    .filter((s) => ['send_email', 'email'].includes(s.type.toLowerCase()))
+    .sort((a, b) => a.order - b.order);
+  if (steps.length === 0) return { error: 'NO_EMAIL_STEPS' };
+
+  const sent: string[] = [];
+  for (const step of steps) {
+    await resolveAndSendEmail(
+      step.config.template as string,
+      step.config.subject as string,
+      { memberId: member.id, userId: member.userId, test: true },
+      { skipCooldown: true },
+    );
+    sent.push(step.config.template as string);
+  }
+  return { sent };
+}
+
 function evaluateCondition(actual: unknown, operator: string, expected: unknown): boolean {
   const numActual = Number(actual);
   const numExpected = Number(expected);
@@ -215,6 +250,7 @@ async function resolveAndSendEmail(
   template: string,
   subject: string,
   payload: Record<string, unknown>,
+  opts?: { skipCooldown?: boolean },
 ): Promise<void> {
   const memberId = payload.memberId as string | undefined;
   if (!memberId) {
@@ -222,15 +258,17 @@ async function resolveAndSendEmail(
     return;
   }
 
-  // Cooldown check — skip if a similar email was sent recently
-  const lastSent = await checkEmailCooldown(
-    memberId,
-    template,
-    RENEWAL_TEMPLATES.includes(template) ? RENEWAL_COOLDOWN_DAYS : COOLDOWN_DAYS,
-  );
-  if (lastSent) {
-    logger.info({ memberId, template, lastSent }, 'Skipping email — cooldown active');
-    return;
+  // Cooldown check — skip if a similar email was sent recently (testovi ga preskaču)
+  if (!opts?.skipCooldown) {
+    const lastSent = await checkEmailCooldown(
+      memberId,
+      template,
+      RENEWAL_TEMPLATES.includes(template) ? RENEWAL_COOLDOWN_DAYS : COOLDOWN_DAYS,
+    );
+    if (lastSent) {
+      logger.info({ memberId, template, lastSent }, 'Skipping email — cooldown active');
+      return;
+    }
   }
 
   const member = await prisma.member.findUnique({
@@ -321,7 +359,8 @@ async function resolveAndSendEmail(
   switch (template) {
     case 'renewal_reminder':
     case 'renewal_urgent':
-    case 'renewal_final': {
+    case 'renewal_final':
+    case 'renewal_expiry_today': {
       // Bez DB predloška šaljemo default tekst — UI ove automatizacije prikazuje kao aktivne,
       // pa tiho preskakanje znači da "podsjetnik 14/7 dana" nikad ne ode. Predračun s PDF-om
       // i dalje ide ručno preko send-offer; ovo je samo tekstualni podsjetnik.

@@ -19,6 +19,7 @@ import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../c
 import { requestSafeShopAnalysis, getLatestSafeShopAnalysis, updateSafeShopAnalysis, getSafeShopAnalysisQuota } from '../services/safeshop-analysis.service.js';
 import { buildRenewalConfirmationEmail, buildFreeUpgradeEmail } from '../utils/member-emails.js';
 import { checkEmailCooldown } from '../services/automation-executor.js';
+import { daysUntilExpiry } from '../services/renewal.service.js';
 import { hashPassword } from '../services/auth.service.js';
 
 
@@ -1175,14 +1176,15 @@ router.get('/offers/:id/pdf', async (req: AuthRequest, res) => {
 router.post('/renewal-check', requireRole('OWNER'), async (_req: AuthRequest, res) => {
   try {
     const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // Find ACTIVE members expiring within 30 days
+    // Find ACTIVE members expiring within 30 days (uključivo s današnjim danom isteka)
     const expiringMembers = await prisma.member.findMany({
       where: {
         status: 'ACTIVE',
         expiresAt: {
-          gt: now,
+          gte: startOfToday,
           lte: thirtyDaysFromNow,
         },
       },
@@ -1191,29 +1193,26 @@ router.post('/renewal-check', requireRole('OWNER'), async (_req: AuthRequest, re
       },
     });
 
-    // Emit expiry_reminder for each
+    // Emit expiry_reminder for each (kalendarski dani — na dan isteka = 0, isto kao cron)
     let processed = 0;
     for (const member of expiringMembers) {
-      const daysUntilExpiry = Math.ceil(
-        (new Date(member.expiresAt!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-      );
       await emitEvent('member.expiry_reminder', {
         memberId: member.id,
         userId: member.user.id,
         email: member.user.email,
         firstName: member.user.firstName,
-        daysUntilExpiry,
+        daysUntilExpiry: daysUntilExpiry(member.expiresAt!, now),
         expiresAt: member.expiresAt!.toISOString(),
         memberTier: member.memberTier,
       });
       processed++;
     }
 
-    // Mark expired members
+    // Mark expired members (tek nakon što prođe cijeli dan isteka)
     const expiredResult = await prisma.member.updateMany({
       where: {
         status: 'ACTIVE',
-        expiresAt: { lt: now },
+        expiresAt: { lt: startOfToday },
       },
       data: { status: 'EXPIRED' },
     });
