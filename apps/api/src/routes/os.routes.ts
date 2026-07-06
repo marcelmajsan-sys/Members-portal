@@ -1054,13 +1054,38 @@ router.delete('/members/:id/notes/:noteId', validateParams(noteParamsSchema), as
 });
 
 // GET /members/:id/visits — povijest posjeta (prijava/otvaranja portala) člana
+// + je li tijekom posjeta pokrenuta analiza weba (isti prozor kao /visits liste)
 router.get('/members/:id/visits', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const memberId = req.params.id as string;
   const visits = await prisma.memberVisit.findMany({
-    where: { memberId: req.params.id as string },
+    where: { memberId },
     orderBy: { createdAt: 'desc' },
     select: { id: true, createdAt: true },
   });
-  successResponse(res, visits);
+  const analyses = await prisma.webshopAnalysis.findMany({
+    where: { memberId },
+    select: { createdAt: true, overallScore: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const ascTimes = visits.map((v) => v.createdAt.getTime()).sort((a, b) => a - b);
+  const rows = visits.map((v) => {
+    const t = v.createdAt.getTime();
+    const idx = ascTimes.indexOf(t);
+    const nextT = idx >= 0 && idx < ascTimes.length - 1 ? ascTimes[idx + 1] : Infinity;
+    const activated = analyses.find((a) => {
+      const at = a.createdAt.getTime();
+      return at >= t && at < nextT;
+    });
+    return {
+      id: v.id,
+      createdAt: v.createdAt,
+      activatedAnalysis: !!activated,
+      analysisScore: activated?.overallScore ?? null,
+    };
+  });
+
+  successResponse(res, rows);
 });
 
 // ─── Email History ────────────────────────────────────────────────────────────

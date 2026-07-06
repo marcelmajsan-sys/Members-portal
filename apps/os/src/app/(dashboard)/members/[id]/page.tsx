@@ -163,7 +163,7 @@ export default function MemberDetailPage() {
   const [notesLoading, setNotesLoading] = useState(false);
   const [emails, setEmails] = useState<Array<{ id: string; subject: string; body: string | null; templateName: string | null; sentAt: string; openedAt: string | null; clickedAt: string | null; status?: string | null }>>([]);
   const [previewEmail, setPreviewEmail] = useState<{ subject: string; body: string; sentAt: string } | null>(null);
-  const [visits, setVisits] = useState<Array<{ id: string; createdAt: string }>>([]);
+  const [visits, setVisits] = useState<Array<{ id: string; createdAt: string; activatedAnalysis: boolean; analysisScore: number | null }>>([]);
   const [offerStep, setOfferStep] = useState(0);
   const [aiSummary, setAiSummary] = useState('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
@@ -1659,13 +1659,24 @@ export default function MemberDetailPage() {
             <p className="px-5 py-8 text-center text-sm text-gray-400">Još nema zabilježenih posjeta</p>
           ) : (
             visits.map((v) => (
-              <div key={v.id} className="flex items-center justify-between px-5 py-2.5">
+              <div key={v.id} className="flex items-center justify-between gap-3 px-5 py-2.5">
                 <span className="text-sm text-gray-700">
                   {new Date(v.createdAt).toLocaleDateString('hr-HR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
-                <span className="text-xs text-gray-400">
-                  {new Date(v.createdAt).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                <div className="flex items-center gap-3">
+                  {v.activatedAnalysis && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                      </svg>
+                      Analiza weba
+                      {v.analysisScore != null && <span className="opacity-70">({v.analysisScore})</span>}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-400">
+                    {new Date(v.createdAt).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
               </div>
             ))
           )}
