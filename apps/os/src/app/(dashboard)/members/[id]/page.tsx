@@ -163,6 +163,7 @@ export default function MemberDetailPage() {
   const [notesLoading, setNotesLoading] = useState(false);
   const [emails, setEmails] = useState<Array<{ id: string; subject: string; body: string | null; templateName: string | null; sentAt: string; openedAt: string | null; clickedAt: string | null; status?: string | null }>>([]);
   const [previewEmail, setPreviewEmail] = useState<{ subject: string; body: string; sentAt: string } | null>(null);
+  const [visits, setVisits] = useState<Array<{ id: string; createdAt: string }>>([]);
   const [offerStep, setOfferStep] = useState(0);
   const [aiSummary, setAiSummary] = useState('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
@@ -205,6 +206,9 @@ export default function MemberDetailPage() {
     });
     api.get<typeof memberOffers>(`/api/os/members/${id}/offers`).then((res) => {
       if (res.success && res.data) setMemberOffers(res.data);
+    });
+    api.get<typeof visits>(`/api/os/members/${id}/visits`).then((res) => {
+      if (res.success && res.data) setVisits(res.data);
     });
   }, [id]);
 
@@ -1641,6 +1645,30 @@ export default function MemberDetailPage() {
               })
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Posjete portalu (povijest prijava / otvaranja) */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h2 className="font-semibold text-gray-900">Posjete portalu</h2>
+          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">{visits.length}</span>
+        </div>
+        <div className="max-h-96 divide-y divide-gray-50 overflow-y-auto">
+          {visits.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-gray-400">Još nema zabilježenih posjeta</p>
+          ) : (
+            visits.map((v) => (
+              <div key={v.id} className="flex items-center justify-between px-5 py-2.5">
+                <span className="text-sm text-gray-700">
+                  {new Date(v.createdAt).toLocaleDateString('hr-HR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {new Date(v.createdAt).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

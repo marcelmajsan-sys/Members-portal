@@ -1053,6 +1053,16 @@ router.delete('/members/:id/notes/:noteId', validateParams(noteParamsSchema), as
   successResponse(res, { message: 'Bilješka obrisana' });
 });
 
+// GET /members/:id/visits — povijest posjeta (prijava/otvaranja portala) člana
+router.get('/members/:id/visits', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const visits = await prisma.memberVisit.findMany({
+    where: { memberId: req.params.id as string },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, createdAt: true },
+  });
+  successResponse(res, visits);
+});
+
 // ─── Email History ────────────────────────────────────────────────────────────
 
 // GET /members/:id/emails — Get email history for a member
