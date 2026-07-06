@@ -70,6 +70,75 @@ router.get('/dashboard/renewals', async (req, res) => {
   successResponse(res, members);
 });
 
+// GET /visits — povijest posjeta (prijava) članova + je li tijekom posjeta pokrenuta analiza weba
+router.get('/visits', async (req: AuthRequest, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+
+  const visits = await prisma.memberVisit.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: {
+      member: {
+        select: {
+          id: true,
+          company: { select: { name: true } },
+          user: { select: { firstName: true, lastName: true, email: true } },
+        },
+      },
+    },
+  });
+
+  // Za svaki posjet: je li član pokrenuo analizu weba u prozoru [ovaj posjet, sljedeći posjet).
+  const memberIds = [...new Set(visits.map((v) => v.memberId))];
+  const analyses = memberIds.length
+    ? await prisma.webshopAnalysis.findMany({
+        where: { memberId: { in: memberIds } },
+        select: { memberId: true, createdAt: true, overallScore: true, status: true },
+        orderBy: { createdAt: 'asc' },
+      })
+    : [];
+  const analysesByMember = new Map<string, typeof analyses>();
+  for (const a of analyses) {
+    const arr = analysesByMember.get(a.memberId) ?? [];
+    arr.push(a);
+    analysesByMember.set(a.memberId, arr);
+  }
+
+  // Vremenski uzlazno poredani posjeti po članu → za svaki nađi sljedeći (kraj prozora sesije).
+  const visitsAscByMember = new Map<string, number[]>();
+  for (const v of visits) {
+    const arr = visitsAscByMember.get(v.memberId) ?? [];
+    arr.push(v.createdAt.getTime());
+    visitsAscByMember.set(v.memberId, arr);
+  }
+  for (const arr of visitsAscByMember.values()) arr.sort((a, b) => a - b);
+
+  const rows = visits.map((v) => {
+    const t = v.createdAt.getTime();
+    const memberVisits = visitsAscByMember.get(v.memberId)!;
+    const idx = memberVisits.indexOf(t);
+    const nextT = idx >= 0 && idx < memberVisits.length - 1 ? memberVisits[idx + 1] : Infinity;
+    const memberAnalyses = analysesByMember.get(v.memberId) ?? [];
+    const activated = memberAnalyses.find((a) => {
+      const at = a.createdAt.getTime();
+      return at >= t && at < nextT;
+    });
+    return {
+      id: v.id,
+      memberId: v.memberId,
+      visitedAt: v.createdAt,
+      firstName: v.member.user.firstName,
+      lastName: v.member.user.lastName,
+      email: v.member.user.email,
+      companyName: v.member.company?.name ?? null,
+      activatedAnalysis: !!activated,
+      analysisScore: activated?.overallScore ?? null,
+    };
+  });
+
+  successResponse(res, rows);
+});
+
 // GET /members
 router.get('/members', validateQuery(paginationSchema), async (req, res) => {
   const { page, limit } = res.locals.query as { page: number; limit: number };

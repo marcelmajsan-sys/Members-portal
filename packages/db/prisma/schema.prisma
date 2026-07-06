@@ -207,8 +207,22 @@ model Member {
   memberBenefits MemberBenefit[]
   webshopAnalyses WebshopAnalysis[]
   safeShopAnalyses SafeShopAnalysis[]
+  visits         MemberVisit[]
   secondaryContact SecondaryContact?
   conferenceTickets ConferenceTicket[]
+}
+
+// Zapis svake prijave (posjeta) člana na portal — za admin analitiku "Posjete članova".
+// Member.lastLoginAt čuva samo zadnju; ovo je puna povijest.
+model MemberVisit {
+  id        String   @id @default(cuid())
+  memberId  String
+  createdAt DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([createdAt])
 }
 
 // Druga fizička osoba (opcionalni dodatni kontakt uz člana)

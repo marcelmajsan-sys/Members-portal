@@ -173,6 +173,8 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
       });
       if (member) {
         await prisma.member.update({ where: { id: member.id }, data: { lastLoginAt: new Date() } });
+        // Puna povijest posjeta (admin analitika "Posjete članova").
+        await prisma.memberVisit.create({ data: { memberId: member.id } });
         await notifyStaff({
           type: 'INFO',
           title: 'Nova prijava',
