@@ -20,6 +20,18 @@ export async function getMemberByUserId(userId: string): Promise<Member | null> 
   });
 }
 
+// Zabilježi posjet člana (admin analitika "Posjete članova"), prigušeno: najviše
+// jedan zapis po članu unutar `windowMinutes` (da refreshevi portala ne dupliciraju).
+export async function recordMemberVisit(memberId: string, windowMinutes = 30): Promise<void> {
+  const last = await prisma.memberVisit.findFirst({
+    where: { memberId },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  if (last && Date.now() - last.createdAt.getTime() < windowMinutes * 60_000) return;
+  await prisma.memberVisit.create({ data: { memberId } });
+}
+
 export async function getAllMembers(
   page: number,
   limit: number,
