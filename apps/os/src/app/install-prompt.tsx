@@ -16,6 +16,8 @@ export default function InstallPrompt() {
 
   useEffect(() => {
     if (localStorage.getItem(DISMISS_KEY)) return;
+    // Banner samo na mobilnim uređajima — na desktopu instalaciju ne nudimo
+    if (!/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) return;
     const handler = (e: Event) => {
       e.preventDefault();
       setPromptEvent(e as BeforeInstallPromptEvent);
