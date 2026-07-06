@@ -10,15 +10,15 @@ Interni OS za Udrugu eCommerce Hrvatska. pnpm monorepo (Turborepo): Express API 
 apps/api/src/routes/os.routes.ts          — glavni admin API (~1000 linija)
 apps/api/src/routes/index.ts              — registracija svih ruta
 apps/api/src/routes/inbound.routes.ts     — cron endpointi (fetch-inbound, daily-renewal)
-apps/api/src/routes/auth.routes.ts        — login/register/refresh/reset; member login bilježi lastLoginAt + "Nova prijava"
-apps/api/src/routes/member.routes.ts      — member-scoped portal API (profile, emails, offers, perks, perks/:id/claim)
+apps/api/src/routes/auth.routes.ts        — login/register/refresh/reset; member login bilježi lastLoginAt + MemberVisit + "Nova prijava"
+apps/api/src/routes/member.routes.ts      — member-scoped portal API (profile [bilježi MemberVisit], emails, offers, perks, perks/:id/claim)
 apps/api/src/routes/benefit.routes.ts     — /api/os/benefits CRUD + assign + :id/members (UI uklonjen, API ostao)
 apps/api/src/routes/conference.routes.ts  — /api/os/conferences CRUD + tickets pregled/potvrda/filteri + CSV export
 apps/api/src/routes/ticket.routes.ts      — javno GET /api/tickets/:token (QR) + POST /api/os/tickets/:token/checkin
 apps/api/src/services/ticket.service.ts   — kvote ulaznica, CRUD + validacije, QR (bwip-js), emailovi
 apps/api/src/routes/notification.routes.ts — list/unread-count/:id read|unread|DELETE/mark-all-read
 apps/api/src/services/notification.service.ts — createNotification + notifyStaff() (svi OWNER/OPERATOR)
-apps/api/src/services/member.service.ts   — getAllMembers, getMemberPerks/claimMemberPerk, getMemberEmails/Offers
+apps/api/src/services/member.service.ts   — getAllMembers, getMemberPerks/claimMemberPerk, getMemberEmails/Offers, recordMemberVisit
 apps/api/src/app.ts                       — Express setup, CORS, email logger
 apps/api/api/index.ts                     — Vercel serverless entry (@ts-nocheck, re-export bundla)
 apps/api/build-vercel.mjs                 — esbuild pre-bundle (src/app.ts -> src/app.bundled.mjs)
@@ -28,6 +28,7 @@ apps/api/src/services/renewal.service.ts        — dnevna provjera obnova (pods
 apps/os/src/app/login/page.tsx            — login (logo src="/admin/logo.png")
 apps/os/src/app/(dashboard)/             — sve admin stranice (Next.js App Router)
 apps/os/src/app/(dashboard)/tickets/page.tsx        — admin Ulaznice (tablica, filteri, check-in, postavke konferencije)
+apps/os/src/app/(dashboard)/visits/page.tsx         — admin Posjete članova (povijest posjeta + je li pokrenuta analiza weba)
 apps/os/src/app/(dashboard)/notifications/page.tsx  — tabbed inbox (Nove prijave/Zatraženi benefiti/Bilješke...)
 apps/os/next.config.ts                    — basePath:'/admin', images.unoptimized
 apps/portal/                              — članski portal (Next.js, bez basePatha; root members.ecommerce.hr)
@@ -103,6 +104,9 @@ Ista infrastruktura (tablica `WebshopAnalysis`, kvota 2/god po članu, generičk
 ### Obavijesti (admin inbox)
 `Notification` je per-user. Admin `/admin/notifications` je tabbed inbox; tip se izvodi iz `title` (getNotifType): **Nove prijave** (`Nova prijava` login / `Novi član` registracija), **Zatraženi benefiti** (`Zatražen benefit`), **Novi zadatak**, **Članarine**, **Bilješke** (`Nova bilješka za člana`). Sidebar badge = unread-count. Dashboard kartice: "Zatraženi benefiti" (broj) + "Nedavne prijave članova" (zadnji login-i, `Member.lastLoginAt`).
 - **KRITIČNO (serverless)**: staff-obavijesti (`notifyStaff`) MORAJU se `await`-ati prije `successResponse` — Vercel zamrzne funkciju nakon odgovora pa fire-and-forget upisi znaju biti presječeni (zato su neke obavijesti znale "nestati"). Wrap u try/catch da ne sruše glavnu operaciju.
+
+### Posjete članova (admin analitika)
+`MemberVisit` (per-član zapis svakog posjeta portalu) — puna povijest, dok `Member.lastLoginAt` čuva samo zadnji. Bilježi se na dva mjesta: pri svježoj prijavi (`/api/auth/login`, MEMBER) i — jer članovi ostaju prijavljeni ~30 dana pa `/login` rijetko okida — pri **svakom otvaranju portala** kroz `GET /api/member/profile` (`recordMemberVisit`, prigušeno na **1 posjet / 30 min** po članu da refreshevi ne dupliciraju). Admin `/admin/visits` (nav "Posjete članova", ownerOnly) → `GET /api/os/visits`: tko/kada + je li **tijekom posjeta pokrenuta analiza weba** (WebshopAnalysis createdAt u prozoru [ovaj posjet, sljedeći posjet)). `recordMemberVisit` se awaita prije odgovora (serverless freeze), u try/catch.
 
 ### Sigurnost API-ja (uvedeno u dubinskom pregledu, srpanj 2026.)
 - **Auth**: `reset_` tokeni se NE prihvaćaju kao refresh tokeni; reset lozinke briše SVE refresh tokene korisnika; deaktiviran korisnik ne može refreshati sesiju; reset token se ne logira. Registracija je transakcijska (User+Company+Member) s pre-checkom OIB-a.
