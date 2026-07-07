@@ -97,6 +97,13 @@ export interface AnalysisPage {
   html: string;
 }
 
+// Deterministički detektirani signali webshopa (iz sirovog HTML-a, prije sanitizacije) —
+// model ih dobiva kao ČINJENICE u promptu i koriste se za pouzdanu ocjenu binarnih kriterija.
+export interface WebshopSiteSignals {
+  // Gumb/obrazac za jednostrani raskid ugovora (odustanak od ugovora / otkazivanje narudžbe)
+  withdrawal: { present: boolean; url: string | null };
+}
+
 // Kanonska UX checklista (62 točke / 5 sučelja) — preuzeto iz stvarnih stručnih analiza
 // žirija Udruge (Aron Stanić, temelj Baymard smjernice). Model je MORA vratiti u cijelosti.
 const UX_CHECKLIST = `NASLOVNICA I NAVIGACIJA (8):
@@ -219,13 +226,16 @@ ${UX_CHECKLIST}
    Consent Mode v2 (default + update nakon pristanka). "score" = round(zbroj 7 ocjena / 35 * 100).
 
 6. Legal (key "LEGAL") — pravna usklađenost (hrvatski i EU propisi, Zakon o zaštiti potrošača, GDPR).
-   VRATI "checkpoints" s točno ovih 5 stavki (pass=true ako je usklađeno, false ako nije) + kratak "note":
+   VRATI "checkpoints" s točno ovih 6 stavki (pass=true ako je usklađeno, false ako nije) + kratak "note":
    - Nepoštena poslovna praksa (prikaz akcijskih cijena/popusta transparentno)
    - Materijalni nedostatak (odredbe o odgovornosti trgovca, jasno i razumljivo)
    - Akcije i iskazivanje cijena (dvije cijene: akcijska + najniža u zadnjih 30 dana)
    - Pravila privatnosti (pravna osnova, svrha, kategorije podataka, rokovi, primatelji)
    - Odgovor na reklamaciju i upit za pristup osobnim podacima
-   "score" = round(brojUsklađenih / 5 * 100).
+   - Gumb za jednostavan raskid ugovora (dostupan gumb/obrazac za jednostrani raskid ugovora / odustanak
+     od ugovora / otkazivanje narudžbe bez kompliciranog postupka; osloni se na priloženu činjenicu
+     "DETERMINISTIČKI DETEKTIRANO" — ako je gumb/link pronađen, pass=true)
+   "score" = round(brojUsklađenih / 6 * 100).
 
 PRAVILA:
 - Analizu TEMELJI na priloženom sadržaju (HTML stranica i, ako su priloženi, Core Web Vitals).
@@ -280,7 +290,7 @@ Odgovori ISKLJUČIVO JSON-om ovog oblika (bez markdowna, bez code fence-ova):
     { "key": "LEGAL", "title": "Legal", "score": number, "summary": "string", "recommendations": [...], "checkpoints": [{ "label": "Akcije i iskazivanje cijena", "pass": boolean, "note": "string" }] }
   ]
 }
-Vrati svih 6 kategorija, istim redoslijedom. Za UX uvijek vrati svih 62 stavke checkliste.
+Vrati svih 6 kategorija, istim redoslijedom. Za UX uvijek vrati svih 62 stavke checkliste, za LEGAL svih 6 checkpointa.
 
 PRIMJER TONA preporuka (ugledaj se na stil, ne kopiraj sadržaj):
 - {"title":"Istaknite ATC gumb","description":"Na stranici proizvoda gumb 'dodaj u košaricu' nije istaknut bojom (jače je istaknut gumb za upit – trebalo bi biti obrnuto). Učinite ga vizualno dominantnim.","severity":"high"}
@@ -330,12 +340,65 @@ function cwvBlock(cwv?: CoreWebVitals | null): string {
 - Prolazi Core Web Vitals: ${cwv.passed ? 'DA' : 'NE'}`;
 }
 
+function signalsBlock(signals?: WebshopSiteSignals | null): string {
+  if (!signals) return '';
+  const w = signals.withdrawal;
+  return `\n\nDETERMINISTIČKI DETEKTIRANO (iz HTML linkova stranice — uzmi kao činjenicu):
+- Gumb/link za jednostrani raskid ugovora (odustanak od ugovora / otkazivanje narudžbe): ${
+    w.present ? `PRONAĐEN${w.url ? ` (${w.url})` : ''}` : 'nije automatski pronađen (procijeni iz priloženog sadržaja)'
+  }`;
+}
+
+// Ocjene se izvode DETERMINISTIČKI iz strukturiranog detalja (formule žirija), a ne iz
+// aritmetike modela — tako "score" uvijek odgovara prikazanoj checklisti/kriterijima/checkpointima.
+export function recomputeScores(result: WebshopAnalysisResult): void {
+  for (const cat of result.categories) {
+    if (cat.key === 'UX' && cat.checklist?.length) {
+      const items = cat.checklist.flatMap((g) => g.items ?? []);
+      if (items.length) cat.score = Math.round((items.filter((i) => i.pass).length / items.length) * 100);
+    } else if (cat.key === 'ANALYTICS' && cat.criteria?.length) {
+      const max = cat.criteria.reduce((s, c) => s + (c.max || 5), 0);
+      const got = cat.criteria.reduce((s, c) => s + Math.min(Math.max(c.score ?? 0, 0), c.max || 5), 0);
+      if (max > 0) cat.score = Math.round((got / max) * 100);
+    } else if (cat.key === 'LEGAL' && cat.checkpoints?.length) {
+      cat.score = Math.round((cat.checkpoints.filter((c) => c.pass).length / cat.checkpoints.length) * 100);
+    }
+    cat.score = Math.round(Math.min(100, Math.max(0, cat.score)));
+  }
+  const scored = result.categories.filter((c) => typeof c.score === 'number');
+  if (scored.length) {
+    result.overallScore = Math.round(scored.reduce((s, c) => s + c.score, 0) / scored.length);
+  }
+}
+
+// Osiguraj da LEGAL sadrži checkpoint za jednostrani raskid ugovora s pouzdanom (determinističkom)
+// vrijednošću kad je link pronađen — model ga ne smije izostaviti ni pogrešno ocijeniti.
+export function applyWithdrawalCheckpoint(result: WebshopAnalysisResult, signals?: WebshopSiteSignals | null): void {
+  if (!signals) return;
+  const legal = result.categories.find((c) => c.key === 'LEGAL');
+  if (!legal) return;
+  legal.checkpoints = legal.checkpoints ?? [];
+  const w = signals.withdrawal;
+  const detectedNote = w.present
+    ? `Pronađen gumb/link za jednostrani raskid ugovora (odustanak / otkazivanje narudžbe)${w.url ? `: ${w.url}` : ''}.`
+    : 'Nije pronađen jasan gumb/obrazac za jednostrani raskid ugovora — razmotrite dodati samouslužni "Zahtjev za raskid ugovora / Otkaži narudžbu".';
+  const existing = legal.checkpoints.find((c) => /raskid|odustan|otka[žz][a-z]*\s*narud/i.test(c.label));
+  if (existing) {
+    // Pronađen link = pouzdan pozitivan dokaz → forsiraj pass; inače ostavi procjenu modela.
+    if (w.present) existing.pass = true;
+    if (!existing.note) existing.note = detectedNote;
+  } else {
+    legal.checkpoints.push({ label: 'Gumb za jednostavan raskid ugovora', pass: w.present, note: detectedNote });
+  }
+}
+
 export async function runWebshopAnalysis(
   websiteUrl: string,
   companyName: string,
   pages: AnalysisPage[],
   coreWebVitals?: CoreWebVitals | null,
   hasSafeShop = false,
+  signals?: WebshopSiteSignals | null,
 ): Promise<WebshopAnalysisResult> {
   const safeShopLine = hasSafeShop
     ? 'Safe Shop certifikat člana: IMA (Safe Shop aktivan).'
@@ -345,9 +408,13 @@ export async function runWebshopAnalysis(
     `Napravi stručnu analizu webshopa po 6 kategorija.
 Tvrtka: ${companyName}
 URL: ${websiteUrl}
-${safeShopLine}${cwvBlock(coreWebVitals)}${pageBlock(pages)}`,
+${safeShopLine}${cwvBlock(coreWebVitals)}${signalsBlock(signals)}${pageBlock(pages)}`,
     { maxTokens: 16000 },
   );
+  // Raskid ugovora: pouzdan checkpoint iz determinističke detekcije prije preračuna ocjena.
+  applyWithdrawalCheckpoint(result, signals);
+  // Ocjene (UX/ANALYTICS/LEGAL/overall) izvedi iz strukture, ne iz aritmetike modela.
+  recomputeScores(result);
   // CWV uvijek dolazi iz stvarnog mjerenja (ne iz modela).
   result.coreWebVitals = coreWebVitals ?? null;
   return result;

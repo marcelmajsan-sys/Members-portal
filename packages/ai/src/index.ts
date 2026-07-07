@@ -30,4 +30,5 @@ export {
   type WebshopSection,
   type CoreWebVitals,
   type AnalysisPage,
+  type WebshopSiteSignals,
 } from './webshop-analysis-agent.js';

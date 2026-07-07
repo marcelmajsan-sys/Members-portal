@@ -6,6 +6,7 @@ import {
   type CoreWebVitals,
   type PagespeedScores,
   type ProviderSiteSignals,
+  type WebshopSiteSignals,
 } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
 
@@ -127,6 +128,89 @@ function discoverSubpages(homepageUrl: string, html: string): AnalysisPage[] {
   if (categoryUrl) pages.push({ url: categoryUrl, label: 'Stranica kategorije', html: '' });
   if (productUrl && productUrl !== categoryUrl)
     pages.push({ url: productUrl, label: 'Stranica proizvoda', html: '' });
+  return pages;
+}
+
+// ─── Webshop: pravne/potrošačke podstranice + detekcija "raskid ugovora" ──────
+
+// Ključne riječi za jednostrani raskid ugovora / odustanak od ugovora / otkazivanje narudžbe.
+const WITHDRAWAL_RE =
+  /(raskid[\s_-]*ugovor|jednostran[a-z]*[\s_-]*raskid|obrazac[\s_-]*za[\s_-]*(jednostran[a-z]*[\s_-]*)?raskid|zahtjev[\s_-]*za[\s_-]*raskid|odustan[a-z]*[\s_-]*(od[\s_-]*)?ugovor|otka[žz][a-z]*[\s_-]*narud[žz]b|otkazivanje[\s_-]*narud[žz]b|withdrawal[\s_-]*(from[\s_-]*)?contract|cancel[\s_-]*order)/i;
+
+// Pravne/potrošačke stranice koje želimo pročitati za LEGAL/ANALYTICS (redoslijed = prioritet).
+const LEGAL_HINTS: Array<{ re: RegExp; label: string }> = [
+  { re: /(raskid|odustan|otkazivanje[-_]?narud|otkazi[-_]?narud)/i, label: 'Raskid ugovora' },
+  { re: /(uvjeti|terms|opci-uvjeti|pravila-koristenja|uvjeti-koristenja|uvjeti-kupnje)/i, label: 'Uvjeti korištenja' },
+  { re: /(reklamacij|prigovor|povrat)/i, label: 'Reklamacije i povrati' },
+  { re: /(privatnost|privacy|zastita-podataka|gdpr)/i, label: 'Pravila privatnosti' },
+  { re: /(kolacic|cookie)/i, label: 'Politika kolačića' },
+];
+
+// Detekcija gumba/linka za jednostrani raskid ugovora iz sirovog HTML-a (anchor href + tekst).
+export function detectWithdrawalLink(homepageUrl: string, html: string): { present: boolean; url: string | null } {
+  const re = /<a\s[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  let count = 0;
+  while ((m = re.exec(html)) && count < 1500) {
+    count++;
+    const href = m[1];
+    let decodedHref = href;
+    try {
+      decodedHref = decodeURIComponent(href);
+    } catch {
+      /* zadrži sirovi href */
+    }
+    const text = m[2].replace(/<[^>]+>/g, ' ');
+    if (WITHDRAWAL_RE.test(`${decodedHref} ${text}`)) {
+      let abs: string | null = null;
+      try {
+        abs = new URL(href, homepageUrl).toString();
+      } catch {
+        abs = null;
+      }
+      return { present: true, url: abs };
+    }
+  }
+  return { present: false, url: null };
+}
+
+// Otkrij do 3 pravne/potrošačke podstranice (raskid, uvjeti/reklamacije, privatnost/kolačići) —
+// discoverSubpages ih namjerno preskače (SKIP_PATH), a LEGAL/ANALYTICS ih trebaju pročitati.
+export function discoverLegalPages(homepageUrl: string, html: string): AnalysisPage[] {
+  let origin: string;
+  try {
+    origin = new URL(homepageUrl).origin;
+  } catch {
+    return [];
+  }
+  const hrefs: string[] = [];
+  const seen = new Set<string>();
+  const re = /href\s*=\s*["']([^"'#]+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) && seen.size < 500) {
+    const raw = m[1].trim();
+    if (!raw || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+    let abs: URL;
+    try {
+      abs = new URL(raw, homepageUrl);
+    } catch {
+      continue;
+    }
+    if (abs.origin !== origin) continue;
+    if (abs.pathname === '/' || abs.pathname === '') continue;
+    if (/\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|xml|css|js)(\?|$)/i.test(abs.pathname)) continue;
+    const key = abs.origin + abs.pathname;
+    if (!seen.has(key)) {
+      seen.add(key);
+      hrefs.push(key);
+    }
+  }
+  const pages: AnalysisPage[] = [];
+  for (const hint of LEGAL_HINTS) {
+    if (pages.length >= 3) break;
+    const url = hrefs.find((u) => hint.re.test(u) && !pages.some((p) => p.url === u));
+    if (url) pages.push({ url, label: hint.label, html: '' });
+  }
   return pages;
 }
 
@@ -373,17 +457,25 @@ export async function requestWebshopAnalysis(userId: string) {
 
     const homepageHtml = await fetchHtml(websiteUrl);
 
-    // Naslovnica + best-effort podstranice (trgovci: kategorija/proizvod; nuditelji: usluge/reference).
+    // Naslovnica + best-effort podstranice. Trgovci: kategorija/proizvod + pravne/potrošačke
+    // (raskid, uvjeti, privatnost, kolačići) za LEGAL/ANALYTICS. Nuditelji: usluge/reference.
     const pages: AnalysisPage[] = [{ url: websiteUrl, label: 'Naslovnica', html: homepageHtml }];
-    const subpages = homepageHtml
-      ? (isProvider ? discoverProviderSubpages(websiteUrl, homepageHtml) : discoverSubpages(websiteUrl, homepageHtml))
-      : [];
+    let subpages: AnalysisPage[] = [];
+    if (homepageHtml) {
+      subpages = isProvider
+        ? discoverProviderSubpages(websiteUrl, homepageHtml)
+        : [...discoverSubpages(websiteUrl, homepageHtml), ...discoverLegalPages(websiteUrl, homepageHtml)];
+    }
     if (subpages.length) {
       const fetched = await Promise.all(
         subpages.map(async (p) => ({ ...p, html: await fetchHtml(p.url, 7000) })),
       );
       pages.push(...fetched.filter((p) => p.html));
     }
+
+    // Deterministički signal za trgovce: gumb/link za jednostrani raskid ugovora (iz naslovnice).
+    const webshopSignals: WebshopSiteSignals | null =
+      !isProvider && homepageHtml ? { withdrawal: detectWithdrawalLink(websiteUrl, homepageHtml) } : null;
 
     const [coreWebVitals, pagespeed] = await Promise.all([cwvPromise, psPromise]);
 
@@ -401,6 +493,7 @@ export async function requestWebshopAnalysis(userId: string) {
           pages,
           coreWebVitals,
           member.hasCertificate,
+          webshopSignals,
         );
 
     return prisma.webshopAnalysis.update({
