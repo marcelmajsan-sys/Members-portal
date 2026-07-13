@@ -188,6 +188,8 @@ export async function updateMember(
     hasCertificate: boolean;
     hasAcademy: boolean;
     safeShopStatus: string | null;
+    safeShopEmail: string | null;
+    safeShopPassword: string | null;
     magazinDobrePrice: boolean;
     promoKonferencija: boolean;
     promoMeetup: boolean;

@@ -15,6 +15,8 @@ interface Profile {
   hasCertificate: boolean;
   hasAcademy: boolean;
   safeShopStatus: string | null;
+  safeShopEmail: string | null;
+  safeShopPassword: string | null;
   dateOfBirth: string | null;
   personalOib: string | null;
   personalAddress: string | null;
@@ -116,6 +118,7 @@ export default function PortalHome() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
   const [quota, setQuota] = useState<WebshopQuota | null>(null);
+  const [showSafeShopPw, setShowSafeShopPw] = useState(false);
 
   // Guard
   useEffect(() => {
@@ -328,6 +331,40 @@ export default function PortalHome() {
               </div>
               {profile.secondaryContact && <SecondaryContactView contact={profile.secondaryContact} />}
             </section>
+
+            {/* Safe Shop pristupni podaci — email + lozinka za prijavu na Safe Shop (unosi ih administrator) */}
+            {(profile.safeShopEmail || profile.safeShopPassword) && (
+              <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-6">
+                <div className="mb-1 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+                  </svg>
+                  <h2 className="text-sm font-semibold text-gray-900">Safe Shop pristupni podaci</h2>
+                </div>
+                <p className="mb-4 text-xs text-gray-500">Podaci za prijavu na Safe Shop.</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Info label="Email za prijavu" value={profile.safeShopEmail || '—'} />
+                  <div>
+                    <p className="text-xs text-gray-500">Lozinka za prijavu</p>
+                    {profile.safeShopPassword ? (
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span className="font-medium text-gray-900">
+                          {showSafeShopPw ? profile.safeShopPassword : '••••••••'}
+                        </span>
+                        <button
+                          onClick={() => setShowSafeShopPw((v) => !v)}
+                          className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                        >
+                          {showSafeShopPw ? 'Sakrij' : 'Prikaži'}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-0.5 font-medium text-gray-900">—</p>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
 
             {/* Osobe za ulaznice (konferencija) */}
             {ticketConf && (

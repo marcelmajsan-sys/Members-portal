@@ -34,6 +34,8 @@ interface MemberRaw {
   hasCertificate: boolean;
   hasAcademy: boolean;
   safeShopStatus: string | null;
+  safeShopEmail: string | null;
+  safeShopPassword: string | null;
   magazinDobrePrice: boolean;
   promoKonferencija: boolean;
   promoMeetup: boolean;
@@ -181,11 +183,18 @@ export default function MemberDetailPage() {
   const [hasSecond, setHasSecond] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
+  // Safe Shop pristupni podaci (email + lozinka za prijavu na Safe Shop)
+  const [ssEmail, setSsEmail] = useState('');
+  const [ssPassword, setSsPassword] = useState('');
+  const [ssShowPw, setSsShowPw] = useState(false);
+  const [ssSaving, setSsSaving] = useState(false);
 
   useEffect(() => {
     api.get<MemberRaw>(`/api/os/members/${id}`).then((res) => {
       if (res.success && res.data) {
         setMember(res.data);
+        setSsEmail(res.data.safeShopEmail || '');
+        setSsPassword(res.data.safeShopPassword || '');
       } else {
         setError(res.error?.message || 'Član nije pronađen');
       }
@@ -411,6 +420,21 @@ export default function MemberDetailPage() {
       setAiSummary('AI sažetak trenutno nije dostupan.');
     }
     setAiSummaryLoading(false);
+  }
+
+  async function saveSafeShopCreds() {
+    setSsSaving(true);
+    const res = await api.patch<MemberRaw>(`/api/os/members/${id}/certificates`, {
+      safeShopEmail: ssEmail.trim(),
+      safeShopPassword: ssPassword,
+    });
+    if (res.success && res.data) {
+      applyMemberUpdate(res.data);
+      showToast('Safe Shop pristupni podaci spremljeni');
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
+    }
+    setSsSaving(false);
   }
 
   function openEditModal() {
@@ -1158,6 +1182,53 @@ export default function MemberDetailPage() {
                   <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition ${member.hasAcademy ? 'translate-x-5' : ''}`} />
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Safe Shop pristupni podaci — email + lozinka za prijavu na Safe Shop (vidljivo članu na portalu) */}
+          <div className="mt-4 rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-700">Safe Shop pristupni podaci</p>
+            <p className="mt-0.5 text-xs text-gray-400">Email i lozinka za prijavu na Safe Shop. Prikazuju se članu na njegovom profilu na portalu.</p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Email za prijavu</label>
+                <input
+                  type="email"
+                  value={ssEmail}
+                  onChange={(e) => setSsEmail(e.target.value)}
+                  placeholder="npr. trgovina@primjer.hr"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Lozinka za prijavu</label>
+                <div className="relative">
+                  <input
+                    type={ssShowPw ? 'text' : 'password'}
+                    value={ssPassword}
+                    onChange={(e) => setSsPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pr-16 text-sm text-gray-700 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSsShowPw((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400 hover:text-gray-600"
+                  >
+                    {ssShowPw ? 'Sakrij' : 'Prikaži'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={saveSafeShopCreds}
+                disabled={ssSaving || (ssEmail === (member.safeShopEmail || '') && ssPassword === (member.safeShopPassword || ''))}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {ssSaving ? 'Spremanje...' : 'Spremi pristupne podatke'}
+              </button>
             </div>
           </div>
         </div>

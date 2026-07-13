@@ -181,6 +181,8 @@ model Member {
   hasCertificate Boolean      @default(false)
   hasAcademy     Boolean      @default(false)
   safeShopStatus    String?
+  safeShopEmail     String?      // Pristupni email za prijavu na Safe Shop (vidljivo članu)
+  safeShopPassword  String?      // Pristupna lozinka za prijavu na Safe Shop (vidljivo članu)
   magazinDobrePrice Boolean      @default(false)
   promoKonferencija Boolean      @default(false)
   promoMeetup       Boolean      @default(false)

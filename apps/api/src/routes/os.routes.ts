@@ -650,10 +650,12 @@ router.patch('/members/:id/tier', validateParams(idParamSchema), async (req: Aut
 
 // PATCH /members/:id/certificates — Update certificate/academy/safeshop fields
 router.patch('/members/:id/certificates', validateParams(idParamSchema), async (req: AuthRequest, res) => {
-  const { hasCertificate, hasAcademy, safeShopStatus, magazinDobrePrice, promoKonferencija, promoMeetup, promoMagazin, promoWeb, promoOstalo } = req.body as {
+  const { hasCertificate, hasAcademy, safeShopStatus, safeShopEmail, safeShopPassword, magazinDobrePrice, promoKonferencija, promoMeetup, promoMagazin, promoWeb, promoOstalo } = req.body as {
     hasCertificate?: boolean;
     hasAcademy?: boolean;
     safeShopStatus?: string | null;
+    safeShopEmail?: string | null;
+    safeShopPassword?: string | null;
     magazinDobrePrice?: boolean;
     promoKonferencija?: boolean;
     promoMeetup?: boolean;
@@ -667,6 +669,8 @@ router.patch('/members/:id/certificates', validateParams(idParamSchema), async (
       ...(hasCertificate !== undefined && { hasCertificate }),
       ...(hasAcademy !== undefined && { hasAcademy }),
       ...(safeShopStatus !== undefined && { safeShopStatus }),
+      ...(safeShopEmail !== undefined && { safeShopEmail: safeShopEmail || null }),
+      ...(safeShopPassword !== undefined && { safeShopPassword: safeShopPassword || null }),
       ...(magazinDobrePrice !== undefined && { magazinDobrePrice }),
       ...(promoKonferencija !== undefined && { promoKonferencija }),
       ...(promoMeetup !== undefined && { promoMeetup }),

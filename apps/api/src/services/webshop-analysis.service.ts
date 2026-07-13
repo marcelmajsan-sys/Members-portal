@@ -162,7 +162,7 @@ export function detectWithdrawalLink(homepageUrl: string, html: string): { prese
     }
     const text = m[2].replace(/<[^>]+>/g, ' ');
     if (WITHDRAWAL_RE.test(`${decodedHref} ${text}`)) {
-      let abs: string | null = null;
+      let abs: string | null;
       try {
         abs = new URL(href, homepageUrl).toString();
       } catch {
