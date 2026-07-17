@@ -12,7 +12,7 @@ apps/api/src/routes/index.ts              — registracija svih ruta
 apps/api/src/routes/inbound.routes.ts     — cron endpointi (fetch-inbound, daily-renewal)
 apps/api/src/routes/auth.routes.ts        — login/register/refresh/reset; member login bilježi lastLoginAt + MemberVisit + "Nova prijava"
 apps/api/src/routes/member.routes.ts      — member-scoped portal API (profile [bilježi MemberVisit], emails, offers, perks, perks/:id/claim)
-apps/api/src/routes/benefit.routes.ts     — /api/os/benefits CRUD + assign + :id/members (UI uklonjen, API ostao)
+apps/api/src/routes/benefit.routes.ts     — /api/os/benefits CRUD + assign + :id/members (admin stranica uklonjena; prikaz vidi "Benefiti" niže)
 apps/api/src/routes/conference.routes.ts  — /api/os/conferences CRUD + tickets pregled/potvrda/filteri + CSV export
 apps/api/src/routes/ticket.routes.ts      — javno GET /api/tickets/:token (QR) + POST /api/os/tickets/:token/checkin
 apps/api/src/services/ticket.service.ts   — kvote ulaznica, CRUD + validacije, QR (bwip-js), emailovi
@@ -32,7 +32,7 @@ apps/os/src/app/(dashboard)/visits/page.tsx         — admin Posjete članova (
 apps/os/src/app/(dashboard)/notifications/page.tsx  — tabbed inbox (Nove prijave/Zatraženi benefiti/Bilješke...)
 apps/os/next.config.ts                    — basePath:'/admin', images.unoptimized
 apps/portal/                              — članski portal (Next.js, bez basePatha; root members.ecommerce.hr)
-apps/portal/src/app/page.tsx              — članska kontrolna ploča (članstvo, emailovi, obavijesti, ponude, ulaznice)
+apps/portal/src/app/page.tsx              — članska kontrolna ploča (članstvo, Safe Shop pristupni podaci, benefiti, emailovi, obavijesti, ponude, ulaznice)
 apps/portal/src/app/ulaznica/[token]/page.tsx — javna stranica ulaznice s QR kodom (bez prijave)
 apps/portal/vercel.json                   — rewrite /admin/* → admin projekt (multi-zones)
 packages/db/prisma/schema.prisma          — Prisma schema (svi modeli)
@@ -83,10 +83,15 @@ Aplikacija NE koristi PostgREST/anon ključ — sav pristup ide kroz Prisma kao 
 ## Funkcionalnosti
 
 ### Članski portal (apps/portal)
-Članovi (rola `MEMBER`) se prijavljuju na **members.ecommerce.hr** i vide: članstvo (tip/tier/status/istek), podatke o članu/tvrtki, email komunikaciju (modal, sandbox iframe), obavijesti (unread stil + "Označi sve pročitanim"), ponude i **ulaznice**. Zove isti API (`NEXT_PUBLIC_API_URL`). Staff (OWNER/OPERATOR) na portalu se redirecta na `/admin`. Kreiranje pristupa: admin na profilu člana → "Pošalji pristup članu" (`POST /api/os/members/:id/send-invite`, reuse reset_ token flow, link na `${MEMBER_APP_URL}/reset-password`). **Ručno kreirani član dobiva random neupotrebljivu lozinku** — pristup postoji tek nakon invite/reset flowa (nema default lozinke).
+Članovi (rola `MEMBER`) se prijavljuju na **members.ecommerce.hr** i vide: članstvo (tip/tier/status/istek), podatke o članu/tvrtki, **Safe Shop pristupne podatke**, **benefite**, email komunikaciju (modal, sandbox iframe), obavijesti (unread stil + "Označi sve pročitanim"), ponude i **ulaznice**. Zove isti API (`NEXT_PUBLIC_API_URL`). Staff (OWNER/OPERATOR) na portalu se redirecta na `/admin`. Kreiranje pristupa: admin na profilu člana → "Pošalji pristup članu" (`POST /api/os/members/:id/send-invite`, reuse reset_ token flow, link na `${MEMBER_APP_URL}/reset-password`). **Ručno kreirani član dobiva random neupotrebljivu lozinku** — pristup postoji tek nakon invite/reset flowa (nema default lozinke).
 
-### Benefiti (pogodnosti) — UI UKLONJEN
-Modul benefita je maknut iz UI-a (portal sekcija "Pogodnosti" + admin stranica/nav "Benefiti") i zamijenjen ulaznicama. Backend (`benefit.routes.ts`, `Benefit`/`MemberBenefit` modeli, member `/perks` endpointi) postoji i dalje, ali se nigdje ne prikazuje.
+### Safe Shop pristupni podaci (srpanj 2026.)
+`Member.safeShopEmail` / `Member.safeShopPassword` (plaintext — pristupni podaci za VANJSKI Safe Shop sustav, ne portal lozinka). Admin ih upisuje na profilu člana (kartica "Safe Shop pristupni podaci", sprema se kroz `PATCH /api/os/members/:id/certificates`); član ih vidi na portalu odmah ispod "Podaci o članu" (lozinka skrivena, gumb Prikaži/Sakrij). Inicijalni uvoz iz Safe Shop reset CSV-a: `packages/db/src/import-safeshop-passwords.ts` (izvršeno 17.07.2026., 120/137 upareno — po emailu člana → emailu tvrtke → domeni web trgovine).
+
+### Benefiti (pogodnosti) — ograničeni prikaz vraćen (srpanj 2026.)
+Admin stranica/nav "Benefiti" ostaje UKLONJENA (upravljanje samo kroz API/skripte), ali se benefiti opet **prikazuju**: portal sekcija "Vaši benefiti" (ispod Safe Shop podataka; bez claim gumba — ispod liste piše "Zatražite svoj benefit na email udruga@ecommerce.hr") + admin kartica "Benefiti" na profilu člana (`MemberBenefits.tsx`, `GET /api/os/members/:id/benefits` → `getMemberPerksById`).
+- **Uvjet `PREMIUM_ONLY`** (`Benefit.condition`): type-targeted benefit vide samo PREMIUM članovi ciljanog tipa — automatski vrijedi i za buduće Premium članove (i nestaje padom na Standard). Seedano (`packages/db/src/seed-premium-benefits.ts`): **"eCommerce Akademija"** (WEB_TRADER) i **"PR objava na webu udruge (3 kom)"** (SERVICE_PROVIDER, `quota: 3`). Dva legacy benefita (CRO Commerce ulaznica, SAFE SHOP cert) su **deaktivirana** (`isActive=false`) — ne reaktivirati bez namjere, odmah bi se prikazali svim članovima tipa.
+- **Kvota iskorištenja**: `Benefit.quota` + `MemberBenefit.usedCount`. Admin na profilu člana −/+ brojačem označava iskorišteno (`PATCH /api/os/members/:id/benefits/:benefitId {usedCount}`, clamp 0..quota); portal članu prikazuje "Slobodno x/quota".
 
 ### Ulaznice za konferenciju (ULAZNICE-SPEC.md)
 `ConferenceTicket` (osoba za ulaznicu; vlasnik = `memberId`; `addedByStaff` = ručno dodao admin) na `Conference` (+ `editDeadline`, `extraDiscount`, `ticketQuotas Json`). Kvota po članu iz `ticketQuotas[TicketType][MemberTier|MemberType]`; **default: STANDARD član → 1 STANDARD, PREMIUM član → 3 VIP**. Unutar kvote → `CONFIRMED` (email osobi s linkom na `/ulaznica/[token]` + potvrda članu); preko kvote → `PENDING` + `notifyStaff("Zatražena dodatna ulaznica")` + ponuda s `extraDiscount`% popusta (ručno). Backend validacije: vlasništvo iz JWT-a, rok (`editDeadline` → 403; **uključiv do kraja dana** — deadline+24h), duplikat emaila po konferenciji (409; CANCELLED s istim emailom se oživljava). Kvota se provjerava u **serializable transakciji** (paralelni upisi je ne mogu zaobići); token ulaznice = `crypto.randomUUID()` (ne cuid). Member update/delete imaju iste guardove kao create (aktivna konferencija + ACTIVE član); promjena statusa kroz edit šalje iste emailove kao create (PENDING→CONFIRMED = QR email), promjena emaila na CONFIRMED šalje QR novoj adresi; skenirana (checked-in) ulaznica se ne može obrisati. Javna ulaznica: `GET /api/tickets/:token` (samo CONFIRMED, QR = URL ulaznice, rate-limited) — dizajn kopira partner-portal (tamni okvir, QR desno, dvojezična napomena). Check-in: `POST /api/os/tickets/:token/checkin` — jednokratan i **atomaran** (`updateMany` s `checkedInAt: null` u WHERE — dva istovremena skena ne mogu oba proći), drugi sken → 409 s vremenom (UI za check-in namjerno maknut sa `/admin/tickets`). Admin `/admin/tickets`: tablica prijava članova + odvojena sekcija **"RUČNO DODANE"** (`addedByStaff`), filteri (Set<string> → comma-separated), odobri PENDING, **XLSX export u 2 sheeta** ("Ulaznice članova" / "Ručno dodane", `xlsx` paket), postavke konferencije s kvotama po paketu. Na profilu člana (`/members/[id]`, iznad Safe Shop analize) `MemberTickets.tsx` — admin ručno dodaje ulaznice (`POST /api/os/conferences/:id/tickets`, bez kvote, `addedByStaff=true`).
@@ -98,7 +103,7 @@ Modul benefita je maknut iz UI-a (portal sekcija "Pogodnosti" + admin stranica/n
 
 ### AI analiza weba na portalu (trgovci + nuditelji)
 Ista infrastruktura (tablica `WebshopAnalysis`, kvota 2/god po članu, generički render na portalu — criteria/checkpoints/sections/checklist):
-- **WEB_TRADER** → `runWebshopAnalysis` (6 kategorija: UX/CRO/SEO/Buyer's Journey/Analytics/Legal, Core Web Vitals mobile).
+- **WEB_TRADER** → `runWebshopAnalysis` (6 kategorija: UX/CRO/SEO/Buyer's Journey/Analytics/Legal, Core Web Vitals mobile). LEGAL checkpoint "Gumb za jednostavan raskid ugovora" je **deterministički** (`detectWithdrawalLink` s naslovnice, `applyWithdrawalCheckpoint` overridea model); pozitivan nalaz uvijek nosi napomenu da je za 100% sigurnost potrebna ručna provjera radi li obrazac. Validirano na ~100 shopova (srpanj 2026.): svi pronađeni linkovi živi; detekcija prolazi i informativnu stranicu/PDF, ne samo pravi obrazac.
 - **SERVICE_PROVIDER** → `runProviderAnalysis` (`packages/ai/src/provider-analysis-agent.ts`) po uzoru na žirijevu "Stručnu analizu online prisutnosti" za nuditelje (lipanj 2025.): **Best Web** (14 kriterija 0–10 u 4 grupe: Prezentacija ponude, Dizajn, Osnovni SEO, Page speed — PageSpeed score desktop+mobile se mjeri stvarno i dijeli s 10), **Best Copy** (5 DA/NE checkpointa + 5 narativnih sekcija), **Best Marketing** (7 kriterija: FB/IG/LinkedIn + social proof/USP/tracking/KW). Social linkovi i tracking skripte (GA4/GTM/Meta Pixel/LinkedIn/Hotjar) detektiraju se deterministički iz sirovog HTML-a i modelu se daju kao činjenice. Podstranice za nuditelje: usluge/o nama/reference/cjenik (ne kategorija/proizvod).
 
 ### Obavijesti (admin inbox)
@@ -119,7 +124,7 @@ Ista infrastruktura (tablica `WebshopAnalysis`, kvota 2/god po članu, generičk
 ## Konvencije
 
 - **Zlatno pravilo**: Sve promjene su aditivne. Ništa postojeće se ne smije pokvariti.
-- **Prisma**: `prisma db push` za produkciju (ne migrate). Shema je source of truth.
+- **Prisma**: `prisma db push` za produkciju (ne migrate). Shema je source of truth. **Prije lokalnog `db push` OBAVEZNO `git pull`** — push sa zastarjelom shemom tiho briše kolone dodane u paralelnoj sesiji (prazne kolone padaju bez upozorenja; incident 17.07.2026.).
 - **Frontend**: Tailwind CSS v4 (`@import "tailwindcss"` + `@theme` blok, nema `tailwind.config.ts`).
 - **basePath `/admin`**: `window.location.href` redirecti se ručno prefiksiraju na `/admin/...` (basePath ih ne dira). `next/image` s `unoptimized:true` NE dodaje basePath na `<img src>` → logo putanje moraju eksplicitno uključivati `/admin` (npr. `src="/admin/logo.png"`).
 - **Filteri**: Frontend `Set<string>` za active filtere, backend prima comma-separated query parametre.
