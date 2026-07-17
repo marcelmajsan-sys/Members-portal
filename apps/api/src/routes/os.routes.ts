@@ -6,7 +6,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { validateQuery, validateParams } from '../middleware/validate.js';
 import { successResponse, paginatedResponse, errorResponse } from '../utils/api-response.js';
-import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile } from '../services/member.service.js';
+import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile, getMemberPerksById } from '../services/member.service.js';
 import { getDashboardStats, getDashboardAnalytics, getRecentActivity } from '../services/dashboard.service.js';
 import { createNotification, notifyStaff } from '../services/notification.service.js';
 import { emitEvent } from '../lib/event-bus.js';
@@ -479,6 +479,16 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
   }
 
   successResponse(res, member);
+});
+
+// GET /members/:id/benefits — benefiti člana ({ available, claimed }) za admin prikaz na profilu
+router.get('/members/:id/benefits', validateParams(idParamSchema), async (req, res) => {
+  const perks = await getMemberPerksById(req.params.id as string);
+  if (!perks) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  successResponse(res, perks);
 });
 
 // GET /members/:id/safeshop-analysis — latest Safe Shop certification analysis (or null)

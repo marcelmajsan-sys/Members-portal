@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import SafeShopAnalysis from './SafeShopAnalysis';
 import MemberTickets from './MemberTickets';
+import MemberBenefits from './MemberBenefits';
 
 interface SecondaryContact {
   id?: string;
@@ -1343,6 +1344,9 @@ export default function MemberDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Benefiti člana (npr. Premium: eCommerce Akademija / PR objave) */}
+      <MemberBenefits memberId={id} />
 
       {/* Action buttons */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">

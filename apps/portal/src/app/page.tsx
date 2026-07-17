@@ -37,6 +37,8 @@ interface SecondaryContact {
   zip: string | null; city: string | null; country: string | null; oib: string | null;
   dateOfBirth: string | null; phone: string | null; email: string | null; note: string | null;
 }
+interface Perk { id: string; title: string; description: string | null; status: string; statusNote: string | null }
+interface Perks { available: Perk[]; claimed: Perk[] }
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
 interface OfferItem { id: string; offerNumber: string; amount: number; currency: string; status: string; validUntil: string; createdAt: string }
@@ -119,6 +121,7 @@ export default function PortalHome() {
   const [analysisError, setAnalysisError] = useState('');
   const [quota, setQuota] = useState<WebshopQuota | null>(null);
   const [showSafeShopPw, setShowSafeShopPw] = useState(false);
+  const [perks, setPerks] = useState<Perks | null>(null);
 
   // Guard
   useEffect(() => {
@@ -132,7 +135,7 @@ export default function PortalHome() {
     (async () => {
       setLoading(true);
       setProfileErrorCode(null);
-      const [p, e, n, o, tc, wa, wq] = await Promise.all([
+      const [p, e, n, o, tc, wa, wq, pk] = await Promise.all([
         api.get<Profile>('/api/member/profile'),
         api.get<EmailItem[]>('/api/member/emails'),
         api.get<NotificationItem[]>('/api/notifications?limit=20'),
@@ -140,6 +143,7 @@ export default function PortalHome() {
         api.get<TicketConference | null>('/api/member/conferences/active'),
         api.get<WebshopAnalysis | null>('/api/member/webshop-analysis'),
         api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota'),
+        api.get<Perks>('/api/member/perks'),
       ]);
       if (p.success && p.data) setProfile(p.data);
       else setProfileErrorCode(p.error?.code || 'UNKNOWN');
@@ -153,6 +157,7 @@ export default function PortalHome() {
       }
       if (wa.success && wa.data) setAnalysis(wa.data);
       if (wq.success && wq.data) setQuota(wq.data);
+      if (pk.success && pk.data) setPerks(pk.data);
       setLoading(false);
       // Ako je analiza pokrenuta u prethodnom posjetu i još traje, nastavi pollati.
       if (wa.success && wa.data?.status === 'PENDING') pollAnalysis();
@@ -363,6 +368,34 @@ export default function PortalHome() {
                     )}
                   </div>
                 </div>
+              </section>
+            )}
+
+            {/* Benefiti člana (npr. Premium: eCommerce Akademija / PR objave) */}
+            {perks && perks.available.length + perks.claimed.length > 0 && (
+              <section className="rounded-xl border border-gray-200 bg-white p-6">
+                <h2 className="text-sm font-semibold text-gray-900">Vaši benefiti</h2>
+                <div className="mt-4 space-y-3">
+                  {[...perks.available, ...perks.claimed].map((perk) => (
+                    <div key={perk.id} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-gray-900">{perk.title}</p>
+                        {perk.status !== 'AVAILABLE' && (
+                          <span className="rounded-full bg-success-light px-2.5 py-0.5 text-xs font-medium text-success">
+                            {perk.statusNote || 'Iskorišteno'}
+                          </span>
+                        )}
+                      </div>
+                      {perk.description && <p className="mt-1 text-xs text-gray-500">{perk.description}</p>}
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-gray-500">
+                  Zatražite svoj benefit na email{' '}
+                  <a href="mailto:udruga@ecommerce.hr" className="font-medium text-primary hover:underline">
+                    udruga@ecommerce.hr
+                  </a>
+                </p>
               </section>
             )}
 

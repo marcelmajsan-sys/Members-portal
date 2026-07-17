@@ -485,10 +485,23 @@ export async function getMemberOffers(userId: string) {
 export async function getMemberPerks(userId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    select: { id: true, memberType: true, hasCertificate: true },
+    select: { id: true, memberType: true, memberTier: true, hasCertificate: true },
   });
   if (!member) return null;
+  return computeMemberPerks(member);
+}
 
+// Ista logika po memberId — za admin prikaz benefita na profilu člana
+export async function getMemberPerksById(memberId: string) {
+  const member = await prisma.member.findUnique({
+    where: { id: memberId },
+    select: { id: true, memberType: true, memberTier: true, hasCertificate: true },
+  });
+  if (!member) return null;
+  return computeMemberPerks(member);
+}
+
+async function computeMemberPerks(member: { id: string; memberType: MemberType; memberTier: MemberTier; hasCertificate: boolean }) {
   const [typeBenefits, grants] = await Promise.all([
     prisma.benefit.findMany({
       where: { isActive: true, memberTypes: { has: member.memberType } },
@@ -519,8 +532,11 @@ export async function getMemberPerks(userId: string) {
     else available.push(shape(b, 'AVAILABLE', null));
   };
 
-  // Type-targeted benefits
-  for (const b of typeBenefits) place(b, grantByBenefit.get(b.id) ?? undefined);
+  // Type-targeted benefits; uvjet "PREMIUM_ONLY" → samo za Premium članove ciljanog tipa
+  for (const b of typeBenefits) {
+    if (b.condition === 'PREMIUM_ONLY' && member.memberTier !== 'PREMIUM') continue;
+    place(b, grantByBenefit.get(b.id) ?? undefined);
+  }
 
   // Individually-assigned benefits not already covered by type targeting
   const typeIds = new Set(typeBenefits.map((b) => b.id));
@@ -537,7 +553,7 @@ export async function getMemberPerks(userId: string) {
 export async function claimMemberPerk(userId: string, benefitId: string) {
   const member = await prisma.member.findUnique({
     where: { userId },
-    select: { id: true, memberType: true, status: true, hasCertificate: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
+    select: { id: true, memberType: true, memberTier: true, status: true, hasCertificate: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
   });
   if (!member) return { error: 'NO_MEMBER' as const };
 
@@ -557,6 +573,11 @@ export async function claimMemberPerk(userId: string, benefitId: string) {
   });
   const eligible = benefit.memberTypes.includes(member.memberType) || !!existing;
   if (!eligible) return { error: 'NOT_ELIGIBLE' as const };
+
+  // Uvjet "PREMIUM_ONLY": bez pojedinačne dodjele benefit mogu zatražiti samo Premium članovi
+  if (benefit.condition === 'PREMIUM_ONLY' && member.memberTier !== 'PREMIUM' && !existing) {
+    return { error: 'NOT_ELIGIBLE' as const };
+  }
 
   if (existing?.status === 'CLAIMED') {
     return { ok: true as const, alreadyClaimed: true, member, benefit };
