@@ -26,11 +26,13 @@ const BENEFITS = [
     title: 'eCommerce Akademija',
     description: 'Uključeno u vaše Premium članstvo.',
     memberTypes: ['WEB_TRADER' as const],
+    quota: null as number | null,
   },
   {
     title: 'PR objava na webu udruge (3 kom)',
     description: 'Uključeno u vaše Premium članstvo.',
     memberTypes: ['SERVICE_PROVIDER' as const],
+    quota: 3 as number | null,
   },
 ];
 
@@ -43,6 +45,7 @@ async function main() {
       description: b.description,
       memberTypes: b.memberTypes,
       condition: 'PREMIUM_ONLY',
+      quota: b.quota,
       isActive: true,
     };
     if (existing) {

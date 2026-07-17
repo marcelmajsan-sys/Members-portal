@@ -263,6 +263,7 @@ model Benefit {
   actionLabel String?       // npr. "PREUZMI" / "ZATRAŽI"
   memberTypes MemberType[]  // ciljanje po tipu članstva (prazno = nijedan tip)
   condition   String?       // poseban uvjet, npr. "NO_CERTIFICATE" (akcija samo bez Safe Shop certa)
+  quota       Int?          // koliko puta član može iskoristiti benefit (npr. 3 PR objave); null = bez brojanja
   isActive    Boolean       @default(true)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -276,6 +277,7 @@ model MemberBenefit {
   benefitId String
   memberId  String
   status    BenefitStatus @default(AVAILABLE)
+  usedCount Int           @default(0) // koliko je član iskoristio (za benefite s kvotom; označava admin)
   claimedAt DateTime?
   createdAt DateTime      @default(now())
 

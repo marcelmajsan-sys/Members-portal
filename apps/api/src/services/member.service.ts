@@ -514,22 +514,23 @@ async function computeMemberPerks(member: { id: string; memberType: MemberType; 
 
   const grantByBenefit = new Map(grants.map((g) => [g.benefitId, g]));
 
-  type BenefitLike = { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null };
-  const shape = (b: BenefitLike, status: string, claimedAt: Date | null, statusNote?: string) =>
-    ({ id: b.id, title: b.title, description: b.description, category: b.category, actionUrl: b.actionUrl, actionLabel: b.actionLabel, condition: b.condition, status, claimedAt, statusNote: statusNote ?? null });
+  type BenefitLike = { id: string; title: string; description: string | null; category: string | null; actionUrl: string | null; actionLabel: string | null; condition: string | null; quota: number | null };
+  const shape = (b: BenefitLike, status: string, claimedAt: Date | null, usedCount: number, statusNote?: string) =>
+    ({ id: b.id, title: b.title, description: b.description, category: b.category, actionUrl: b.actionUrl, actionLabel: b.actionLabel, condition: b.condition, quota: b.quota, usedCount, status, claimedAt, statusNote: statusNote ?? null });
 
   const available: ReturnType<typeof shape>[] = [];
   const claimed: ReturnType<typeof shape>[] = [];
 
   // Posebni uvjet: "NO_CERTIFICATE" → ako član već ima Safe Shop certifikat, benefit je
   // ispunjen (prikaži kao aktivan, bez akcije); inače je dostupan sa "ZATRAŽI".
-  const place = (b: BenefitLike, g?: { status: string; claimedAt: Date | null }) => {
+  const place = (b: BenefitLike, g?: { status: string; claimedAt: Date | null; usedCount: number }) => {
+    const used = g?.usedCount ?? 0;
     if (b.condition === 'NO_CERTIFICATE' && member.hasCertificate) {
-      claimed.push(shape(b, 'FULFILLED', null, 'Certifikat aktivan'));
+      claimed.push(shape(b, 'FULFILLED', null, used, 'Certifikat aktivan'));
       return;
     }
-    if (g?.status === 'CLAIMED') claimed.push(shape(b, 'CLAIMED', g.claimedAt));
-    else available.push(shape(b, 'AVAILABLE', null));
+    if (g?.status === 'CLAIMED') claimed.push(shape(b, 'CLAIMED', g.claimedAt, used));
+    else available.push(shape(b, 'AVAILABLE', null, used));
   };
 
   // Type-targeted benefits; uvjet "PREMIUM_ONLY" → samo za Premium članove ciljanog tipa
@@ -547,6 +548,24 @@ async function computeMemberPerks(member: { id: string; memberType: MemberType; 
   }
 
   return { available, claimed };
+}
+
+// Admin označava koliko je puta član iskoristio benefit s kvotom (npr. 2/3 PR objave)
+export async function setMemberBenefitUsage(memberId: string, benefitId: string, usedCount: number) {
+  const [member, benefit] = await Promise.all([
+    prisma.member.findUnique({ where: { id: memberId }, select: { id: true } }),
+    prisma.benefit.findUnique({ where: { id: benefitId }, select: { id: true, quota: true } }),
+  ]);
+  if (!member || !benefit) return null;
+
+  const max = benefit.quota ?? Number.MAX_SAFE_INTEGER;
+  const clamped = Math.max(0, Math.min(Math.floor(usedCount), max));
+  await prisma.memberBenefit.upsert({
+    where: { benefitId_memberId: { benefitId, memberId } },
+    update: { usedCount: clamped },
+    create: { benefitId, memberId, usedCount: clamped },
+  });
+  return { usedCount: clamped, quota: benefit.quota };
 }
 
 // Član iskorištava benefit (gumb "Prijava")

@@ -37,7 +37,7 @@ interface SecondaryContact {
   zip: string | null; city: string | null; country: string | null; oib: string | null;
   dateOfBirth: string | null; phone: string | null; email: string | null; note: string | null;
 }
-interface Perk { id: string; title: string; description: string | null; status: string; statusNote: string | null }
+interface Perk { id: string; title: string; description: string | null; status: string; statusNote: string | null; quota: number | null; usedCount: number }
 interface Perks { available: Perk[]; claimed: Perk[] }
 interface EmailItem { id: string; subject: string; status: string | null; sentAt: string; to: string; body: string | null }
 interface NotificationItem { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }
@@ -380,11 +380,19 @@ export default function PortalHome() {
                     <div key={perk.id} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-gray-900">{perk.title}</p>
-                        {perk.status !== 'AVAILABLE' && (
+                        {perk.quota !== null ? (
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              perk.quota - perk.usedCount > 0 ? 'bg-success-light text-success' : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            Slobodno {Math.max(0, perk.quota - perk.usedCount)}/{perk.quota}
+                          </span>
+                        ) : perk.status !== 'AVAILABLE' ? (
                           <span className="rounded-full bg-success-light px-2.5 py-0.5 text-xs font-medium text-success">
                             {perk.statusNote || 'Iskorišteno'}
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       {perk.description && <p className="mt-1 text-xs text-gray-500">{perk.description}</p>}
                     </div>

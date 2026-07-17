@@ -6,7 +6,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { validateQuery, validateParams } from '../middleware/validate.js';
 import { successResponse, paginatedResponse, errorResponse } from '../utils/api-response.js';
-import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile, getMemberPerksById } from '../services/member.service.js';
+import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile, getMemberPerksById, setMemberBenefitUsage } from '../services/member.service.js';
 import { getDashboardStats, getDashboardAnalytics, getRecentActivity } from '../services/dashboard.service.js';
 import { createNotification, notifyStaff } from '../services/notification.service.js';
 import { emitEvent } from '../lib/event-bus.js';
@@ -489,6 +489,22 @@ router.get('/members/:id/benefits', validateParams(idParamSchema), async (req, r
     return;
   }
   successResponse(res, perks);
+});
+
+// PATCH /members/:id/benefits/:benefitId — admin postavlja broj iskorištenja benefita s kvotom
+// (npr. PR objave 2/3); clamp na [0, quota]
+router.patch('/members/:id/benefits/:benefitId', validateParams(idParamSchema), async (req, res) => {
+  const usedCount = Number((req.body as { usedCount?: unknown })?.usedCount);
+  if (!Number.isFinite(usedCount) || usedCount < 0) {
+    errorResponse(res, 'VALIDATION_ERROR', 'usedCount mora biti broj veći ili jednak 0', 400);
+    return;
+  }
+  const result = await setMemberBenefitUsage(req.params.id as string, req.params.benefitId as string, usedCount);
+  if (!result) {
+    errorResponse(res, 'NOT_FOUND', 'Član ili benefit nije pronađen', 404);
+    return;
+  }
+  successResponse(res, result);
 });
 
 // GET /members/:id/safeshop-analysis — latest Safe Shop certification analysis (or null)
