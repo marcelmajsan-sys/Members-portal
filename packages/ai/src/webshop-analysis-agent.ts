@@ -379,14 +379,23 @@ export function applyWithdrawalCheckpoint(result: WebshopAnalysisResult, signals
   if (!legal) return;
   legal.checkpoints = legal.checkpoints ?? [];
   const w = signals.withdrawal;
+  // Automatika potvrđuje samo postojanje linka — ne i da obrazac stvarno radi.
+  const manualCheckNote =
+    'Napomena: automatska provjera potvrđuje samo postojanje linka — za 100% sigurnost ručno provjerite da obrazac/stranica za raskid stvarno radi.';
   const detectedNote = w.present
-    ? `Pronađen gumb/link za jednostrani raskid ugovora (odustanak / otkazivanje narudžbe)${w.url ? `: ${w.url}` : ''}.`
+    ? `Pronađen gumb/link za jednostrani raskid ugovora (odustanak / otkazivanje narudžbe)${w.url ? `: ${w.url}` : ''}. ${manualCheckNote}`
     : 'Nije pronađen jasan gumb/obrazac za jednostrani raskid ugovora — razmotrite dodati samouslužni "Zahtjev za raskid ugovora / Otkaži narudžbu".';
   const existing = legal.checkpoints.find((c) => /raskid|odustan|otka[žz][a-z]*\s*narud/i.test(c.label));
   if (existing) {
     // Pronađen link = pouzdan pozitivan dokaz → forsiraj pass; inače ostavi procjenu modela.
-    if (w.present) existing.pass = true;
-    if (!existing.note) existing.note = detectedNote;
+    if (w.present) {
+      existing.pass = true;
+      existing.note = existing.note && !existing.note.includes(manualCheckNote)
+        ? `${existing.note} ${manualCheckNote}`
+        : existing.note || detectedNote;
+    } else if (!existing.note) {
+      existing.note = detectedNote;
+    }
   } else {
     legal.checkpoints.push({ label: 'Gumb za jednostavan raskid ugovora', pass: w.present, note: detectedNote });
   }
