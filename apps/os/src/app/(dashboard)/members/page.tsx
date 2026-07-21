@@ -660,7 +660,7 @@ export default function MembersPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Webshop (URL)</label>
+                <label className="block text-xs text-gray-500 mb-1">URL</label>
                 <input
                   value={addForm.website}
                   onChange={e => setAddForm(f => ({ ...f, website: e.target.value }))}
@@ -668,7 +668,7 @@ export default function MembersPage() {
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                 />
                 {selectedCompany?.website && (
-                  <p className="mt-1 text-xs text-gray-400">Postojeći webshop tvrtke: {selectedCompany.website}. Upišite webshop za ovo (novo) članstvo.</p>
+                  <p className="mt-1 text-xs text-gray-400">Upišite web stranicu za ovo (novo) članstvo.</p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">
