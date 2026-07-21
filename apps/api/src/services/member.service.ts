@@ -793,13 +793,15 @@ export async function adminUpdateMemberProfile(
   if (city !== undefined) companyData.city = city;
   if (postalCode !== undefined) companyData.zip = postalCode;
   if (phone !== undefined) companyData.phone = phone;
-  if (website !== undefined) companyData.website = website;
+  // Webshop: članstvo s vlastitim webshopom (member.website) uređuje njega, ostali webshop tvrtke
+  if (website !== undefined && member.website === null) companyData.website = website;
   if (Object.keys(companyData).length > 0) {
     ops.push(prisma.company.update({ where: { id: member.companyId }, data: companyData }));
   }
 
   // Update member fields (membership + osobni podaci kontakt osobe)
   const memberData: Record<string, unknown> = {};
+  if (website !== undefined && member.website !== null) memberData.website = emptyToNull(website);
   if (memberType !== undefined) memberData.memberType = memberType;
   if (joinedAt !== undefined) memberData.joinedAt = joinedAt;
   if (expiresAt !== undefined) memberData.expiresAt = expiresAt;

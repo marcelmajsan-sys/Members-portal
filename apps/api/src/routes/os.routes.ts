@@ -523,7 +523,21 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
     return;
   }
 
-  successResponse(res, member);
+  // Ostala članstva istog korisnika (više webshopova) — za navigaciju na profilu
+  const otherMemberships = await prisma.member.findMany({
+    where: { userId: member.userId, id: { not: member.id } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      memberType: true,
+      memberTier: true,
+      status: true,
+      website: true,
+      company: { select: { name: true, website: true } },
+    },
+  });
+
+  successResponse(res, { ...member, otherMemberships });
 });
 
 // GET /members/:id/benefits — benefiti člana ({ available, claimed }) za admin prikaz na profilu

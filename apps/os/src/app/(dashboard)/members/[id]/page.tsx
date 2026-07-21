@@ -53,9 +53,11 @@ interface MemberRaw {
   personalPhone: string | null;
   user: { id: string; firstName: string; lastName: string; email: string; role: string };
   companyId: string;
+  website: string | null;
   company: { name: string; oib: string; address: string; city: string; country: string; website?: string; phone?: string };
   payments: Array<{ id: string; amount: number; currency: string; status: string; createdAt: string; description: string }>;
   secondaryContact: SecondaryContact | null;
+  otherMemberships?: Array<{ id: string; memberType: string; memberTier: string; status: string; website: string | null; company: { name: string; website: string | null } }>;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -184,6 +186,11 @@ export default function MemberDetailPage() {
   const [hasSecond, setHasSecond] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
+  // Dodatan webshop (novo članstvo za istu osobu + istu tvrtku)
+  const [showWebshopModal, setShowWebshopModal] = useState(false);
+  const [webshopForm, setWebshopForm] = useState({ website: '', memberType: 'WEB_TRADER', memberTier: 'FREE' });
+  const [webshopLoading, setWebshopLoading] = useState(false);
+  const [webshopError, setWebshopError] = useState('');
   // Safe Shop pristupni podaci (email + lozinka za prijavu na Safe Shop)
   const [ssEmail, setSsEmail] = useState('');
   const [ssPassword, setSsPassword] = useState('');
@@ -225,6 +232,32 @@ export default function MemberDetailPage() {
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(''), 3000);
+  }
+
+  // Novo članstvo za istu osobu + istu tvrtku, s vlastitim webshopom/tipom/razinom
+  async function addWebshop(e: React.FormEvent) {
+    e.preventDefault();
+    if (!member) return;
+    setWebshopLoading(true);
+    setWebshopError('');
+    const res = await api.post<{ id: string }>('/api/os/members', {
+      email: member.user.email,
+      firstName: member.user.firstName,
+      lastName: member.user.lastName,
+      companyId: member.companyId,
+      website: webshopForm.website,
+      memberType: webshopForm.memberType,
+      memberTier: webshopForm.memberTier,
+    });
+    setWebshopLoading(false);
+    if (res.success && res.data) {
+      setShowWebshopModal(false);
+      setWebshopForm({ website: '', memberType: 'WEB_TRADER', memberTier: 'FREE' });
+      showToast('Dodano novo članstvo za webshop');
+      router.push(`/members/${res.data.id}`);
+    } else {
+      setWebshopError(res.error?.message || 'Greška pri dodavanju');
+    }
   }
 
   // Odgovori mutacija ne uključuju payments/secondaryContact — spoji s postojećim stanjem
@@ -451,7 +484,7 @@ export default function MemberDetailPage() {
       oib: member.company.oib,
       address: member.company.address,
       city: member.company.city,
-      website: member.company.website || '',
+      website: member.website ?? (member.company.website || ''),
       memberType: member.memberType,
       joinedAt: dateInput(member.joinedAt),
       expiresAt: dateInput(member.expiresAt),
@@ -843,6 +876,51 @@ export default function MemberDetailPage() {
         </div>
       )}
 
+      {/* Dodaj dodatan webshop modal — novo članstvo (ista osoba, ista tvrtka) */}
+      {showWebshopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Dodaj dodatan webshop</h2>
+            <p className="mb-4 text-sm text-gray-500">
+              Novo članstvo za {member.user.firstName} {member.user.lastName} ({member.user.email}) u tvrtki {member.company.name}, s vlastitim webshopom, tipom i razinom.
+            </p>
+            {webshopError && <p className="text-sm text-red-600 mb-3">{webshopError}</p>}
+            <form onSubmit={addWebshop} className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Webshop (URL) *</label>
+                <input required value={webshopForm.website} onChange={e => setWebshopForm(f => ({ ...f, website: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Tip člana</label>
+                  <select value={webshopForm.memberType} onChange={e => setWebshopForm(f => ({ ...f, memberType: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
+                    <option value="WEB_TRADER">Web trgovac</option>
+                    <option value="SERVICE_PROVIDER">Nuditelj usluga</option>
+                    <option value="PHYSICAL">Fizički član</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Razina</label>
+                  <select value={webshopForm.memberTier} onChange={e => setWebshopForm(f => ({ ...f, memberTier: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
+                    <option value="FREE">Besplatno</option>
+                    <option value="STANDARD">Standard</option>
+                    <option value="PREMIUM">Premium</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => { setShowWebshopModal(false); setWebshopError(''); }} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                  Odustani
+                </button>
+                <button type="submit" disabled={webshopLoading} className="rounded-lg bg-[#1B365D] px-4 py-2 text-sm font-medium text-white hover:bg-[#152a4a] disabled:opacity-50">
+                  {webshopLoading ? 'Spremanje...' : 'Dodaj'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <button onClick={() => router.back()} className="text-sm text-primary hover:underline">
         &larr; Natrag na članove
       </button>
@@ -868,6 +946,15 @@ export default function MemberDetailPage() {
               {actionLoading === 'invite' ? 'Slanje...' : 'Pošalji pristup članu'}
             </button>
           )}
+          {isOwner && (
+            <button
+              onClick={() => setShowWebshopModal(true)}
+              title="Kreira novo članstvo za istu osobu i istu tvrtku, s vlastitim webshopom, tipom i razinom"
+              className="rounded-lg border border-emerald-600 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+            >
+              + Dodaj dodatan webshop
+            </button>
+          )}
           <button
             onClick={openEditModal}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
@@ -890,6 +977,22 @@ export default function MemberDetailPage() {
           </span>
         </div>
       </div>
+
+      {/* Ostala članstva iste osobe (drugi webshopovi) */}
+      {member.otherMemberships && member.otherMemberships.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm">
+          <span className="text-blue-800">Ostala članstva ove osobe:</span>
+          {member.otherMemberships.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => router.push(`/members/${m.id}`)}
+              className="rounded-full border border-blue-300 bg-white px-3 py-0.5 text-xs font-medium text-blue-800 transition hover:bg-blue-100"
+            >
+              {(m.website || m.company.website || m.company.name).replace(/^https?:\/\//, '').replace(/\/+$/, '')} · {TYPE_LABELS[m.memberType] || m.memberType} ({TIER_LABELS[m.memberTier] || m.memberTier})
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* AI Summary */}
       <div className="rounded-xl border border-gray-200 bg-white">
@@ -1031,6 +1134,12 @@ export default function MemberDetailPage() {
               <dt className="text-gray-500">Grad</dt>
               <dd className="font-medium text-gray-900">{member.company.city}</dd>
             </div>
+            {member.website && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Webshop (ovo članstvo)</dt>
+                <dd className="font-medium text-blue-600">{member.website}</dd>
+              </div>
+            )}
             {member.company.website && (
               <div className="flex justify-between">
                 <dt className="text-gray-500">Web</dt>
@@ -1762,7 +1871,7 @@ export default function MemberDetailPage() {
       <MemberTickets memberId={id} />
 
       {/* Safe Shop certifikacijska analiza */}
-      <SafeShopAnalysis memberId={id} companyName={member.company.name} websiteUrl={member.company.website} />
+      <SafeShopAnalysis memberId={id} companyName={member.company.name} websiteUrl={member.website || member.company.website} />
 
       {/* Email Preview Modal */}
       {previewEmail && (
