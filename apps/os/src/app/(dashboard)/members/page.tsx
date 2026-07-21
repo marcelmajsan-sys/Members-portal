@@ -9,6 +9,7 @@ interface MemberRaw {
   memberType: string;
   memberTier: string;
   status: string;
+  website?: string | null;
   joinedAt: string | null;
   expiresAt: string | null;
   hasCertificate: boolean;
@@ -95,6 +96,9 @@ export default function MembersPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
   const [companies, setCompanies] = useState<{ id: string; name: string; oib: string; website: string | null }[]>([]);
+  // Postojeći profili (članstva) odabrane tvrtke — prikaz u modalu da se vidi tko je već vezan
+  const [companyMembers, setCompanyMembers] = useState<MemberRaw[]>([]);
+  const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   // Filteri: glavni tab (tip) + podfilteri (status / certifikat / promo) koji ovise o tipu.
@@ -254,6 +258,19 @@ export default function MembersPage() {
   }, [showAddModal, companies.length]);
 
   const selectedCompany = addForm.companyId ? companies.find((c) => c.id === addForm.companyId) : undefined;
+
+  // Kad se u modalu odabere tvrtka, učitaj sve njene postojeće profile (kontakte/webshopove)
+  useEffect(() => {
+    if (!addForm.companyId) { setCompanyMembers([]); return; }
+    let cancelled = false;
+    setCompanyMembersLoading(true);
+    api.get<MemberRaw[]>(`/api/os/members?companyId=${addForm.companyId}&page=1&limit=100`).then((res) => {
+      if (cancelled) return;
+      setCompanyMembers(res.success && res.data ? res.data : []);
+      setCompanyMembersLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [addForm.companyId]);
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
@@ -609,6 +626,29 @@ export default function MembersPage() {
                   ))}
                 </select>
               </div>
+              {addForm.companyId && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                  <p className="mb-1 text-xs font-semibold text-blue-800">Postojeći profili ove tvrtke</p>
+                  {companyMembersLoading ? (
+                    <p className="text-xs text-blue-700">Učitavanje...</p>
+                  ) : companyMembers.length === 0 ? (
+                    <p className="text-xs text-blue-700">Nema postojećih profila.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {companyMembers.map(m => (
+                        <li key={m.id} className="text-xs text-blue-900">
+                          <a href={`/admin/members/${m.id}`} target="_blank" rel="noreferrer" className="font-medium underline hover:no-underline">
+                            {m.user.firstName} {m.user.lastName}
+                          </a>
+                          {' '}— {m.user.email}
+                          {(m.website || '') && <> · {m.website!.replace(/^https?:\/\//, '').replace(/\/+$/, '')}</>}
+                          {' '}· {TYPE_LABELS[m.memberType] || m.memberType} ({TIER_LABELS[m.memberTier] || m.memberTier})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Naziv firme</label>
