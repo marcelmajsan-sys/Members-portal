@@ -314,8 +314,9 @@ router.get('/companies', async (_req: AuthRequest, res) => {
 });
 
 // POST /members — Create a new member (admin)
-// Isti email smije imati više članstava (više webshopova/tvrtki) — blokira se samo
-// duplikat za istu tvrtku. Tvrtka: postojeća preko companyId, reuse po OIB-u, ili nova.
+// Isti email smije imati više članstava (više webshopova), i za ISTU tvrtku — webshop se
+// sprema na Member.website. Blokira se samo puni duplikat: email + tvrtka + isti webshop.
+// Tvrtka: postojeća preko companyId, reuse po OIB-u, ili nova.
 router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   try {
     const { email, firstName, lastName, companyId, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus } = req.body;
@@ -327,7 +328,7 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
 
     const existing = await prisma.user.findUnique({
       where: { email },
-      include: { members: { select: { companyId: true } } },
+      include: { members: { select: { companyId: true, website: true } } },
     });
     if (existing && existing.role !== 'MEMBER') {
       errorResponse(res, 'CONFLICT', 'Taj email pripada administratorskom računu', 409);
@@ -347,8 +348,13 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
       existingCompany = await prisma.company.findUnique({ where: { oib: trimmedOib }, select: { id: true } });
     }
 
-    if (existing && existingCompany && existing.members.some((m) => m.companyId === existingCompany!.id)) {
-      errorResponse(res, 'CONFLICT', 'Član s tim emailom već postoji za tu tvrtku', 409);
+    const normWebsite = (w: string | null | undefined) =>
+      (w || '').trim().toLowerCase().replace(/\/+$/, '');
+    if (
+      existing && existingCompany &&
+      existing.members.some((m) => m.companyId === existingCompany!.id && normWebsite(m.website) === normWebsite(website))
+    ) {
+      errorResponse(res, 'CONFLICT', 'Član s tim emailom i webshopom već postoji za tu tvrtku', 409);
       return;
     }
 
@@ -383,6 +389,7 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
         data: {
           userId: user.id,
           companyId: company.id,
+          website: website?.trim() || null,
           memberType,
           memberTier: tier,
           status: 'ACTIVE',

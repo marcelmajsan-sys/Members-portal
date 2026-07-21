@@ -6,10 +6,12 @@ import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 
 interface Profile {
+  id: string;
   memberNumber: string | null;
   memberType: string;
   memberTier: string;
   status: string;
+  website: string | null;
   joinedAt: string | null;
   expiresAt: string | null;
   hasCertificate: boolean;
@@ -62,6 +64,18 @@ interface AnalysisCategory {
 interface CoreWebVitals { lcp: number | null; inp: number | null; cls: number | null; passed: boolean; source: 'field' | 'lab' }
 interface WebshopAnalysis { id: string; websiteUrl: string; status: string; overallScore: number | null; summary: string | null; result: AnalysisCategory[] | null; coreWebVitals?: CoreWebVitals | null; createdAt: string }
 interface WebshopQuota { used: number; remaining: number; limit: number }
+interface Membership {
+  id: string; memberType: string; memberTier: string; status: string;
+  website: string | null; company: { name: string; website: string | null };
+}
+
+// Aktivno članstvo (switcher webshopova) — dodaje ?memberId= na member API pozive.
+// ID se čuva u localStorageu; na učitavanju se validira protiv /api/member/memberships.
+function mq(path: string): string {
+  if (typeof window === 'undefined') return path;
+  const id = localStorage.getItem('selectedMemberId');
+  return id ? `${path}${path.includes('?') ? '&' : '?'}memberId=${id}` : path;
+}
 
 const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
@@ -122,6 +136,8 @@ export default function PortalHome() {
   const [quota, setQuota] = useState<WebshopQuota | null>(null);
   const [showSafeShopPw, setShowSafeShopPw] = useState(false);
   const [perks, setPerks] = useState<Perks | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [memberId, setMemberId] = useState<string>('');
 
   // Guard
   useEffect(() => {
@@ -135,15 +151,31 @@ export default function PortalHome() {
     (async () => {
       setLoading(true);
       setProfileErrorCode(null);
+      // Reset podataka prethodnog članstva (switcher) da ne ostanu stari prikazi
+      setEmails([]); setOffers([]); setTicketConf(null); setTickets([]);
+      setAnalysis(null); setQuota(null); setPerks(null); setAnalysisError('');
+
+      // Sva članstva korisnika (više webshopova) → odaberi spremljeno ili prvo
+      const ms = await api.get<Membership[]>('/api/member/memberships');
+      if (ms.success && ms.data && ms.data.length > 0) {
+        setMemberships(ms.data);
+        const saved = localStorage.getItem('selectedMemberId');
+        const mid = saved && ms.data.some((m) => m.id === saved) ? saved : ms.data[0].id;
+        localStorage.setItem('selectedMemberId', mid);
+        setMemberId(mid);
+      } else if (ms.success) {
+        localStorage.removeItem('selectedMemberId');
+      }
+
       const [p, e, n, o, tc, wa, wq, pk] = await Promise.all([
-        api.get<Profile>('/api/member/profile'),
-        api.get<EmailItem[]>('/api/member/emails'),
+        api.get<Profile>(mq('/api/member/profile')),
+        api.get<EmailItem[]>(mq('/api/member/emails')),
         api.get<NotificationItem[]>('/api/notifications?limit=20'),
-        api.get<OfferItem[]>('/api/member/offers'),
-        api.get<TicketConference | null>('/api/member/conferences/active'),
-        api.get<WebshopAnalysis | null>('/api/member/webshop-analysis'),
-        api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota'),
-        api.get<Perks>('/api/member/perks'),
+        api.get<OfferItem[]>(mq('/api/member/offers')),
+        api.get<TicketConference | null>(mq('/api/member/conferences/active')),
+        api.get<WebshopAnalysis | null>(mq('/api/member/webshop-analysis')),
+        api.get<WebshopQuota | null>(mq('/api/member/webshop-analysis/quota')),
+        api.get<Perks>(mq('/api/member/perks')),
       ]);
       if (p.success && p.data) setProfile(p.data);
       else setProfileErrorCode(p.error?.code || 'UNKNOWN');
@@ -152,7 +184,7 @@ export default function PortalHome() {
       if (o.success && o.data) setOffers(o.data);
       if (tc.success && tc.data) {
         setTicketConf(tc.data);
-        const t = await api.get<Ticket[]>(`/api/member/conferences/${tc.data.conference.id}/tickets`);
+        const t = await api.get<Ticket[]>(mq(`/api/member/conferences/${tc.data.conference.id}/tickets`));
         if (t.success && t.data) setTickets(t.data);
       }
       if (wa.success && wa.data) setAnalysis(wa.data);
@@ -164,11 +196,17 @@ export default function PortalHome() {
     })();
   }, [isLoading, isAuthenticated, user, reloadKey]);
 
+  function switchMembership(id: string) {
+    localStorage.setItem('selectedMemberId', id);
+    setMemberId(id);
+    setReloadKey((k) => k + 1);
+  }
+
   async function refreshTickets() {
     if (!ticketConf) return;
     const [t, tc] = await Promise.all([
-      api.get<Ticket[]>(`/api/member/conferences/${ticketConf.conference.id}/tickets`),
-      api.get<TicketConference | null>('/api/member/conferences/active'),
+      api.get<Ticket[]>(mq(`/api/member/conferences/${ticketConf.conference.id}/tickets`)),
+      api.get<TicketConference | null>(mq('/api/member/conferences/active')),
     ]);
     if (t.success && t.data) setTickets(t.data);
     if (tc.success && tc.data) setTicketConf(tc.data);
@@ -180,7 +218,7 @@ export default function PortalHome() {
   }
 
   async function refreshQuota() {
-    const res = await api.get<WebshopQuota | null>('/api/member/webshop-analysis/quota');
+    const res = await api.get<WebshopQuota | null>(mq('/api/member/webshop-analysis/quota'));
     if (res.success && res.data) setQuota(res.data);
   }
 
@@ -191,7 +229,7 @@ export default function PortalHome() {
     const start = Date.now();
     while (Date.now() - start < maxMs) {
       await new Promise((r) => setTimeout(r, 5000));
-      const res = await api.get<WebshopAnalysis | null>('/api/member/webshop-analysis');
+      const res = await api.get<WebshopAnalysis | null>(mq('/api/member/webshop-analysis'));
       if (res.success && res.data) {
         if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setAnalyzing(false); refreshQuota(); return; }
         if (res.data.status === 'FAILED') {
@@ -210,7 +248,7 @@ export default function PortalHome() {
     setAnalysisError('');
     setAnalyzing(true);
     // Pokreni analizu (na serveru se izvršava sinkrono, ~1 min).
-    const res = await api.post<WebshopAnalysis>('/api/member/webshop-analysis');
+    const res = await api.post<WebshopAnalysis>(mq('/api/member/webshop-analysis'));
     if (res.success && res.data?.status === 'COMPLETED') {
       setAnalysis(res.data);
       setAnalyzing(false);
@@ -262,9 +300,30 @@ export default function PortalHome() {
       </header>
 
       <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dobrodošli{profile ? `, ${profile.user.firstName}` : ''}!</h1>
-          <p className="mt-1 text-sm text-gray-500">Pregled vašeg članstva u Udruzi eCommerce Hrvatska</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dobrodošli{profile ? `, ${profile.user.firstName}` : ''}!</h1>
+            <p className="mt-1 text-sm text-gray-500">Pregled vašeg članstva u Udruzi eCommerce Hrvatska</p>
+          </div>
+          {memberships.length > 1 && (
+            <div className="w-full sm:w-auto">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Webshop / članstvo</label>
+              <select
+                value={memberId}
+                onChange={(e) => switchMembership(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 sm:w-72"
+              >
+                {memberships.map((m) => {
+                  const site = (m.website || m.company.website || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {site || m.company.name} — {TYPE_LABELS[m.memberType] || m.memberType} ({TIER_LABELS[m.memberTier] || m.memberTier})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -330,7 +389,7 @@ export default function PortalHome() {
                 <Info label="Tvrtka" value={profile.company.name} />
                 <Info label="OIB tvrtke" value={profile.company.oib} />
                 <Info label="Adresa tvrtke" value={[profile.company.address, profile.company.zip, profile.company.city].filter(Boolean).join(', ') || '—'} />
-                <Info label="Web trgovina" value={profile.company.website || '—'} />
+                <Info label="Web trgovina" value={profile.website || profile.company.website || '—'} />
                 {profile.company.phone && <Info label="Telefon tvrtke" value={profile.company.phone} />}
                 {profile.company.email && <Info label="E-mail web trgovine" value={profile.company.email} />}
               </div>
@@ -459,7 +518,7 @@ export default function PortalHome() {
                     )}
                   </p>
                 </div>
-                {profile.status === 'ACTIVE' && profile.company.website && (
+                {profile.status === 'ACTIVE' && (profile.website || profile.company.website) && (
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <button
                       onClick={runAnalysis}
@@ -487,7 +546,7 @@ export default function PortalHome() {
                   Produžite članstvo da biste pokrenuli besplatnu analizu.{' '}
                   <a href="mailto:udruga@ecommerce.hr" className="underline font-semibold">Kontaktirajte nas za obnovu</a>
                 </p>
-              ) : !profile.company.website ? (
+              ) : !(profile.website || profile.company.website) ? (
                 <p className="mt-4 text-sm text-gray-500">
                   Dodajte web adresu tvrtke (u podacima o članu) da biste mogli pokrenuti analizu.
                 </p>
@@ -832,7 +891,7 @@ function TicketsSection({
     if (!confirm(`Ukloniti osobu ${t.fullName}?`)) return;
     setRemoving(t.id);
     setError('');
-    const res = await api.del(`/api/member/conferences/${conference.id}/tickets/${t.id}`);
+    const res = await api.del(mq(`/api/member/conferences/${conference.id}/tickets/${t.id}`));
     if (res.success) await onChanged();
     else setError(res.error?.message || 'Uklanjanje nije uspjelo.');
     setRemoving('');
@@ -990,8 +1049,8 @@ function TicketModal({
     setSaving(true);
     setError('');
     const res = ticket
-      ? await api.put<Ticket>(`/api/member/conferences/${conferenceId}/tickets/${ticket.id}`, form)
-      : await api.post<{ ticket: Ticket; overQuota: boolean }>(`/api/member/conferences/${conferenceId}/tickets`, form);
+      ? await api.put<Ticket>(mq(`/api/member/conferences/${conferenceId}/tickets/${ticket.id}`), form)
+      : await api.post<{ ticket: Ticket; overQuota: boolean }>(mq(`/api/member/conferences/${conferenceId}/tickets`), form);
     if (res.success) {
       await onSaved();
     } else {
@@ -1099,7 +1158,7 @@ function EditProfileModal({
     country: profile.company.country || '',
     oib: profile.company.oib || '',
     phone: profile.company.phone || '',
-    website: profile.company.website || '',
+    website: profile.website ?? (profile.company.website || ''),
     companyEmail: profile.company.email || '',
     companyNote: profile.company.note || '',
     // Druga fizička osoba (opcionalno)
@@ -1163,7 +1222,7 @@ function EditProfileModal({
         note: form.secNote,
       } : null,
     };
-    const res = await api.put<Profile>('/api/member/profile', payload);
+    const res = await api.put<Profile>(mq('/api/member/profile'), payload);
     if (res.success && res.data) {
       onSaved(res.data);
     } else {

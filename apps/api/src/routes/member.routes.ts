@@ -39,9 +39,34 @@ const router = Router();
 
 router.use(authenticate);
 
+// Odabrano članstvo (portal switcher) — opcionalni ?memberId=. Vlasništvo je
+// zajamčeno u servisima: WHERE uvijek uključuje userId iz JWT-a, pa tuđi
+// memberId samo vrati null/404.
+function selectedMemberId(req: AuthRequest): string | undefined {
+  const v = req.query.memberId;
+  return typeof v === 'string' && v ? v : undefined;
+}
+
+// GET /memberships — sva članstva korisnika (portal switcher webshopova)
+router.get('/memberships', async (req: AuthRequest, res) => {
+  const memberships = await prisma.member.findMany({
+    where: { userId: req.user!.userId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      memberType: true,
+      memberTier: true,
+      status: true,
+      website: true,
+      company: { select: { name: true, website: true } },
+    },
+  });
+  successResponse(res, memberships);
+});
+
 // GET /dashboard — member dashboard with stats
 router.get('/dashboard', async (req: AuthRequest, res) => {
-  const dashboard = await getMemberDashboard(req.user!.userId);
+  const dashboard = await getMemberDashboard(req.user!.userId, selectedMemberId(req));
 
   if (!dashboard) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
@@ -53,7 +78,7 @@ router.get('/dashboard', async (req: AuthRequest, res) => {
 
 // GET /profile
 router.get('/profile', async (req: AuthRequest, res) => {
-  const member = await getMemberByUserId(req.user!.userId);
+  const member = await getMemberByUserId(req.user!.userId, selectedMemberId(req));
 
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
@@ -119,7 +144,7 @@ const profileUpdateSchema = z.object({
 
 router.put('/profile', validate(profileUpdateSchema), async (req: AuthRequest, res) => {
   try {
-    const updated = await updateMemberProfile(req.user!.userId, req.body);
+    const updated = await updateMemberProfile(req.user!.userId, req.body, selectedMemberId(req));
     if (!updated) {
       errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
       return;
@@ -139,7 +164,7 @@ router.put('/profile', validate(profileUpdateSchema), async (req: AuthRequest, r
 // GET /invoices — paginated invoices
 router.get('/invoices', validateQuery(paginationSchema), async (req: AuthRequest, res) => {
   const { page, limit } = res.locals.query as { page: number; limit: number };
-  const result = await getMemberInvoices(req.user!.userId, page, limit);
+  const result = await getMemberInvoices(req.user!.userId, page, limit, selectedMemberId(req));
 
   if (!result) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
@@ -151,7 +176,7 @@ router.get('/invoices', validateQuery(paginationSchema), async (req: AuthRequest
 
 // GET /emails — member's email communication (sent + received)
 router.get('/emails', async (req: AuthRequest, res) => {
-  const emails = await getMemberEmails(req.user!.userId);
+  const emails = await getMemberEmails(req.user!.userId, selectedMemberId(req));
   if (!emails) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -161,7 +186,7 @@ router.get('/emails', async (req: AuthRequest, res) => {
 
 // GET /offers — member's offers
 router.get('/offers', async (req: AuthRequest, res) => {
-  const offers = await getMemberOffers(req.user!.userId);
+  const offers = await getMemberOffers(req.user!.userId, selectedMemberId(req));
   if (!offers) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -171,7 +196,7 @@ router.get('/offers', async (req: AuthRequest, res) => {
 
 // GET /perks — benefits available to / claimed by the member ({ available, claimed })
 router.get('/perks', async (req: AuthRequest, res) => {
-  const perks = await getMemberPerks(req.user!.userId);
+  const perks = await getMemberPerks(req.user!.userId, selectedMemberId(req));
   if (!perks) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -181,7 +206,7 @@ router.get('/perks', async (req: AuthRequest, res) => {
 
 // POST /perks/:benefitId/claim — member claims a benefit ("Prijava")
 router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
-  const result = await claimMemberPerk(req.user!.userId, req.params.benefitId as string);
+  const result = await claimMemberPerk(req.user!.userId, req.params.benefitId as string, selectedMemberId(req));
 
   if ('error' in result) {
     if (result.error === 'INACTIVE') {
@@ -245,19 +270,19 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
 
 // GET /webshop-analysis — latest AI webshop analysis for the member (or null)
 router.get('/webshop-analysis', async (req: AuthRequest, res) => {
-  const analysis = await getLatestWebshopAnalysis(req.user!.userId);
+  const analysis = await getLatestWebshopAnalysis(req.user!.userId, selectedMemberId(req));
   successResponse(res, analysis);
 });
 
 // GET /webshop-analysis/quota — koliko je analiza član iskoristio/preostalo (godišnji limit)
 router.get('/webshop-analysis/quota', async (req: AuthRequest, res) => {
-  const quota = await getWebshopAnalysisQuota(req.user!.userId);
+  const quota = await getWebshopAnalysisQuota(req.user!.userId, selectedMemberId(req));
   successResponse(res, quota);
 });
 
 // POST /webshop-analysis — run a fresh AI webshop analysis (synchronous)
 router.post('/webshop-analysis', async (req: AuthRequest, res) => {
-  const result = await requestWebshopAnalysis(req.user!.userId);
+  const result = await requestWebshopAnalysis(req.user!.userId, selectedMemberId(req));
 
   // Uspješan rezultat je WebshopAnalysis zapis koji TAKOĐER ima polje `error` (nullable
   // kolona, `null` pri uspjehu) — zato `'error' in result` ne razlikuje uspjeh od greške.
@@ -301,9 +326,9 @@ const ticketInputSchema = z.object({
   type: z.enum(['VIP', 'STANDARD']).default('STANDARD'),
 });
 
-async function getTicketMember(userId: string) {
+async function getTicketMember(userId: string, memberId?: string) {
   return prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     include: { user: true, company: true },
   });
@@ -333,7 +358,7 @@ function ticketErrorResponse(res: Parameters<typeof errorResponse>[0], error: st
 
 // GET /conferences/active — aktivna konferencija + kvota + rok (null ako nema aktivne)
 router.get('/conferences/active', async (req: AuthRequest, res) => {
-  const member = await getTicketMember(req.user!.userId);
+  const member = await getTicketMember(req.user!.userId, selectedMemberId(req));
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -365,7 +390,7 @@ router.get('/conferences/active', async (req: AuthRequest, res) => {
 
 // GET /conferences/:id/tickets — samo vlastite osobe (memberId iz tokena)
 router.get('/conferences/:id/tickets', async (req: AuthRequest, res) => {
-  const member = await getTicketMember(req.user!.userId);
+  const member = await getTicketMember(req.user!.userId, selectedMemberId(req));
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -376,7 +401,7 @@ router.get('/conferences/:id/tickets', async (req: AuthRequest, res) => {
 
 // POST /conferences/:id/tickets — dodaj osobu (kvota/rok/duplikat se provjeravaju na backendu)
 router.post('/conferences/:id/tickets', validate(ticketInputSchema), async (req: AuthRequest, res) => {
-  const member = await getTicketMember(req.user!.userId);
+  const member = await getTicketMember(req.user!.userId, selectedMemberId(req));
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -391,7 +416,7 @@ router.post('/conferences/:id/tickets', validate(ticketInputSchema), async (req:
 
 // PUT /conferences/:id/tickets/:tid — uredi osobu
 router.put('/conferences/:id/tickets/:tid', validate(ticketInputSchema), async (req: AuthRequest, res) => {
-  const member = await getTicketMember(req.user!.userId);
+  const member = await getTicketMember(req.user!.userId, selectedMemberId(req));
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -406,7 +431,7 @@ router.put('/conferences/:id/tickets/:tid', validate(ticketInputSchema), async (
 
 // DELETE /conferences/:id/tickets/:tid — ukloni osobu
 router.delete('/conferences/:id/tickets/:tid', async (req: AuthRequest, res) => {
-  const member = await getTicketMember(req.user!.userId);
+  const member = await getTicketMember(req.user!.userId, selectedMemberId(req));
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);
     return;
@@ -421,7 +446,7 @@ router.delete('/conferences/:id/tickets/:tid', async (req: AuthRequest, res) => 
 
 // GET /benefits — benefits by member type
 router.get('/benefits', async (req: AuthRequest, res) => {
-  const benefits = await getMemberBenefits(req.user!.userId);
+  const benefits = await getMemberBenefits(req.user!.userId, selectedMemberId(req));
 
   if (!benefits) {
     errorResponse(res, 'NOT_FOUND', 'Member profile not found', 404);

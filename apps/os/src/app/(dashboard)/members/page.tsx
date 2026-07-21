@@ -599,7 +599,7 @@ export default function MembersPage() {
                   value={addForm.companyId}
                   onChange={e => {
                     const c = companies.find(x => x.id === e.target.value);
-                    setAddForm(f => ({ ...f, companyId: e.target.value, companyName: c ? c.name : f.companyName, oib: c ? c.oib : f.oib, website: c ? (c.website || '') : f.website }));
+                    setAddForm(f => ({ ...f, companyId: e.target.value, companyName: c ? c.name : f.companyName, oib: c ? c.oib : f.oib }));
                   }}
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                 >
@@ -623,13 +623,12 @@ export default function MembersPage() {
                 <label className="block text-xs text-gray-500 mb-1">Webshop (URL)</label>
                 <input
                   value={addForm.website}
-                  disabled={!!selectedCompany?.website}
                   onChange={e => setAddForm(f => ({ ...f, website: e.target.value }))}
                   placeholder="https://..."
-                  className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
                 />
-                {selectedCompany && !selectedCompany.website && addForm.website && (
-                  <p className="mt-1 text-xs text-gray-400">Webshop će se spremiti na odabranu tvrtku.</p>
+                {selectedCompany?.website && (
+                  <p className="mt-1 text-xs text-gray-400">Postojeći webshop tvrtke: {selectedCompany.website}. Upišite webshop za ovo (novo) članstvo.</p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">

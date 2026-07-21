@@ -1,9 +1,9 @@
 import { prisma, Prisma, type Member, type MemberType, type MemberStatus, type MemberTier } from '@ecommerce-hr/db';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
 
-export async function getMemberByUserId(userId: string): Promise<Member | null> {
+export async function getMemberByUserId(userId: string, memberId?: string): Promise<Member | null> {
   return prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     include: {
       company: true,
@@ -258,9 +258,9 @@ export async function updateMemberTier(
   return { member: updated, charged };
 }
 
-export async function getMemberDashboard(userId: string) {
+export async function getMemberDashboard(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     include: { company: true },
   });
@@ -334,9 +334,9 @@ const emptyToNull = (v: string | null | undefined) =>
 const toDate = (v: string | null | undefined) =>
   v === undefined ? undefined : v === '' || v === null ? null : new Date(v);
 
-export async function updateMemberProfile(userId: string, data: MemberProfileInput) {
+export async function updateMemberProfile(userId: string, data: MemberProfileInput, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     include: { user: { select: { id: true } }, company: { select: { id: true } } },
   });
@@ -374,7 +374,8 @@ export async function updateMemberProfile(userId: string, data: MemberProfileInp
   if (data.postalCode !== undefined) companyData.zip = data.postalCode;
   if (data.country !== undefined) companyData.country = data.country;
   if (data.phone !== undefined) companyData.phone = emptyToNull(data.phone) ?? null;
-  if (data.website !== undefined) companyData.website = emptyToNull(data.website) ?? null;
+  // Webshop: članstvo s vlastitim webshopom (member.website) uređuje njega, ostali webshop tvrtke
+  if (data.website !== undefined && member.website === null) companyData.website = emptyToNull(data.website) ?? null;
   if (data.companyEmail !== undefined) companyData.email = emptyToNull(data.companyEmail) ?? null;
   if (data.companyNote !== undefined) companyData.note = emptyToNull(data.companyNote) ?? null;
   if (Object.keys(companyData).length > 0) {
@@ -383,6 +384,7 @@ export async function updateMemberProfile(userId: string, data: MemberProfileInp
 
   // Member (osobni podaci člana kao fizičke osobe)
   const memberData: Record<string, unknown> = {};
+  if (data.website !== undefined && member.website !== null) memberData.website = emptyToNull(data.website);
   if (data.personalAddress !== undefined) memberData.personalAddress = emptyToNull(data.personalAddress);
   if (data.personalZip !== undefined) memberData.personalZip = emptyToNull(data.personalZip);
   if (data.personalCity !== undefined) memberData.personalCity = emptyToNull(data.personalCity);
@@ -426,12 +428,12 @@ export async function updateMemberProfile(userId: string, data: MemberProfileInp
     await prisma.$transaction(ops);
   }
 
-  return getMemberByUserId(userId);
+  return getMemberByUserId(userId, member.id);
 }
 
-export async function getMemberInvoices(userId: string, page: number, limit: number) {
+export async function getMemberInvoices(userId: string, page: number, limit: number, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -453,9 +455,9 @@ export async function getMemberInvoices(userId: string, page: number, limit: num
   return { invoices: items, total };
 }
 
-export async function getMemberEmails(userId: string) {
+export async function getMemberEmails(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -468,9 +470,9 @@ export async function getMemberEmails(userId: string) {
   });
 }
 
-export async function getMemberOffers(userId: string) {
+export async function getMemberOffers(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -488,9 +490,9 @@ export async function getMemberOffers(userId: string) {
 
 // Pogodnosti (benefiti) dodijeljene članu — po tipu članstva i/ili pojedinačno.
 // Vraća { available, claimed }.
-export async function getMemberPerks(userId: string) {
+export async function getMemberPerks(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true, hasCertificate: true },
   });
@@ -576,9 +578,9 @@ export async function setMemberBenefitUsage(memberId: string, benefitId: string,
 }
 
 // Član iskorištava benefit (gumb "Prijava")
-export async function claimMemberPerk(userId: string, benefitId: string) {
+export async function claimMemberPerk(userId: string, benefitId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true, status: true, hasCertificate: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
   });
@@ -619,9 +621,9 @@ export async function claimMemberPerk(userId: string, benefitId: string) {
   return { ok: true as const, alreadyClaimed: false, member, benefit };
 }
 
-export async function getMemberBenefits(userId: string) {
+export async function getMemberBenefits(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true },
   });

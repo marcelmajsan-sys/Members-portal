@@ -167,6 +167,9 @@ model Member {
   memberTier   MemberTier   @default(STANDARD)
   status       MemberStatus @default(PENDING)
   memberNumber String?      @unique
+  // Webshop ovog članstva — ista tvrtka može imati više webshopova (po jedno članstvo za svaki).
+  // Prikaz/analiza koriste member.website ?? company.website.
+  website      String?
   joinedAt     DateTime?
   expiresAt    DateTime?
   lastLoginAt  DateTime?

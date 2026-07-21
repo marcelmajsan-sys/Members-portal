@@ -35,9 +35,9 @@ function analysesLimitFor(email?: string | null, memberTier?: string | null): nu
 }
 
 // Koliko je analiza član iskoristio u zadnjih godinu dana + koliko ih je preostalo.
-export async function getWebshopAnalysisQuota(userId: string) {
+export async function getWebshopAnalysisQuota(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true, user: { select: { email: true } } },
   });
@@ -379,8 +379,8 @@ async function fetchCoreWebVitals(url: string): Promise<CoreWebVitals | null> {
   }
 }
 
-export async function getLatestWebshopAnalysis(userId: string) {
-  const member = await prisma.member.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+export async function getLatestWebshopAnalysis(userId: string, memberId?: string) {
+  const member = await prisma.member.findFirst({ where: { userId, ...(memberId ? { id: memberId } : {}) }, orderBy: { createdAt: 'asc' }, select: { id: true } });
   if (!member) return null;
   return prisma.webshopAnalysis.findFirst({
     where: { memberId: member.id },
@@ -388,9 +388,9 @@ export async function getLatestWebshopAnalysis(userId: string) {
   });
 }
 
-export async function requestWebshopAnalysis(userId: string) {
+export async function requestWebshopAnalysis(userId: string, memberId?: string) {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
     include: { company: true, user: { select: { email: true } } },
   });
@@ -399,7 +399,8 @@ export async function requestWebshopAnalysis(userId: string) {
   if (!ANALYZABLE_TYPES.includes(member.memberType)) return { error: 'NOT_TRADER' } as RequestError;
   if (member.status !== 'ACTIVE') return { error: 'INACTIVE' } as RequestError;
 
-  const website = member.company?.website?.trim();
+  // Webshop članstva ima prednost pred webshopom tvrtke (ista tvrtka, više webshopova)
+  const website = member.website?.trim() || member.company?.website?.trim();
   if (!website) return { error: 'NO_WEBSITE' } as RequestError;
 
   // Spriječi paralelno dvostruko pokretanje — ali samo za stvarno tekući zahtjev.
