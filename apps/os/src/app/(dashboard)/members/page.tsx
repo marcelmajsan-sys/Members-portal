@@ -90,9 +90,11 @@ export default function MembersPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ email: '', firstName: '', lastName: '', companyName: '', oib: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' });
+  const emptyAddForm = { email: '', firstName: '', lastName: '', companyId: '', companyName: '', oib: '', website: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' };
+  const [addForm, setAddForm] = useState(emptyAddForm);
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
+  const [companies, setCompanies] = useState<{ id: string; name: string; oib: string; website: string | null }[]>([]);
   const [exporting, setExporting] = useState(false);
 
   // Filteri: glavni tab (tip) + podfilteri (status / certifikat / promo) koji ovise o tipu.
@@ -243,6 +245,16 @@ export default function MembersPage() {
   }
 
 
+  // Tvrtke za dropdown u modalu "Dodaj novog člana"
+  useEffect(() => {
+    if (!showAddModal || companies.length > 0) return;
+    api.get<{ id: string; name: string; oib: string; website: string | null }[]>('/api/os/companies').then((res) => {
+      if (res.success && res.data) setCompanies(res.data);
+    });
+  }, [showAddModal, companies.length]);
+
+  const selectedCompany = addForm.companyId ? companies.find((c) => c.id === addForm.companyId) : undefined;
+
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
     setAddLoading(true);
@@ -250,7 +262,7 @@ export default function MembersPage() {
     const res = await api.post('/api/os/members', addForm);
     if (res.success) {
       setShowAddModal(false);
-      setAddForm({ email: '', firstName: '', lastName: '', companyName: '', oib: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' });
+      setAddForm(emptyAddForm);
       fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
       refreshCounts();
     } else {
@@ -581,15 +593,44 @@ export default function MembersPage() {
                 <label className="block text-xs text-gray-500 mb-1">Email *</label>
                 <input required type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
               </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Tvrtka</label>
+                <select
+                  value={addForm.companyId}
+                  onChange={e => {
+                    const c = companies.find(x => x.id === e.target.value);
+                    setAddForm(f => ({ ...f, companyId: e.target.value, companyName: c ? c.name : f.companyName, oib: c ? c.oib : f.oib, website: c ? (c.website || '') : f.website }));
+                  }}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value="">— Nova tvrtka —</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name || c.oib}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Naziv firme</label>
-                  <input value={addForm.companyName} onChange={e => setAddForm(f => ({ ...f, companyName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  <input value={addForm.companyName} disabled={!!addForm.companyId} onChange={e => setAddForm(f => ({ ...f, companyName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">OIB</label>
-                  <input value={addForm.oib} onChange={e => setAddForm(f => ({ ...f, oib: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  <input value={addForm.oib} disabled={!!addForm.companyId} onChange={e => setAddForm(f => ({ ...f, oib: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Webshop (URL)</label>
+                <input
+                  value={addForm.website}
+                  disabled={!!selectedCompany?.website}
+                  onChange={e => setAddForm(f => ({ ...f, website: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                />
+                {selectedCompany && !selectedCompany.website && addForm.website && (
+                  <p className="mt-1 text-xs text-gray-400">Webshop će se spremiti na odabranu tvrtku.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

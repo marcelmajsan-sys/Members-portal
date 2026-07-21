@@ -36,8 +36,9 @@ function analysesLimitFor(email?: string | null, memberTier?: string | null): nu
 
 // Koliko je analiza član iskoristio u zadnjih godinu dana + koliko ih je preostalo.
 export async function getWebshopAnalysisQuota(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true, user: { select: { email: true } } },
   });
   if (!member || !ANALYZABLE_TYPES.includes(member.memberType)) return null;
@@ -379,7 +380,7 @@ async function fetchCoreWebVitals(url: string): Promise<CoreWebVitals | null> {
 }
 
 export async function getLatestWebshopAnalysis(userId: string) {
-  const member = await prisma.member.findUnique({ where: { userId }, select: { id: true } });
+  const member = await prisma.member.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' }, select: { id: true } });
   if (!member) return null;
   return prisma.webshopAnalysis.findFirst({
     where: { memberId: member.id },
@@ -388,8 +389,9 @@ export async function getLatestWebshopAnalysis(userId: string) {
 }
 
 export async function requestWebshopAnalysis(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     include: { company: true, user: { select: { email: true } } },
   });
 

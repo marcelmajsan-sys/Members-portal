@@ -2,8 +2,9 @@ import { prisma, Prisma, type Member, type MemberType, type MemberStatus, type M
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
 
 export async function getMemberByUserId(userId: string): Promise<Member | null> {
-  return prisma.member.findUnique({
+  return prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     include: {
       company: true,
       secondaryContact: true,
@@ -258,8 +259,9 @@ export async function updateMemberTier(
 }
 
 export async function getMemberDashboard(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     include: { company: true },
   });
 
@@ -333,8 +335,9 @@ const toDate = (v: string | null | undefined) =>
   v === undefined ? undefined : v === '' || v === null ? null : new Date(v);
 
 export async function updateMemberProfile(userId: string, data: MemberProfileInput) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     include: { user: { select: { id: true } }, company: { select: { id: true } } },
   });
 
@@ -427,8 +430,9 @@ export async function updateMemberProfile(userId: string, data: MemberProfileInp
 }
 
 export async function getMemberInvoices(userId: string, page: number, limit: number) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
 
@@ -450,8 +454,9 @@ export async function getMemberInvoices(userId: string, page: number, limit: num
 }
 
 export async function getMemberEmails(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
   if (!member) return null;
@@ -464,8 +469,9 @@ export async function getMemberEmails(userId: string) {
 }
 
 export async function getMemberOffers(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
   if (!member) return null;
@@ -483,8 +489,9 @@ export async function getMemberOffers(userId: string) {
 // Pogodnosti (benefiti) dodijeljene članu — po tipu članstva i/ili pojedinačno.
 // Vraća { available, claimed }.
 export async function getMemberPerks(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true, hasCertificate: true },
   });
   if (!member) return null;
@@ -570,8 +577,9 @@ export async function setMemberBenefitUsage(memberId: string, benefitId: string,
 
 // Član iskorištava benefit (gumb "Prijava")
 export async function claimMemberPerk(userId: string, benefitId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true, status: true, hasCertificate: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
   });
   if (!member) return { error: 'NO_MEMBER' as const };
@@ -612,8 +620,9 @@ export async function claimMemberPerk(userId: string, benefitId: string) {
 }
 
 export async function getMemberBenefits(userId: string) {
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     select: { id: true, memberType: true, memberTier: true },
   });
 
@@ -633,6 +642,11 @@ export async function deleteMember(memberId: string) {
   });
   if (!member) throw new Error('Member not found');
 
+  // Isti korisnik (email) može imati više članstava — User se briše samo s posljednjim.
+  const otherMemberships = await prisma.member.count({
+    where: { userId: member.userId, id: { not: memberId } },
+  });
+
   await prisma.$transaction([
     prisma.memberProduct.deleteMany({ where: { memberId } }),
     prisma.priceAlert.deleteMany({ where: { memberId } }),
@@ -646,11 +660,15 @@ export async function deleteMember(memberId: string) {
     prisma.academyCertificate.deleteMany({ where: { memberId } }),
     prisma.safeShopCertification.deleteMany({ where: { memberId } }),
     prisma.legalQuery.deleteMany({ where: { memberId } }),
-    prisma.notification.deleteMany({ where: { userId: member.userId } }),
-    prisma.refreshToken.deleteMany({ where: { userId: member.userId } }),
-    prisma.pushToken.deleteMany({ where: { userId: member.userId } }),
     prisma.member.delete({ where: { id: memberId } }),
-    prisma.user.delete({ where: { id: member.userId } }),
+    ...(otherMemberships === 0
+      ? [
+          prisma.notification.deleteMany({ where: { userId: member.userId } }),
+          prisma.refreshToken.deleteMany({ where: { userId: member.userId } }),
+          prisma.pushToken.deleteMany({ where: { userId: member.userId } }),
+          prisma.user.delete({ where: { id: member.userId } }),
+        ]
+      : []),
   ]);
 }
 

@@ -8,6 +8,11 @@
   "exclude": [
     "src/import-members.ts",
     "src/import-second-members.ts",
+    "src/import-academy-csv.ts",
+    "src/import-certificates.ts",
+    "src/import-notes.ts",
+    "src/fix-malformed-emails.ts",
+    "src/update-websites.ts",
     "src/send-update-email.ts",
     "src/send-update-email-0327.ts",
     "src/send-update-email-0407.ts"

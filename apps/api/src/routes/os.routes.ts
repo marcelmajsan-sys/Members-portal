@@ -304,10 +304,21 @@ router.get('/members/search', async (req, res) => {
   successResponse(res, results);
 });
 
+// GET /companies — Sve tvrtke (za dropdown pri dodavanju člana)
+router.get('/companies', async (_req: AuthRequest, res) => {
+  const companies = await prisma.company.findMany({
+    select: { id: true, name: true, oib: true, website: true },
+    orderBy: { name: 'asc' },
+  });
+  successResponse(res, companies);
+});
+
 // POST /members — Create a new member (admin)
+// Isti email smije imati više članstava (više webshopova/tvrtki) — blokira se samo
+// duplikat za istu tvrtku. Tvrtka: postojeća preko companyId, reuse po OIB-u, ili nova.
 router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const { email, firstName, lastName, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus } = req.body;
+    const { email, firstName, lastName, companyId, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus } = req.body;
 
     if (!email || !firstName || !memberType) {
       errorResponse(res, 'VALIDATION', 'Email, ime i tip su obavezni', 400);
@@ -316,30 +327,57 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
 
     const existing = await prisma.user.findUnique({
       where: { email },
-      include: { member: true },
+      include: { members: { select: { companyId: true } } },
     });
-    if (existing && existing.member) {
-      errorResponse(res, 'CONFLICT', 'Korisnik s tim emailom već postoji i ima aktivno članstvo', 409);
+    if (existing && existing.role !== 'MEMBER') {
+      errorResponse(res, 'CONFLICT', 'Taj email pripada administratorskom računu', 409);
+      return;
+    }
+
+    // Postojeća tvrtka: eksplicitno odabrana (dropdown) ili prepoznata po OIB-u
+    const trimmedOib = oib?.trim() || '';
+    let existingCompany: { id: string } | null = null;
+    if (companyId) {
+      existingCompany = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } });
+      if (!existingCompany) {
+        errorResponse(res, 'NOT_FOUND', 'Odabrana tvrtka ne postoji', 404);
+        return;
+      }
+    } else if (trimmedOib) {
+      existingCompany = await prisma.company.findUnique({ where: { oib: trimmedOib }, select: { id: true } });
+    }
+
+    if (existing && existingCompany && existing.members.some((m) => m.companyId === existingCompany!.id)) {
+      errorResponse(res, 'CONFLICT', 'Član s tim emailom već postoji za tu tvrtku', 409);
       return;
     }
 
     // Random neupotrebljiva lozinka — pristup se dobiva isključivo preko "Pošalji pristup članu"
     // (invite/reset flow). Fiksni default bi značio da svatko tko zna email člana može ući.
     const passwordHash = await hashPassword(crypto.randomBytes(32).toString('base64url'));
-    const finalOib = oib && oib.trim() ? oib.trim() : String(Date.now()).slice(-11).padStart(11, '0');
+    const finalOib = trimmedOib || String(Date.now()).slice(-11).padStart(11, '0');
     const tier = memberTier || 'FREE';
     const now = new Date();
     const expiresAt = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
 
     const member = await prisma.$transaction(async (tx) => {
-      // Reuse existing user (orphan without member) or create new
+      // Reuse existing user (isti email = isti korisnik, i kad već ima članstvo) or create new
       const user = existing
-        ? await tx.user.update({ where: { id: existing.id }, data: { firstName, lastName: lastName || '', role: 'MEMBER' } })
+        ? await tx.user.update({ where: { id: existing.id }, data: { firstName, lastName: lastName || '' } })
         : await tx.user.create({ data: { email, passwordHash, firstName, lastName: lastName || '', role: 'MEMBER' } });
 
-      const company = await tx.company.create({
-        data: { name: companyName?.trim() || '', oib: finalOib, address: address || '', city: '', zip: '', website: website || null, phone: phone || null },
-      });
+      let company;
+      if (existingCompany) {
+        company = await tx.company.findUniqueOrThrow({ where: { id: existingCompany.id } });
+        // Webshop upisan uz postojeću tvrtku dopunjava prazan podatak (ne pregazuje postojeći)
+        if (website?.trim() && !company.website) {
+          company = await tx.company.update({ where: { id: company.id }, data: { website: website.trim() } });
+        }
+      } else {
+        company = await tx.company.create({
+          data: { name: companyName?.trim() || '', oib: finalOib, address: address || '', city: '', zip: '', website: website?.trim() || null, phone: phone || null },
+        });
+      }
 
       return tx.member.create({
         data: {

@@ -104,7 +104,7 @@ async function main() {
     });
 
     // Check if member already exists for this user
-    const existingMember = await prisma.member.findUnique({
+    const existingMember = await prisma.member.findFirst({
       where: { userId: user.id },
     });
 

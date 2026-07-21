@@ -111,7 +111,7 @@ model User {
 
   refreshTokens RefreshToken[]
   pushTokens    PushToken[]
-  member        Member?
+  members       Member[]
   notifications Notification[]
   assignedTasks Task[]         @relation("TaskAssignee")
   createdTasks  Task[]         @relation("TaskCreator")
@@ -159,7 +159,9 @@ model Company {
 
 model Member {
   id           String       @id @default(cuid())
-  userId       String       @unique
+  // NIJE unique — isti korisnik (email) može imati više članstava (više webshopova/tvrtki).
+  // Portal/auth lookupi po userId koriste findFirst s orderBy createdAt asc (prvo članstvo).
+  userId       String
   companyId    String
   memberType   MemberType
   memberTier   MemberTier   @default(STANDARD)
@@ -212,6 +214,8 @@ model Member {
   visits         MemberVisit[]
   secondaryContact SecondaryContact?
   conferenceTickets ConferenceTicket[]
+
+  @@index([userId])
 }
 
 // Zapis svake prijave (posjeta) člana na portal — za admin analitiku "Posjete članova".

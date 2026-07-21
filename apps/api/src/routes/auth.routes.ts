@@ -167,8 +167,9 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   // Await (serverless freeze nakon odgovora). Ne ruši prijavu ako zakaže.
   if (user.role === 'MEMBER') {
     try {
-      const member = await prisma.member.findUnique({
+      const member = await prisma.member.findFirst({
         where: { userId: user.id },
+        orderBy: { createdAt: 'asc' },
         select: { id: true, company: { select: { name: true } } },
       });
       if (member) {

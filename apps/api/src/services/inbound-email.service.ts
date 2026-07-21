@@ -36,11 +36,11 @@ export async function fetchInboundEmails(): Promise<InboundStats> {
 
   // Učitaj emailove svih članova jednom (za brzo povezivanje, bez upita po poruci).
   const memberUsers = await prisma.user.findMany({
-    where: { member: { isNot: null } },
-    select: { email: true, member: { select: { id: true } } },
+    where: { members: { some: {} } },
+    select: { email: true, members: { select: { id: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
   });
   const emailToMember = new Map<string, string>();
-  for (const u of memberUsers) if (u.member) emailToMember.set(u.email.toLowerCase().trim(), u.member.id);
+  for (const u of memberUsers) if (u.members[0]) emailToMember.set(u.email.toLowerCase().trim(), u.members[0].id);
 
   const client = new ImapFlow({ host, port: 993, secure: true, auth: { user, pass }, logger: false });
   await client.connect();

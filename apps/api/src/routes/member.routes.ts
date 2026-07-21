@@ -302,8 +302,9 @@ const ticketInputSchema = z.object({
 });
 
 async function getTicketMember(userId: string) {
-  return prisma.member.findUnique({
+  return prisma.member.findFirst({
     where: { userId },
+    orderBy: { createdAt: 'asc' },
     include: { user: true, company: true },
   });
 }
