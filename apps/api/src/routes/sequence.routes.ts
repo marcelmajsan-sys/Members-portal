@@ -17,6 +17,7 @@ import {
   updateSequence,
   updateSequenceStatus,
   getSequenceLogs,
+  getSequenceAnalytics,
 } from '../services/sequence.service.js';
 import { testSequenceEmail } from '../services/automation-executor.js';
 import { z } from 'zod';
@@ -31,6 +32,13 @@ router.get('/', validateQuery(paginationSchema), async (req, res) => {
   const { page, limit } = res.locals.query as { page: number; limit: number };
   const { sequences, total } = await getSequences(page, limit);
   paginatedResponse(res, sequences, { page, limit, total });
+});
+
+// GET /analytics — analitika svih automatizacija (audience + povijest slanja + predlošci).
+// MORA biti prije '/:id' inače bi ga idParamSchema (cuid) presrela i vratila 400. OWNER-only.
+router.get('/analytics', requireRole('OWNER'), async (_req, res) => {
+  const data = await getSequenceAnalytics();
+  successResponse(res, data);
 });
 
 // GET /:id — get single sequence

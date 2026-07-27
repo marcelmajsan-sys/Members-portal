@@ -58,6 +58,70 @@ interface CalendarEventTrigger {
   isAutomationTrigger: boolean;
 }
 
+// ---- Analitika (tab "Analitika") ----
+interface AnalyticsMember {
+  memberId: string;
+  name: string;
+  company: string | null;
+  email: string;
+  date: string | null;
+  dateKind: 'okida' | 'isteklo' | 'uclanjen';
+  state: 'scheduled' | 'expired' | 'active';
+}
+interface AnalyticsSend {
+  memberId: string | null;
+  name: string;
+  company: string | null;
+  email: string;
+  sentAt: string | null;
+  status: string;
+}
+interface AnalyticsAutomation {
+  id: string;
+  name: string;
+  description: string | null;
+  triggerEvent: string;
+  status: string;
+  stepCount: number;
+  conditionDay: number | null;
+  templateSlug: string | null;
+  hasAttachment: boolean;
+  template: { slug: string; name: string; subject: string; body: string; inDb: boolean; isHidden: boolean } | null;
+  audienceCount: number;
+  audience: AnalyticsMember[];
+  audienceMore: number;
+  sendCount: number;
+  sends: AnalyticsSend[];
+}
+interface AnalyticsData {
+  today: string | null;
+  kpis: {
+    activeSequences: number;
+    activeMembers: number;
+    expiringSoon: number;
+    expiredMembers: number;
+    pendingMembers: number;
+    autoEmailsSent: number;
+  };
+  automations: AnalyticsAutomation[];
+}
+
+const AUDIENCE_HEADERS: Record<AnalyticsMember['dateKind'], string> = {
+  okida: 'Okida',
+  isteklo: 'Isteklo',
+  uclanjen: 'Učlanjen',
+};
+const STATE_STYLES: Record<AnalyticsMember['state'], string> = {
+  scheduled: 'bg-blue-50 text-blue-700',
+  expired: 'bg-red-50 text-red-700',
+  active: 'bg-green-50 text-green-700',
+};
+const STATE_LABELS: Record<AnalyticsMember['state'], string> = {
+  scheduled: 'Zakazano',
+  expired: 'Isteklo',
+  active: 'Član',
+};
+
 interface Sequence {
   id: string;
   name: string;
@@ -185,6 +249,28 @@ export default function AutomationPage() {
   const [customSubject, setCustomSubject] = useState('');
   const [customTemplate, setCustomTemplate] = useState('custom');
   const [previewTpl, setPreviewTpl] = useState<EmailTemplate | null>(null);
+
+  // Tab: popis automatizacija ↔ analitika
+  const [view, setView] = useState<'list' | 'analytics'>('list');
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [openAuto, setOpenAuto] = useState<string | null>(null);
+
+  const loadAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    const res = await api.get<AnalyticsData>('/api/os/sequences/analytics');
+    if (res.success && res.data) setAnalytics(res.data);
+    setAnalyticsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (view === 'analytics' && !analytics && !analyticsLoading) loadAnalytics();
+  }, [view, analytics, analyticsLoading, loadAnalytics]);
+
+  // Otvori pregled emaila iz analitike (reuse postojećeg modala).
+  function previewAnalyticsTemplate(t: NonNullable<AnalyticsAutomation['template']>) {
+    setPreviewTpl({ slug: t.slug, name: t.name, subject: t.subject, body: t.body, ctaLabel: null, isActive: true });
+  }
 
   function resetForm() {
     setEditingSeq(null);
@@ -376,26 +462,46 @@ export default function AutomationPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Automatizacija</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {activeCount} {plural(activeCount, 'aktivna automatizacija', 'aktivne automatizacije', 'aktivnih automatizacija')}
+            {view === 'list'
+              ? `${activeCount} ${plural(activeCount, 'aktivna automatizacija', 'aktivne automatizacije', 'aktivnih automatizacija')}`
+              : 'Analitika — tko je u svakoj automatizaciji, predlošci i povijest slanja'}
           </p>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={checkRenewals}
-            disabled={renewalLoading}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 sm:px-4"
-          >
-            {renewalLoading ? 'Provjeravam...' : 'Provjeri obnove'}
-          </button>
-          <button
-            onClick={() => setShowCreate(!showCreate)}
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary-light sm:px-4"
-          >
-            + Nova automatizacija
-          </button>
-        </div>
+        {view === 'list' && (
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={checkRenewals}
+              disabled={renewalLoading}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 sm:px-4"
+            >
+              {renewalLoading ? 'Provjeravam...' : 'Provjeri obnove'}
+            </button>
+            <button
+              onClick={() => setShowCreate(!showCreate)}
+              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary-light sm:px-4"
+            >
+              + Nova automatizacija
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Tab prekidač: Popis ↔ Analitika */}
+      <div className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1 w-fit">
+        {(['list', 'analytics'] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+              view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {v === 'list' ? 'Popis' : 'Analitika'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'list' && (<>
       {/* Create/edit custom automation */}
       {showCreate && (
         <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -659,6 +765,193 @@ export default function AutomationPage() {
             </div>
           ))}
         </div>
+      )}
+      </>)}
+
+      {/* Analitika */}
+      {view === 'analytics' && (
+        analyticsLoading || !analytics ? (
+          <div className="flex h-64 items-center justify-center">
+            <p className="text-gray-500">Učitavanje analitike...</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* KPI */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                { n: analytics.kpis.activeSequences, l: 'Aktivnih automatizacija', c: 'text-primary' },
+                { n: analytics.kpis.activeMembers, l: 'Aktivnih članova', c: 'text-green-600' },
+                { n: analytics.kpis.expiringSoon, l: 'U obnovi (≤60 dana)', c: 'text-yellow-600' },
+                { n: analytics.kpis.expiredMembers, l: 'Istekli članovi', c: 'text-red-600' },
+                { n: analytics.kpis.pendingMembers, l: 'Na čekanju', c: 'text-gray-700' },
+                { n: analytics.kpis.autoEmailsSent, l: 'Automatskih mailova', c: 'text-primary' },
+              ].map((k) => (
+                <div key={k.l} className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className={`text-2xl font-bold ${k.c}`}>{k.n}</p>
+                  <p className="mt-1 text-xs font-medium text-gray-500">{k.l}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Automatizacije */}
+            <div className="space-y-3">
+              {analytics.automations.map((a) => {
+                const open = openAuto === a.id;
+                return (
+                  <div key={a.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <button
+                      onClick={() => setOpenAuto(open ? null : a.id)}
+                      className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-gray-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-semibold text-gray-900">{a.name}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[a.status] || 'bg-gray-100 text-gray-500'}`}>
+                            {STATUS_LABELS[a.status] || a.status}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                          <span>Okidač: {TRIGGER_LABELS[a.triggerEvent] || a.triggerEvent}</span>
+                          <span>U automatizaciji: <b className="text-gray-600">{a.audienceCount}</b></span>
+                          <span>Poslano: <b className="text-gray-600">{a.sendCount}</b></span>
+                          {a.hasAttachment && <span className="text-blue-600">📎 predračun</span>}
+                        </div>
+                      </div>
+                      <svg className={`h-5 w-5 flex-none text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+
+                    {open && (
+                      <div className="border-t border-gray-100 bg-gray-50/60 p-5">
+                        <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                          {/* Tijek + okidač */}
+                          <div className="rounded-lg border border-gray-200 bg-white p-4">
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Tijek</h4>
+                            <div className="space-y-1.5 text-sm text-gray-700">
+                              {a.conditionDay !== null && (
+                                <p>⚖ Uvjet: <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">daysUntilExpiry == {a.conditionDay}</code></p>
+                              )}
+                              <p>✉ Pošalji email: <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">{a.templateSlug ?? '—'}</code></p>
+                            </div>
+                            <p className="mt-3 text-xs text-gray-400">Okidač: <code className="rounded bg-gray-100 px-1.5 py-0.5">{a.triggerEvent}</code></p>
+                          </div>
+
+                          {/* Predložak */}
+                          <div className="rounded-lg border border-gray-200 bg-white p-4">
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Email predložak</h4>
+                            {a.template ? (
+                              <div className="space-y-2.5">
+                                <p className="text-sm font-medium text-gray-900">{applySampleVars(a.template.subject)}</p>
+                                <p className="text-xs text-gray-400">
+                                  {a.template.slug}{!a.template.inDb && ' · definiran u kodu'}{a.template.isHidden && ' · skriven'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {a.hasAttachment ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">📎 Predračun (PDF · HUB-3)</span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">— bez priloga</span>
+                                  )}
+                                  <button
+                                    onClick={() => previewAnalyticsTemplate(a.template!)}
+                                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-light"
+                                  >
+                                    Pregledaj sadržaj maila
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-400">Bez email koraka.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Audience */}
+                        <div className="rounded-lg border border-gray-200 bg-white">
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                              Tko je u automatizaciji · {a.audienceCount}
+                            </h4>
+                          </div>
+                          {a.audience.length === 0 ? (
+                            <p className="px-4 pb-4 text-sm text-gray-400">Trenutno nitko ne zadovoljava uvjete.</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[520px] text-sm">
+                                <thead>
+                                  <tr className="border-t border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                                    <th className="px-4 py-2 font-semibold">Član</th>
+                                    <th className="px-4 py-2 font-semibold">Email</th>
+                                    <th className="px-4 py-2 font-semibold">{AUDIENCE_HEADERS[a.audience[0].dateKind]}</th>
+                                    <th className="px-4 py-2 font-semibold">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {a.audience.map((m) => (
+                                    <tr key={m.memberId} className="border-t border-gray-50 hover:bg-gray-50/60">
+                                      <td className="px-4 py-2">
+                                        <div className="font-medium text-gray-800">{m.name}</div>
+                                        {m.company && <div className="text-xs text-gray-400">{m.company}</div>}
+                                      </td>
+                                      <td className="px-4 py-2 text-xs text-gray-500">{m.email}</td>
+                                      <td className="px-4 py-2 text-xs text-gray-500">{m.date ? new Date(m.date).toLocaleDateString('hr-HR') : '—'}</td>
+                                      <td className="px-4 py-2">
+                                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_STYLES[m.state]}`}>{STATE_LABELS[m.state]}</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                          {a.audienceMore > 0 && (
+                            <p className="px-4 py-2.5 text-center text-xs italic text-gray-400">
+                              + još {a.audienceMore} (prikazano {a.audience.length})
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Povijest slanja */}
+                        {a.sends.length > 0 && (
+                          <div className="mt-4 rounded-lg border border-gray-200 bg-white">
+                            <h4 className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Povijest slanja · {a.sendCount}</h4>
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[520px] text-sm">
+                                <thead>
+                                  <tr className="border-t border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                                    <th className="px-4 py-2 font-semibold">Član</th>
+                                    <th className="px-4 py-2 font-semibold">Email</th>
+                                    <th className="px-4 py-2 font-semibold">Poslano</th>
+                                    <th className="px-4 py-2 font-semibold">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {a.sends.map((s, i) => (
+                                    <tr key={`${s.memberId ?? s.email}-${i}`} className="border-t border-gray-50 hover:bg-gray-50/60">
+                                      <td className="px-4 py-2">
+                                        <div className="font-medium text-gray-800">{s.name}</div>
+                                        {s.company && <div className="text-xs text-gray-400">{s.company}</div>}
+                                      </td>
+                                      <td className="px-4 py-2 text-xs text-gray-500">{s.email}</td>
+                                      <td className="px-4 py-2 text-xs text-gray-500">{s.sentAt ? new Date(s.sentAt).toLocaleString('hr-HR') : '—'}</td>
+                                      <td className="px-4 py-2">
+                                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">{s.status}</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
       )}
 
       {/* Email preview modal */}
