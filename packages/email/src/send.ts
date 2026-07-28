@@ -20,6 +20,9 @@ export interface SendEmailOptions {
   templateName?: string;
   attachments?: EmailAttachment[];
   trackingId?: string;
+  // Spremljeno u EmailLog.metadata (npr. offerId/offerNumber + imena priloga,
+  // da admin pregled emaila može ponuditi preuzimanje predračuna)
+  metadata?: Record<string, unknown>;
 }
 
 // Optional email logger — set by the API at startup to avoid circular deps
@@ -30,6 +33,7 @@ let emailLogger: ((data: {
   memberId?: string;
   templateName?: string;
   trackingId?: string;
+  metadata?: Record<string, unknown>;
 }) => Promise<void>) | null = null;
 
 export function setEmailLogger(fn: typeof emailLogger) {
@@ -99,6 +103,7 @@ export async function sendEmail(
         memberId: options?.memberId,
         templateName: options?.templateName,
         trackingId,
+        metadata: options?.metadata,
       });
     } catch (err) {
       console.error('[EmailLogger] Failed to log email:', err);

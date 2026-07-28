@@ -46,9 +46,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Email logging
-setEmailLogger(async ({ to, subject, body, memberId, templateName, trackingId }) => {
+setEmailLogger(async ({ to, subject, body, memberId, templateName, trackingId, metadata }) => {
   await prisma.emailLog.create({
-    data: { to, subject, body, memberId, templateName, trackingId },
+    data: {
+      to, subject, body, memberId, templateName, trackingId,
+      ...(metadata ? { metadata: metadata as object } : {}),
+    },
   });
 });
 

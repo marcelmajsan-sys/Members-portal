@@ -1206,6 +1206,27 @@ router.get('/members/:id/emails', validateParams(idParamSchema), async (req: Aut
   successResponse(res, emails);
 });
 
+// GET /emails/:id — Single email log (za pregled poslanog emaila iz obavijesti)
+router.get('/emails/:id', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const email = await prisma.emailLog.findUnique({
+    where: { id: req.params.id as string },
+    include: {
+      member: {
+        select: {
+          id: true,
+          user: { select: { firstName: true, lastName: true, email: true } },
+          company: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!email) {
+    errorResponse(res, 'NOT_FOUND', 'Email nije pronađen', 404);
+    return;
+  }
+  successResponse(res, email);
+});
+
 // ─── Offers / Predračuni ──────────────────────────────────────────────────────
 
 import {
@@ -1290,9 +1311,16 @@ router.post('/members/:id/send-offer', validateParams(idParamSchema), async (req
 </body></html>`;
 
     // Send email with PDF attachment
+    const offerTrackingId = crypto.randomUUID();
     await sendEmail(member.user.email, subject, html, {
       memberId: member.id,
       templateName: `offer_step_${nextStep}`,
+      trackingId: offerTrackingId,
+      metadata: {
+        offerId: offer.id,
+        offerNumber: offer.offerNumber,
+        attachments: [`Predracun-${offer.offerNumber}.pdf`],
+      },
       attachments: [
         {
           filename: `Predracun-${offer.offerNumber}.pdf`,
@@ -1302,6 +1330,22 @@ router.post('/members/:id/send-offer', validateParams(idParamSchema), async (req
         },
       ],
     });
+
+    // Staff obavijest "Poslana ponuda za članstvo" (tab Članarine) s linkom na poslani email.
+    // Awaitano prije odgovora (serverless freeze); u try/catch da ne sruši slanje.
+    try {
+      const sentLog = await prisma.emailLog.findUnique({ where: { trackingId: offerTrackingId } });
+      await notifyStaff({
+        type: 'INFO',
+        title: 'Poslana ponuda za članstvo',
+        message: `${member.user.firstName} ${member.user.lastName ?? ''}`.trim()
+          + `${member.company ? ` (${member.company.name})` : ''} — ${member.user.email}`
+          + ` · Predračun br. ${offer.offerNumber}`,
+        actionUrl: sentLog ? `/emails/${sentLog.id}` : undefined,
+      });
+    } catch (notifyErr) {
+      console.error('[send-offer] notifyStaff failed:', notifyErr);
+    }
 
     // Emit event
     await emitEvent('member.offer_sent', {

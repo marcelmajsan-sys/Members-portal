@@ -1,7 +1,9 @@
+import crypto from 'node:crypto';
 import { prisma } from '@ecommerce-hr/db';
 import type { MemberType } from '@ecommerce-hr/db';
 import { sendEmail } from '@ecommerce-hr/email';
 import { logger } from '../utils/logger.js';
+import { notifyStaff } from './notification.service.js';
 import {
   buildFreeUpgradeEmail,
   buildWelcomeEmail,
@@ -299,11 +301,13 @@ async function resolveAndSendEmail(
   // pa tri podsjetnika ne stvaraju tri različita predračuna. Ako generiranje ne uspije
   // (npr. FREE član nema predračun), podsjetnik ide bez privitka.
   let attachments: { filename: string; content: string; contentType: string; encoding: string }[] | undefined;
+  let offerInfo: { id: string; offerNumber: string } | null = null;
   if (OFFER_ATTACHMENT_TEMPLATES.includes(template)) {
     try {
       const lastStep = await getMemberLastStep(memberId);
       const step = lastStep < 2 ? lastStep + 1 : 2;
       const { offer, pdfBuffer } = await createOffer(memberId, step);
+      offerInfo = { id: offer.id, offerNumber: offer.offerNumber };
       attachments = [{
         filename: `Predracun-${offer.offerNumber}.pdf`,
         content: pdfBuffer.toString('base64'),
@@ -314,6 +318,37 @@ async function resolveAndSendEmail(
       logger.warn(
         { memberId, template, error: err instanceof Error ? err.message : String(err) },
         'Predračun za podsjetnik nije generiran — email ide bez privitka',
+      );
+    }
+  }
+
+  // Zajednički trackingId → nakon slanja nađemo EmailLog i staff dobije obavijest
+  // "Poslana ponuda za članstvo" (admin inbox, tab Članarine) s linkom na email.
+  const offerTrackingId = crypto.randomUUID();
+  const offerMetadata = offerInfo
+    ? {
+        offerId: offerInfo.id,
+        offerNumber: offerInfo.offerNumber,
+        attachments: [`Predracun-${offerInfo.offerNumber}.pdf`],
+      }
+    : undefined;
+
+  async function notifyOfferSent(): Promise<void> {
+    if (!OFFER_ATTACHMENT_TEMPLATES.includes(template)) return;
+    try {
+      const sentLog = await prisma.emailLog.findUnique({ where: { trackingId: offerTrackingId } });
+      await notifyStaff({
+        type: 'INFO',
+        title: 'Poslana ponuda za članstvo',
+        message: `${member!.user.firstName} ${member!.user.lastName ?? ''}`.trim()
+          + `${member!.company ? ` (${member!.company.name})` : ''} — ${to}`
+          + (offerInfo ? ` · Predračun br. ${offerInfo.offerNumber}` : ' · bez predračuna'),
+        actionUrl: sentLog ? `/emails/${sentLog.id}` : undefined,
+      });
+    } catch (err) {
+      logger.warn(
+        { memberId, template, error: err instanceof Error ? err.message : String(err) },
+        'notifyStaff za poslanu ponudu nije uspio',
       );
     }
   }
@@ -351,7 +386,11 @@ async function resolveAndSendEmail(
   </div>
 </body></html>`;
     finalSubject = applyTemplateVars(subject || dbTpl.subject, member);
-    await sendEmail(to, finalSubject, html, { memberId, templateName: template, attachments });
+    await sendEmail(to, finalSubject, html, {
+      memberId, templateName: template, attachments,
+      trackingId: offerTrackingId, metadata: offerMetadata,
+    });
+    await notifyOfferSent();
     return;
   }
 
@@ -466,5 +505,9 @@ async function resolveAndSendEmail(
     }
   }
 
-  await sendEmail(to, finalSubject, html, { memberId, templateName: template, attachments });
+  await sendEmail(to, finalSubject, html, {
+    memberId, templateName: template, attachments,
+    trackingId: offerTrackingId, metadata: offerMetadata,
+  });
+  await notifyOfferSent();
 }

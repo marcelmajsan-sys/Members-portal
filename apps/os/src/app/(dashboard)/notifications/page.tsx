@@ -195,7 +195,9 @@ export default function NotificationsPage() {
                           ? 'Otvori člana →'
                           : n.actionUrl.startsWith('/tasks/')
                             ? 'Otvori zadatak →'
-                            : 'Otvori →'}
+                            : n.actionUrl.startsWith('/emails/')
+                              ? 'Otvori email →'
+                              : 'Otvori →'}
                       </button>
                     )}
                     <button
