@@ -651,7 +651,7 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
 
   const html = `<!DOCTYPE html><html lang="hr"><body style="font-family:Helvetica,Arial,sans-serif;color:#1f2937;line-height:1.6;">
     <p>Poštovani ${user.firstName},</p>
-    <p>Otvorili smo vam pristup članskom portalu Udruge eCommerce Hrvatska, gdje možete vidjeti podatke o svom članstvu, komunikaciju, obavijesti i ponude.</p>
+    <p>Otvorili smo vam pristup članskom portalu Udruge eCommerce Hrvatska, na kojem možete pokrenuti automatsku analizu svog webshopa ili web stranice, a možete i vidjeti podatke o svom članstvu, povijest komunikacije s udrugom, važne obavijesti i ponude.</p>
     <p>Kliknite na gumb ispod da postavite svoju lozinku i prijavite se:</p>
     <p style="margin:24px 0;">
       <a href="${link}" style="background:#1B365D;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block;">Postavi lozinku</a>
