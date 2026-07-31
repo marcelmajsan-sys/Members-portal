@@ -27,11 +27,19 @@ import { sendPasswordResetEmail } from '@ecommerce-hr/email';
 
 const router = Router();
 
+// Emailovi u bazi imaju miješana velika/mala slova (uvoz) — točno podudaranje prvo,
+// zatim case-insensitive fallback (findFirst jer postoje duplikati koji se razlikuju samo po velikim slovima)
+async function findUserByEmail(email: string) {
+  const exact = await prisma.user.findUnique({ where: { email } });
+  if (exact) return exact;
+  return prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
+}
+
 // POST /register
 router.post('/register', authLimiter, validate(registerSchema), async (req, res) => {
   const { email, password, firstName, lastName, companyName, oib, memberType } = req.body;
 
-  const existingUser = await prisma.user.findUnique({ where: { email } });
+  const existingUser = await findUserByEmail(email);
   if (existingUser) {
     errorResponse(res, 'CONFLICT', 'Korisnik s ovim emailom već postoji', 409);
     return;
@@ -136,7 +144,7 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res)
 router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await findUserByEmail(email);
   if (!user) {
     errorResponse(res, 'INVALID_CREDENTIALS', 'Neispravan email ili lozinka', 401);
     return;
@@ -245,7 +253,7 @@ router.post('/logout', async (req, res) => {
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), async (req, res) => {
   const { email } = req.body;
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await findUserByEmail(email);
 
   // Always return success to avoid email enumeration
   if (!user) {

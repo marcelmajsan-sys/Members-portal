@@ -197,6 +197,12 @@ export default function MemberDetailPage() {
   const [ssShowPw, setSsShowPw] = useState(false);
   const [ssSaving, setSsSaving] = useState(false);
 
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [pwValue, setPwValue] = useState('');
+  const [pwShow, setPwShow] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState('');
+
   useEffect(() => {
     api.get<MemberRaw>(`/api/os/members/${id}`).then((res) => {
       if (res.success && res.data) {
@@ -334,9 +340,10 @@ export default function MemberDetailPage() {
   async function sendInvite() {
     if (!member) return;
     setActionLoading('invite');
-    const res = await api.post<{ email: string }>(`/api/os/members/${id}/send-invite`, {});
+    const res = await api.post<{ email: string; secondaryEmail?: string | null }>(`/api/os/members/${id}/send-invite`, {});
     if (res.success && res.data) {
-      showToast(`Pristupni podaci poslani na ${res.data.email}`);
+      const recipients = res.data.secondaryEmail ? `${res.data.email} i ${res.data.secondaryEmail}` : res.data.email;
+      showToast(`Pristupni podaci poslani na ${recipients}`);
       api.get<typeof emails>(`/api/os/members/${id}/emails`).then((r) => {
         if (r.success && r.data) setEmails(r.data);
       });
@@ -344,6 +351,25 @@ export default function MemberDetailPage() {
       showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
     }
     setActionLoading('');
+  }
+
+  async function setMemberPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (pwValue.length < 6) {
+      setPwError('Lozinka mora imati najmanje 6 znakova');
+      return;
+    }
+    setPwLoading(true);
+    setPwError('');
+    const res = await api.post<{ email: string }>(`/api/os/members/${id}/set-password`, { password: pwValue });
+    if (res.success && res.data) {
+      setShowPasswordModal(false);
+      setPwValue('');
+      showToast(`Lozinka postavljena za ${res.data.email}`);
+    } else {
+      setPwError(res.error?.message || 'Postavljanje lozinke nije uspjelo');
+    }
+    setPwLoading(false);
   }
 
   async function sendOffer() {
@@ -921,6 +947,47 @@ export default function MemberDetailPage() {
         </div>
       )}
 
+      {/* Postavi lozinku modal — admin ručno postavlja lozinku članskog portala */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Postavi lozinku</h2>
+            <p className="mb-4 text-sm text-gray-500">
+              Nova lozinka za prijavu na članski portal za {member.user.firstName} {member.user.lastName} ({member.user.email}). Član će biti odjavljen sa svih uređaja.
+            </p>
+            {pwError && <p className="text-sm text-red-600 mb-3">{pwError}</p>}
+            <form onSubmit={setMemberPassword} className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nova lozinka (min. 6 znakova) *</label>
+                <div className="flex gap-2">
+                  <input
+                    required
+                    type={pwShow ? 'text' : 'password'}
+                    value={pwValue}
+                    onChange={e => setPwValue(e.target.value)}
+                    minLength={6}
+                    autoFocus
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                  />
+                  <button type="button" onClick={() => setPwShow(s => !s)} className="rounded-lg border px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 whitespace-nowrap">
+                    {pwShow ? 'Sakrij' : 'Prikaži'}
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">Lozinku javite članu sami (npr. telefonom) — sustav je ne šalje emailom.</p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowPasswordModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                  Odustani
+                </button>
+                <button type="submit" disabled={pwLoading} className="rounded-lg bg-[#1B365D] px-4 py-2 text-sm font-medium text-white hover:bg-[#152a4a] disabled:opacity-50">
+                  {pwLoading ? 'Spremanje...' : 'Postavi lozinku'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <button onClick={() => router.back()} className="text-sm text-primary hover:underline">
         &larr; Natrag na članove
       </button>
@@ -944,6 +1011,15 @@ export default function MemberDetailPage() {
               className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-sm font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
             >
               {actionLoading === 'invite' ? 'Slanje...' : 'Pošalji pristup članu'}
+            </button>
+          )}
+          {isOwner && (
+            <button
+              onClick={() => { setShowPasswordModal(true); setPwValue(''); setPwError(''); setPwShow(false); }}
+              title="Ručno postavlja novu lozinku za prijavu člana na portal (members.ecommerce.hr)"
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Postavi lozinku
             </button>
           )}
           {isOwner && (

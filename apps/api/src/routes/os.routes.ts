@@ -623,7 +623,7 @@ router.patch('/safeshop-analysis/:id', validateParams(idParamSchema), async (req
 router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {
   const member = await prisma.member.findUnique({
     where: { id: req.params.id as string },
-    include: { user: true },
+    include: { user: true, secondaryContact: true },
   });
 
   if (!member) {
@@ -638,31 +638,35 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
     await prisma.user.update({ where: { id: user.id }, data: { isActive: true } });
   }
 
-  // Create a set-password token (reuses the reset_ mechanism used by /api/auth/reset-password), 7-day TTL
-  const token = crypto.randomUUID();
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
-  await prisma.refreshToken.create({
-    data: { token: `reset_${token}`, userId: user.id, expiresAt },
-  });
-
   const baseUrl = process.env.MEMBER_APP_URL ?? 'https://members.ecommerce.hr';
-  const link = `${baseUrl}/reset-password?token=${token}`;
 
-  const html = `<!DOCTYPE html><html lang="hr"><body style="font-family:Helvetica,Arial,sans-serif;color:#1f2937;line-height:1.6;">
-    <p>Poštovani ${user.firstName},</p>
+  // Create a set-password token (reuses the reset_ mechanism used by /api/auth/reset-password), 7-day TTL.
+  // Reset tokens are single-use, so each recipient gets their own link.
+  const createInviteLink = async () => {
+    const token = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+    await prisma.refreshToken.create({
+      data: { token: `reset_${token}`, userId: user.id, expiresAt },
+    });
+    return `${baseUrl}/reset-password?token=${token}`;
+  };
+
+  const buildHtml = (firstName: string | null, link: string, loginNote: string) => `<!DOCTYPE html><html lang="hr"><body style="font-family:Helvetica,Arial,sans-serif;color:#1f2937;line-height:1.6;">
+    <p>Poštovani${firstName ? ` ${firstName}` : ''},</p>
     <p>Otvorili smo vam pristup članskom portalu Udruge eCommerce Hrvatska, na kojem možete pokrenuti automatsku analizu svog webshopa ili web stranice, a možete i vidjeti podatke o svom članstvu, povijest komunikacije s udrugom, važne obavijesti i ponude.</p>
     <p>Kliknite na gumb ispod da postavite svoju lozinku i prijavite se:</p>
     <p style="margin:24px 0;">
       <a href="${link}" style="background:#1B365D;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block;">Postavi lozinku</a>
     </p>
     <p style="font-size:13px;color:#6b7280;">Ako gumb ne radi, kopirajte ovaj link u preglednik:<br>${link}</p>
-    <p style="font-size:13px;color:#6b7280;">Link vrijedi 7 dana. Prijava: <a href="${baseUrl}/">${baseUrl.replace(/^https?:\/\//, '')}</a></p>
+    <p style="font-size:13px;color:#6b7280;">Link vrijedi 7 dana. Prijava: <a href="${baseUrl}/">${baseUrl.replace(/^https?:\/\//, '')}</a>${loginNote}</p>
     <p>Srdačan pozdrav,<br>Udruga eCommerce Hrvatska</p>
   </body></html>`;
 
   try {
-    await sendEmail(user.email, 'Pristup članskom portalu — eCommerce Hrvatska', html, {
+    const link = await createInviteLink();
+    await sendEmail(user.email, 'Pristup članskom portalu — eCommerce Hrvatska', buildHtml(user.firstName, link, ''), {
       templateName: 'member-invite',
       memberId: member.id,
     });
@@ -671,7 +675,54 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
     return;
   }
 
-  successResponse(res, { message: 'Pristupni podaci poslani', email: user.email });
+  // Also invite the secondary contact (if one exists with a distinct email) — they share the member's account
+  const secondaryEmail = member.secondaryContact?.email?.trim();
+  let secondarySent: string | null = null;
+  if (secondaryEmail && secondaryEmail.toLowerCase() !== user.email.toLowerCase()) {
+    try {
+      const link = await createInviteLink();
+      const loginNote = `<br>Za prijavu koristite email adresu: <strong>${user.email}</strong>`;
+      await sendEmail(
+        secondaryEmail,
+        'Pristup članskom portalu — eCommerce Hrvatska',
+        buildHtml(member.secondaryContact?.firstName ?? null, link, loginNote),
+        { templateName: 'member-invite', memberId: member.id }
+      );
+      secondarySent = secondaryEmail;
+    } catch {
+      // Primary invite already went out — don't fail the request over the secondary contact
+    }
+  }
+
+  successResponse(res, { message: 'Pristupni podaci poslani', email: user.email, secondaryEmail: secondarySent });
+});
+
+// POST /members/:id/set-password — Admin ručno postavlja lozinku članskog portala (OWNER)
+router.post('/members/:id/set-password', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (password.length < 6) {
+    errorResponse(res, 'VALIDATION_ERROR', 'Lozinka mora imati najmanje 6 znakova', 400);
+    return;
+  }
+
+  const member = await prisma.member.findUnique({
+    where: { id: req.params.id as string },
+    include: { user: true },
+  });
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+
+  const passwordHash = await hashPassword(password);
+  await prisma.user.update({
+    where: { id: member.userId },
+    data: { passwordHash, isActive: true },
+  });
+  // Poništi postojeće sesije i stare reset linkove (isti tretman kao /api/auth/reset-password)
+  await prisma.refreshToken.deleteMany({ where: { userId: member.userId } });
+
+  successResponse(res, { message: 'Lozinka postavljena', email: member.user.email });
 });
 
 // PATCH /members/:id/status — Change member status (activate, suspend, expire)
