@@ -106,6 +106,8 @@ export default function MemberDetailScreen() {
   const [notes, setNotes] = useState<Array<{ id: string; content: string; createdAt: string; author: { firstName: string; lastName: string } }>>([]);
   const [emails, setEmails] = useState<Array<{ id: string; subject: string; templateName: string | null; sentAt: string }>>([]);
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteContent, setEditNoteContent] = useState('');
 
   const fetchMember = useCallback(async () => {
     const res = await api.get<MemberDetail>(`/api/os/members/${id}`);
@@ -281,6 +283,18 @@ export default function MemberDetailScreen() {
       setNewNote('');
     } else {
       Alert.alert('Greška', 'Dodavanje bilješke nije uspjelo.');
+    }
+  };
+
+  const saveNoteEdit = async (noteId: string) => {
+    if (!editNoteContent.trim()) return;
+    const res = await api.patch<typeof notes[0]>(`/api/os/members/${id}/notes/${noteId}`, { content: editNoteContent.trim() });
+    if (res.success && res.data) {
+      setNotes((prev) => prev.map((n) => (n.id === noteId ? res.data! : n)));
+      setEditingNoteId(null);
+      setEditNoteContent('');
+    } else {
+      Alert.alert('Greška', 'Spremanje bilješke nije uspjelo.');
     }
   };
 
@@ -553,17 +567,57 @@ export default function MemberDetailScreen() {
             <Text style={styles.emptyText}>Nema bilješki</Text>
           ) : (
             notes.map((note) => (
-              <TouchableOpacity
-                key={note.id}
-                style={styles.noteCard}
-                onLongPress={() => deleteNote(note.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.noteContent}>{note.content}</Text>
-                <Text style={styles.noteMeta}>
-                  {note.author.firstName} {note.author.lastName} · {formatDate(note.createdAt)}
-                </Text>
-              </TouchableOpacity>
+              <View key={note.id} style={styles.noteCard}>
+                {editingNoteId === note.id ? (
+                  <>
+                    <TextInput
+                      value={editNoteContent}
+                      onChangeText={setEditNoteContent}
+                      style={styles.noteEditInput}
+                      multiline
+                      autoFocus
+                    />
+                    <View style={styles.noteEditActions}>
+                      <TouchableOpacity
+                        onPress={() => { setEditingNoteId(null); setEditNoteContent(''); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.noteActionCancel}>Odustani</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.noteSaveBtn, !editNoteContent.trim() && { opacity: 0.5 }]}
+                        onPress={() => saveNoteEdit(note.id)}
+                        disabled={!editNoteContent.trim()}
+                      >
+                        <Text style={styles.noteSaveBtnText}>Spremi</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.noteContent}>{note.content}</Text>
+                    <View style={styles.noteFooter}>
+                      <Text style={styles.noteMeta}>
+                        {note.author.firstName} {note.author.lastName} · {formatDate(note.createdAt)}
+                      </Text>
+                      <View style={styles.noteActions}>
+                        <TouchableOpacity
+                          onPress={() => { setEditingNoteId(note.id); setEditNoteContent(note.content); }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.noteActionEdit}>Uredi</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => deleteNote(note.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.noteActionDelete}>Obriši</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                )}
+              </View>
             ))
           )}
         </View>
@@ -802,7 +856,63 @@ const styles = StyleSheet.create({
   noteMeta: {
     fontSize: 11,
     color: Colors.gray400,
+    flex: 1,
+  },
+  noteFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 6,
+  },
+  noteActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginLeft: 8,
+  },
+  noteActionEdit: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
+  noteActionDelete: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.danger,
+  },
+  noteEditInput: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: Colors.gray900,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  noteEditActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 14,
+    marginTop: 8,
+  },
+  noteActionCancel: {
+    fontSize: 12,
+    color: Colors.gray500,
+  },
+  noteSaveBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  noteSaveBtnText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
   emptyText: {
     textAlign: 'center',
