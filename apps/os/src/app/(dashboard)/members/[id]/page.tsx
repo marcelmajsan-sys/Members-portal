@@ -166,6 +166,9 @@ export default function MemberDetailPage() {
   const [notes, setNotes] = useState<Array<{ id: string; content: string; createdAt: string; author: { id: string; firstName: string; lastName: string } }>>([]);
   const [newNote, setNewNote] = useState('');
   const [notesLoading, setNotesLoading] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteContent, setEditNoteContent] = useState('');
+  const [editNoteLoading, setEditNoteLoading] = useState(false);
   const [emails, setEmails] = useState<Array<{ id: string; subject: string; body: string | null; templateName: string | null; sentAt: string; openedAt: string | null; clickedAt: string | null; status?: string | null }>>([]);
   const [previewEmail, setPreviewEmail] = useState<{ subject: string; body: string; sentAt: string } | null>(null);
   const [visits, setVisits] = useState<Array<{ id: string; createdAt: string; activatedAnalysis: boolean; analysisScore: number | null }>>([]);
@@ -457,6 +460,20 @@ export default function MemberDetailPage() {
       showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
     }
     setNotesLoading(false);
+  }
+
+  async function saveNoteEdit(noteId: string) {
+    if (!editNoteContent.trim() || editNoteLoading) return;
+    setEditNoteLoading(true);
+    const res = await api.patch<typeof notes[0]>(`/api/os/members/${id}/notes/${noteId}`, { content: editNoteContent.trim() });
+    if (res.success && res.data) {
+      setNotes((prev) => prev.map((n) => (n.id === noteId ? res.data! : n)));
+      setEditingNoteId(null);
+      setEditNoteContent('');
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Spremanje nije uspjelo'}`);
+    }
+    setEditNoteLoading(false);
   }
 
   async function deleteNote(noteId: string) {
@@ -1834,18 +1851,55 @@ export default function MemberDetailPage() {
               ) : (
                 notes.map((note) => (
                   <div key={note.id} className="group rounded-lg border border-gray-100 bg-gray-50 p-3">
-                    <p className="text-sm text-gray-800">{note.content}</p>
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-xs text-gray-400">
-                        {note.author.firstName} {note.author.lastName} · {new Date(note.createdAt).toLocaleString('hr-HR')}
-                      </span>
-                      <button
-                        onClick={() => deleteNote(note.id)}
-                        className="text-xs text-red-400 opacity-0 transition hover:text-red-600 group-hover:opacity-100"
-                      >
-                        Obriši
-                      </button>
-                    </div>
+                    {editingNoteId === note.id ? (
+                      <div>
+                        <textarea
+                          value={editNoteContent}
+                          onChange={(e) => setEditNoteContent(e.target.value)}
+                          rows={3}
+                          autoFocus
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => { setEditingNoteId(null); setEditNoteContent(''); }}
+                            className="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
+                          >
+                            Odustani
+                          </button>
+                          <button
+                            onClick={() => saveNoteEdit(note.id)}
+                            disabled={editNoteLoading || !editNoteContent.trim()}
+                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            {editNoteLoading ? '...' : 'Spremi'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="whitespace-pre-wrap text-sm text-gray-800">{note.content}</p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-xs text-gray-400">
+                            {note.author.firstName} {note.author.lastName} · {new Date(note.createdAt).toLocaleString('hr-HR')}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => { setEditingNoteId(note.id); setEditNoteContent(note.content); }}
+                              className="text-xs text-gray-400 opacity-0 transition hover:text-primary group-hover:opacity-100"
+                            >
+                              Uredi
+                            </button>
+                            <button
+                              onClick={() => deleteNote(note.id)}
+                              className="text-xs text-red-400 opacity-0 transition hover:text-red-600 group-hover:opacity-100"
+                            >
+                              Obriši
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))
               )}

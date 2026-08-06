@@ -1178,9 +1178,38 @@ router.post('/members/:id/notes', validateParams(idParamSchema), async (req: Aut
   successResponse(res, note);
 });
 
-// DELETE /members/:id/notes/:noteId — Delete a note
 // NB: dedicated schema — idParamSchema bi stripao :noteId (zod briše nepoznate ključeve) pa bi noteId ostao undefined.
 const noteParamsSchema = z.object({ id: z.string().cuid(), noteId: z.string().cuid() });
+
+// PATCH /members/:id/notes/:noteId — Edit a note
+router.patch('/members/:id/notes/:noteId', validateParams(noteParamsSchema), async (req: AuthRequest, res) => {
+  const { content } = req.body as { content: string };
+  if (!content?.trim()) {
+    errorResponse(res, 'VALIDATION_ERROR', 'Sadržaj bilješke je obavezan', 400);
+    return;
+  }
+
+  const noteId = req.params.noteId as string;
+  const existing = await prisma.memberNote.findUnique({ where: { id: noteId }, select: { id: true, memberId: true } });
+  if (!existing || existing.memberId !== (req.params.id as string)) {
+    errorResponse(res, 'NOT_FOUND', 'Bilješka nije pronađena', 404);
+    return;
+  }
+
+  const note = await prisma.memberNote.update({
+    where: { id: noteId },
+    data: { content: content.trim() },
+    include: {
+      author: {
+        select: { id: true, firstName: true, lastName: true },
+      },
+    },
+  });
+
+  successResponse(res, note);
+});
+
+// DELETE /members/:id/notes/:noteId — Delete a note
 router.delete('/members/:id/notes/:noteId', validateParams(noteParamsSchema), async (req: AuthRequest, res) => {
   const noteId = req.params.noteId as string;
   const note = await prisma.memberNote.findUnique({ where: { id: noteId }, select: { id: true } });
