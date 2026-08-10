@@ -800,6 +800,7 @@ export default function MemberDetailPage() {
                   </div>
                 </div>
               </div>
+              {editForm.memberType !== 'PHYSICAL' && (
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Podaci o firmi</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -827,6 +828,7 @@ export default function MemberDetailPage() {
                   </div>
                 </div>
               </div>
+              )}
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Članstvo</p>
                 <div>
