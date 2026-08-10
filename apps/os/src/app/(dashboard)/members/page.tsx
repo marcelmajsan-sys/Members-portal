@@ -610,6 +610,7 @@ export default function MembersPage() {
                 <label className="block text-xs text-gray-500 mb-1">Email *</label>
                 <input required type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
               </div>
+              {addForm.memberType !== 'PHYSICAL' && (
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Tvrtka</label>
                 <select
@@ -626,7 +627,8 @@ export default function MembersPage() {
                   ))}
                 </select>
               </div>
-              {addForm.companyId && (
+              )}
+              {addForm.memberType !== 'PHYSICAL' && addForm.companyId && (
                 <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
                   <p className="mb-1 text-xs font-semibold text-blue-800">Postojeći profili ove tvrtke</p>
                   {companyMembersLoading ? (
@@ -649,6 +651,7 @@ export default function MembersPage() {
                   )}
                 </div>
               )}
+              {addForm.memberType !== 'PHYSICAL' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Naziv firme</label>
@@ -659,6 +662,7 @@ export default function MembersPage() {
                   <input value={addForm.oib} disabled={!!addForm.companyId} onChange={e => setAddForm(f => ({ ...f, oib: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500" />
                 </div>
               </div>
+              )}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">URL</label>
                 <input
@@ -674,7 +678,7 @@ export default function MembersPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Tip člana</label>
-                  <select value={addForm.memberType} onChange={e => setAddForm(f => ({ ...f, memberType: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
+                  <select value={addForm.memberType} onChange={e => setAddForm(f => ({ ...f, memberType: e.target.value, ...(e.target.value === 'PHYSICAL' ? { companyId: '', companyName: '', oib: '' } : {}) }))} className="w-full rounded-lg border px-3 py-2 text-sm">
                     <option value="WEB_TRADER">Web trgovac</option>
                     <option value="SERVICE_PROVIDER">Nuditelj usluga</option>
                     <option value="PHYSICAL">Fizički član</option>
