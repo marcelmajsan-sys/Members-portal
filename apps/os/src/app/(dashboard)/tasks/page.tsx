@@ -174,6 +174,16 @@ export default function TasksPage() {
     }
   }
 
+  async function deleteTask(task: Task) {
+    if (!confirm(`Obrisati zadatak "${task.title}"?`)) return;
+    const res = await api.del(`/api/os/tasks/${task.id}`);
+    if (res.success) {
+      setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    } else {
+      setError(res.error?.message || 'Brisanje nije uspjelo');
+    }
+  }
+
   async function changeStatus(task: Task, newStatus: TaskStatus) {
     const res = await api.patch<Task>(`/api/os/tasks/${task.id}/status`, { status: newStatus });
     if (res.success && res.data) {
@@ -277,6 +287,18 @@ export default function TasksPage() {
                           className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-200"
                         >
                           &rarr;
+                        </button>
+                      )}
+                      {isOwner && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTask(task);
+                          }}
+                          title="Obriši zadatak"
+                          className="ml-auto rounded bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 hover:bg-danger-light hover:text-danger"
+                        >
+                          &times;
                         </button>
                       )}
                     </div>

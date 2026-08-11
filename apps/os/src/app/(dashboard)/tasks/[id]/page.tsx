@@ -94,6 +94,19 @@ export default function TaskDetailPage() {
     setActionLoading('');
   }
 
+  async function handleDelete() {
+    if (!task) return;
+    if (!confirm(`Obrisati zadatak "${task.title}"?`)) return;
+    setActionLoading('DELETE');
+    const res = await api.del(`/api/os/tasks/${id}`);
+    if (res.success) {
+      router.push('/tasks');
+    } else {
+      alert(res.error?.message || 'Brisanje nije uspjelo');
+      setActionLoading('');
+    }
+  }
+
   async function handleComment() {
     if (!comment.trim()) return;
     setSendingComment(true);
@@ -247,6 +260,17 @@ export default function TaskDetailPage() {
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
               Uredi
+            </button>
+          )}
+
+          {/* Delete — OWNER only */}
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={!!actionLoading}
+              className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              {actionLoading === 'DELETE' ? 'Brisanje...' : 'Obriši'}
             </button>
           )}
         </div>
