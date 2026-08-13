@@ -194,6 +194,8 @@ model Member {
   promoMagazin      Boolean      @default(false)
   promoWeb          Boolean      @default(false)
   promoOstalo       String?
+  // Per-member override kvote ulaznica: { "STANDARD": 3, "VIP": 1 } — ima prednost pred Conference.ticketQuotas
+  ticketQuotaOverride Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

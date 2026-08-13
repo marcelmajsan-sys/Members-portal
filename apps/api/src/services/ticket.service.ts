@@ -18,6 +18,7 @@ type MemberWithUser = Member & { user: User; company: Company | null };
 //   { "STANDARD": { "PREMIUM": 2, "STANDARD": 1 }, "VIP": { "PREMIUM": 1 } }
 // Ključ unutar tipa ulaznice je MemberTier ili MemberType (tier ima prednost).
 // Default ako kvote nisu definirane: STANDARD član → 1 STANDARD, PREMIUM član → 3 VIP.
+// Member.ticketQuotaOverride ({ "STANDARD": 3 }) ima prednost pred svime — po tipu ulaznice.
 export function getTicketQuota(conference: Conference, member: Member): Record<TicketType, number> {
   const quotas = conference.ticketQuotas as Record<string, Record<string, number>> | null;
   const result: Record<TicketType, number> = { VIP: 0, STANDARD: 0 };
@@ -27,14 +28,21 @@ export function getTicketQuota(conference: Conference, member: Member): Record<T
   if (!quotas || typeof quotas !== 'object') {
     if (member.memberTier === 'PREMIUM') result.VIP = 3;
     else if (member.memberTier === 'STANDARD') result.STANDARD = 1;
-    return result;
+  } else {
+    for (const type of TICKET_TYPES) {
+      const byGroup = quotas[type];
+      if (!byGroup || typeof byGroup !== 'object') continue;
+      const value = byGroup[member.memberTier] ?? byGroup[member.memberType] ?? byGroup['*'];
+      if (typeof value === 'number' && value >= 0) result[type] = value;
+    }
   }
 
-  for (const type of TICKET_TYPES) {
-    const byGroup = quotas[type];
-    if (!byGroup || typeof byGroup !== 'object') continue;
-    const value = byGroup[member.memberTier] ?? byGroup[member.memberType] ?? byGroup['*'];
-    if (typeof value === 'number' && value >= 0) result[type] = value;
+  const override = member.ticketQuotaOverride as Record<string, number> | null;
+  if (override && typeof override === 'object') {
+    for (const type of TICKET_TYPES) {
+      const value = override[type];
+      if (typeof value === 'number' && value >= 0) result[type] = value;
+    }
   }
   return result;
 }
