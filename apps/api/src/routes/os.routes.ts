@@ -12,7 +12,7 @@ import { createNotification, notifyStaff } from '../services/notification.servic
 import { emitEvent } from '../lib/event-bus.js';
 import { sendEmail } from '@ecommerce-hr/email';
 import { ask } from '@ecommerce-hr/ai';
-import { prisma } from '@ecommerce-hr/db';
+import { prisma, Prisma } from '@ecommerce-hr/db';
 import type { MemberTier, MemberType, MemberStatus } from '@ecommerce-hr/db';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
@@ -21,6 +21,7 @@ import { buildRenewalConfirmationEmail, buildFreeUpgradeEmail } from '../utils/m
 import { checkEmailCooldown } from '../services/automation-executor.js';
 import { daysUntilExpiry } from '../services/renewal.service.js';
 import { hashPassword } from '../services/auth.service.js';
+import { getTicketQuota, getActiveConference, getTicketUsage } from '../services/ticket.service.js';
 
 
 const router = Router();
@@ -564,6 +565,53 @@ router.patch('/members/:id/benefits/:benefitId', validateParams(idParamSchema), 
     return;
   }
   successResponse(res, result);
+});
+
+// GET /members/:id/ticket-quota — kvota ulaznica člana za aktivnu konferenciju
+// (efektivna kvota + iskorištenost + eventualni per-member override)
+router.get('/members/:id/ticket-quota', validateParams(idParamSchema), async (req, res) => {
+  const member = await prisma.member.findUnique({ where: { id: req.params.id as string } });
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  const conference = await getActiveConference();
+  const quota = conference ? getTicketQuota(conference, member) : null;
+  const usage = conference ? await getTicketUsage(conference.id, member.id) : null;
+  successResponse(res, { override: member.ticketQuotaOverride, quota, usage });
+});
+
+// PATCH /members/:id/ticket-quota — admin postavlja per-member override kvote
+// Body: { override: { STANDARD?: number, VIP?: number } | null } — null/prazan objekt briše override
+const ticketQuotaOverrideSchema = z.object({
+  override: z
+    .object({
+      STANDARD: z.number().int().min(0).max(999).optional(),
+      VIP: z.number().int().min(0).max(999).optional(),
+    })
+    .strict()
+    .nullable(),
+});
+
+router.patch('/members/:id/ticket-quota', validateParams(idParamSchema), async (req, res) => {
+  const parsed = ticketQuotaOverrideSchema.safeParse(req.body);
+  if (!parsed.success) {
+    errorResponse(res, 'VALIDATION_ERROR', 'Neispravna kvota — dozvoljeni su cijeli brojevi od 0 do 999 za STANDARD i VIP', 400);
+    return;
+  }
+  const existing = await prisma.member.findUnique({ where: { id: req.params.id as string } });
+  if (!existing) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  const override = parsed.data.override && Object.keys(parsed.data.override).length > 0 ? parsed.data.override : null;
+  const member = await prisma.member.update({
+    where: { id: existing.id },
+    data: { ticketQuotaOverride: override ?? Prisma.DbNull },
+  });
+  const conference = await getActiveConference();
+  const quota = conference ? getTicketQuota(conference, member) : null;
+  successResponse(res, { override, quota });
 });
 
 // GET /members/:id/safeshop-analysis — latest Safe Shop certification analysis (or null)
