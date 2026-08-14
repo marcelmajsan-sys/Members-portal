@@ -270,7 +270,7 @@ export default function MemberDetailPage() {
     if (!confirm(`Ukloniti webshop ${(member.company.website || '').replace(/^https?:\/\//, '')} s profila člana?`)) return;
     const res = await api.patch(`/api/os/members/${member.id}/profile`, { companyWebsite: '' });
     if (res.success) {
-      setMember((m) => (m ? { ...m, company: { ...m.company, website: null } } : m));
+      setMember((m) => (m ? { ...m, company: { ...m.company, website: undefined } } : m));
       showToast('Webshop uklonjen');
     } else {
       showToast(`Greška: ${res.error?.message || 'Uklanjanje nije uspjelo'}`);
