@@ -180,7 +180,7 @@ export default function MemberDetailPage() {
   const [lastReminder, setLastReminder] = useState<{ lastSent: string | null; daysAgo: number | null; cooldownActive: boolean; templateName?: string } | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', address: '', city: '', memberWebsite: '', companyWebsite: '', memberType: '', joinedAt: '', expiresAt: '',
+    firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', address: '', city: '', mainWebsite: '', memberType: '', joinedAt: '', expiresAt: '',
     // Osobni podaci kontakt osobe
     dateOfBirth: '', personalOib: '', personalAddress: '', personalZip: '', personalCity: '', personalPhone: '',
     // Druga kontakt osoba
@@ -527,8 +527,7 @@ export default function MemberDetailPage() {
       oib: member.company.oib,
       address: member.company.address,
       city: member.company.city,
-      memberWebsite: member.website || '',
-      companyWebsite: member.company.website || '',
+      mainWebsite: member.website || member.company.website || '',
       memberType: member.memberType,
       joinedAt: dateInput(member.joinedAt),
       expiresAt: dateInput(member.expiresAt),
@@ -568,9 +567,8 @@ export default function MemberDetailPage() {
       oib: editForm.oib,
       address: editForm.address,
       city: editForm.city,
-      // Odvojeno: webshop OVOG članstva vs. web tvrtke (član može imati oba)
-      memberWebsite: editForm.memberWebsite,
-      companyWebsite: editForm.companyWebsite,
+      // "Webshop (glavni)": uređuje webshop članstva ako postoji, inače web tvrtke
+      ...(member?.website ? { memberWebsite: editForm.mainWebsite } : { companyWebsite: editForm.mainWebsite }),
       memberType: editForm.memberType,
       ...(editForm.joinedAt && { joinedAt: editForm.joinedAt }),
       ...(editForm.expiresAt && { expiresAt: editForm.expiresAt }),
@@ -823,27 +821,48 @@ export default function MemberDetailPage() {
                   <label className="block text-xs text-gray-500 mb-1">Grad</label>
                   <input value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                 </div>
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Web (tvrtka)</label>
-                    <input value={editForm.companyWebsite} onChange={e => setEditForm(f => ({ ...f, companyWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Webshop (glavni)</label>
-                    <input value={editForm.memberWebsite} onChange={e => setEditForm(f => ({ ...f, memberWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
-                    {isOwner && (
-                      <button
-                        type="button"
-                        onClick={() => setShowWebshopModal(true)}
-                        title="Dodaj novi (dodatni) webshop — kreira novo članstvo za istu osobu i tvrtku"
-                        className="mt-2 rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
-                      >
-                        + Webshop
-                      </button>
-                    )}
-                  </div>
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-500 mb-1">Webshop (glavni)</label>
+                  <input value={editForm.mainWebsite} onChange={e => setEditForm(f => ({ ...f, mainWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => setShowWebshopModal(true)}
+                      title="Dodaj novi (dodatni) webshop — kreira novo članstvo za istu osobu i tvrtku"
+                      className="mt-2 rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+                    >
+                      + Webshop
+                    </button>
+                  )}
                 </div>
-                <p className="mt-1 text-xs text-gray-400">Prazan „Webshop (glavni)" znači da članstvo koristi web tvrtke. Novi webshop dodajete gumbom „+ Webshop".</p>
+                {/* Ostali webshopovi člana (samo prikaz): web tvrtke ako se razlikuje od glavnog + ostala članstva */}
+                {(() => {
+                  const norm = (u: string) => u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+                  const mainSite = member.website || member.company.website || '';
+                  const others: string[] = [];
+                  if (member.company.website && mainSite && norm(member.company.website) !== norm(mainSite)) {
+                    others.push(member.company.website);
+                  }
+                  for (const m of member.otherMemberships ?? []) {
+                    const site = m.website || m.company.website;
+                    if (site && (!mainSite || norm(site) !== norm(mainSite)) && !others.some((o) => norm(o) === norm(site))) {
+                      others.push(site);
+                    }
+                  }
+                  if (others.length === 0) return null;
+                  return (
+                    <div className="mt-3">
+                      <p className="mb-1 text-xs text-gray-500">Ostali webshopovi ovog člana</p>
+                      <div className="flex flex-wrap gap-2">
+                        {others.map((o) => (
+                          <span key={o} className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-600">
+                            {o.replace(/^https?:\/\//, '').replace(/\/+$/, '')}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Članstvo</p>
