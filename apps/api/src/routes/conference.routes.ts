@@ -189,7 +189,7 @@ const adminCreateTicketSchema = z.object({
   fullName: z.string().trim().min(1, 'Ime i prezime je obavezno'),
   jobTitle: z.string().trim().optional().nullable(),
   email: z.string().trim().email('Neispravna email adresa'),
-  phone: z.string().trim().min(1, 'Broj telefona je obavezan'),
+  phone: z.string().trim().optional().default(''),
   type: z.enum(['VIP', 'STANDARD']).default('STANDARD'),
   status: z.enum(['CONFIRMED', 'PENDING']).default('CONFIRMED'),
   // false = "Potvrđena (ne šalje email)" — ulaznica se kreira, ali se NIKOME ne šalje mail
@@ -253,7 +253,7 @@ const adminTicketSchema = z.object({
   fullName: z.string().trim().min(1).optional(),
   jobTitle: z.string().trim().nullable().optional(),
   email: z.string().trim().email().optional(),
-  phone: z.string().trim().min(1).optional(),
+  phone: z.string().trim().optional(),
   type: z.enum(['VIP', 'STANDARD']).optional(),
   status: z.enum(['CONFIRMED', 'PENDING', 'CANCELLED']).optional(),
 });

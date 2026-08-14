@@ -73,10 +73,6 @@ export default function LeadAddModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return;
-    if (conference && createTicket && !form.phone.trim()) {
-      setError('Telefon je obavezan za izradu ulaznice');
-      return;
-    }
     setSaving(true);
     setError('');
 
@@ -161,7 +157,7 @@ export default function LeadAddModal({
               <input required type="email" value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Telefon{conference && createTicket ? ' *' : ''}</label>
+              <label className="mb-1 block text-xs text-gray-500">Telefon</label>
               <input value={form.phone} onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
           </div>

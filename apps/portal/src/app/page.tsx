@@ -1033,7 +1033,7 @@ function TicketsSection({
                       {pending ? `${t.type} · NA ČEKANJU` : t.type}
                     </span>
                   </p>
-                  <p className="mt-0.5 text-xs text-gray-500">{t.email} · {t.phone}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">{t.email}{t.phone ? ` · ${t.phone}` : ''}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   {pending ? (
@@ -1159,7 +1159,7 @@ function TicketModal({
           <Field label="Ime i prezime" required value={form.fullName} onChange={(v) => set('fullName', v)} />
           <Field label="Funkcija" hint="npr. Direktor, Marketing manager" value={form.jobTitle} onChange={(v) => set('jobTitle', v)} />
           <Field label="Email" required type="email" hint="na ovu adresu šaljemo ulaznicu s QR kodom" value={form.email} onChange={(v) => set('email', v)} />
-          <Field label="Broj telefona" required value={form.phone} onChange={(v) => set('phone', v)} />
+          <Field label="Broj telefona" value={form.phone} onChange={(v) => set('phone', v)} />
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Tip ulaznice</span>
             <select

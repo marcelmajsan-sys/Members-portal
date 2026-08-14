@@ -305,8 +305,8 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
             <Field label="Email *">
               <input required type="email" value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
             </Field>
-            <Field label="Telefon *">
-              <input required value={form.phone} onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+            <Field label="Telefon">
+              <input value={form.phone} onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
             </Field>
             <Field label="Tip ulaznice">
               <select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value as TicketForm['type'] }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
@@ -346,7 +346,7 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
                   <span className={`ml-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLES[t.status]}`}>{STATUS_LABELS[t.status]}</span>
                   {t.checkedInAt && <span className="ml-1.5 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">Check-in ✓</span>}
                 </p>
-                <p className="mt-0.5 text-xs text-gray-500">{t.email} · {t.phone}</p>
+                <p className="mt-0.5 text-xs text-gray-500">{t.email}{t.phone ? ` · ${t.phone}` : ''}</p>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-sm">
                 {t.status === 'CONFIRMED' && (
@@ -380,8 +380,8 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
                     <Field label="Email *">
                       <input required type="email" value={editTicketForm.email} onChange={(e) => setEditTicketForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
                     </Field>
-                    <Field label="Telefon *">
-                      <input required value={editTicketForm.phone} onChange={(e) => setEditTicketForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+                    <Field label="Telefon">
+                      <input value={editTicketForm.phone} onChange={(e) => setEditTicketForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
                     </Field>
                     <Field label="Tip ulaznice">
                       <select value={editTicketForm.type} onChange={(e) => setEditTicketForm(f => ({ ...f, type: e.target.value as 'VIP' | 'STANDARD' }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">

@@ -331,7 +331,7 @@ const ticketInputSchema = z.object({
   fullName: z.string().trim().min(1, 'Ime i prezime je obavezno'),
   jobTitle: z.string().trim().optional().nullable(),
   email: z.string().trim().email('Neispravna email adresa'),
-  phone: z.string().trim().min(1, 'Broj telefona je obavezan'),
+  phone: z.string().trim().optional().default(''),
   type: z.enum(['VIP', 'STANDARD']).default('STANDARD'),
 });
 
