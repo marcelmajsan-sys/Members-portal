@@ -91,7 +91,7 @@ export default function MembersPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
-  const emptyAddForm = { email: '', firstName: '', lastName: '', companyId: '', companyName: '', oib: '', website: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, safeShopStatus: '' };
+  const emptyAddForm = { email: '', firstName: '', lastName: '', companyId: '', companyName: '', oib: '', website: '', memberType: 'WEB_TRADER', memberTier: 'FREE', hasCertificate: false, hasAcademy: false, promoKonferencija: false, safeShopStatus: '' };
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
@@ -690,9 +690,9 @@ export default function MembersPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-2">Safe Shop & Akademija</label>
+                <label className="block text-xs text-gray-500 mb-2">Safe Shop, Akademija & Konferencija</label>
                 <div className="space-y-3">
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={addForm.hasCertificate} onChange={e => setAddForm(f => ({ ...f, hasCertificate: e.target.checked, safeShopStatus: e.target.checked ? (f.safeShopStatus || 'NEMAJU NISTA') : '' }))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                       <span className="text-sm text-gray-700">Safe Shop certifikat</span>
@@ -700,6 +700,10 @@ export default function MembersPage() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={addForm.hasAcademy} onChange={e => setAddForm(f => ({ ...f, hasAcademy: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                       <span className="text-sm text-gray-700">Akademija</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={addForm.promoKonferencija} onChange={e => setAddForm(f => ({ ...f, promoKonferencija: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                      <span className="text-sm text-gray-700">Konferencija</span>
                     </label>
                   </div>
                   {addForm.hasCertificate && (

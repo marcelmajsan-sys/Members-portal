@@ -20,9 +20,9 @@ interface LeadForm {
   oib: string;
   website: string;
   memberType: string;
-  memberTier: string;
   hasCertificate: boolean;
   hasAcademy: boolean;
+  promoKonferencija: boolean;
   safeShopStatus: string;
   leadNote: string;
 }
@@ -37,9 +37,9 @@ const emptyForm: LeadForm = {
   oib: '',
   website: '',
   memberType: 'WEB_TRADER',
-  memberTier: 'FREE',
   hasCertificate: false,
   hasAcademy: false,
+  promoKonferencija: false,
   safeShopStatus: '',
   leadNote: '',
 };
@@ -89,9 +89,10 @@ export default function LeadAddModal({
       oib: form.oib || undefined,
       website: form.website || undefined,
       memberType: form.memberType,
-      memberTier: form.memberTier,
+      memberTier: 'FREE',
       hasCertificate: form.hasCertificate,
       hasAcademy: form.hasAcademy,
+      promoKonferencija: form.promoKonferencija,
       safeShopStatus: form.hasCertificate ? form.safeShopStatus || 'NEMAJU NISTA' : undefined,
       isLead: true,
       leadNote: form.leadNote,
@@ -192,27 +193,17 @@ export default function LeadAddModal({
             <label className="mb-1 block text-xs text-gray-500">URL</label>
             <input value={form.website} onChange={(e) => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">Tip (kategorija)</label>
-              <select value={form.memberType} onChange={(e) => setForm(f => ({ ...f, memberType: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
-                <option value="WEB_TRADER">Web trgovac</option>
-                <option value="SERVICE_PROVIDER">Nuditelj usluga</option>
-                <option value="PHYSICAL">Fizička osoba</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">Razina</label>
-              <select value={form.memberTier} onChange={(e) => setForm(f => ({ ...f, memberTier: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
-                <option value="FREE">Besplatno</option>
-                <option value="STANDARD">Standard</option>
-                <option value="PREMIUM">Premium</option>
-              </select>
-            </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Tip (kategorija)</label>
+            <select value={form.memberType} onChange={(e) => setForm(f => ({ ...f, memberType: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
+              <option value="WEB_TRADER">Web trgovac</option>
+              <option value="SERVICE_PROVIDER">Nuditelj usluga</option>
+              <option value="PHYSICAL">Fizička osoba</option>
+            </select>
           </div>
           <div>
-            <label className="mb-2 block text-xs text-gray-500">Safe Shop &amp; Akademija</label>
-            <div className="flex items-center gap-4">
+            <label className="mb-2 block text-xs text-gray-500">Oznake</label>
+            <div className="flex flex-wrap items-center gap-4">
               <label className="flex cursor-pointer items-center gap-2">
                 <input type="checkbox" checked={form.hasCertificate} onChange={(e) => setForm(f => ({ ...f, hasCertificate: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                 <span className="text-sm text-gray-700">Safe Shop certifikat</span>
@@ -220,6 +211,10 @@ export default function LeadAddModal({
               <label className="flex cursor-pointer items-center gap-2">
                 <input type="checkbox" checked={form.hasAcademy} onChange={(e) => setForm(f => ({ ...f, hasAcademy: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                 <span className="text-sm text-gray-700">Akademija</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" checked={form.promoKonferencija} onChange={(e) => setForm(f => ({ ...f, promoKonferencija: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                <span className="text-sm text-gray-700">Konferencija</span>
               </label>
             </div>
           </div>

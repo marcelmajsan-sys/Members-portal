@@ -322,7 +322,7 @@ router.get('/companies', async (_req: AuthRequest, res) => {
 // Tvrtka: postojeća preko companyId, reuse po OIB-u, ili nova.
 router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const { email, firstName, lastName, companyId, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus, isLead, leadNote } = req.body;
+    const { email, firstName, lastName, companyId, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus, promoKonferencija, isLead, leadNote } = req.body;
 
     if (!email || !firstName || !memberType) {
       errorResponse(res, 'VALIDATION', 'Email, ime i tip su obavezni', 400);
@@ -404,6 +404,7 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
           ...(hasCertificate !== undefined && { hasCertificate: !!hasCertificate }),
           ...(hasAcademy !== undefined && { hasAcademy: !!hasAcademy }),
           ...(safeShopStatus !== undefined && { safeShopStatus: safeShopStatus || null }),
+          ...(promoKonferencija !== undefined && { promoKonferencija: !!promoKonferencija }),
         },
         include: { user: true, company: true },
       });
