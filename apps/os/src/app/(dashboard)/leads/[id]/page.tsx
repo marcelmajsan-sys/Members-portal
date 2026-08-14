@@ -63,7 +63,56 @@ export default function LeadDetailPage() {
 
   const [deleting, setDeleting] = useState(false);
 
+  // Uređivanje podataka leada (koristi postojeći PATCH /members/:id/profile)
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', website: '', memberType: 'WEB_TRADER' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3500); }
+
+  function openEdit() {
+    if (!lead) return;
+    setEditForm({
+      firstName: lead.user.firstName,
+      lastName: lead.user.lastName,
+      email: lead.user.email,
+      phone: lead.company?.phone || '',
+      companyName: lead.company?.name || '',
+      oib: lead.company?.oib || '',
+      website: lead.website || lead.company?.website || '',
+      memberType: lead.memberType,
+    });
+    setEditError('');
+    setShowEdit(true);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!lead || editSaving) return;
+    setEditSaving(true);
+    setEditError('');
+    const res = await api.patch(`/api/os/members/${id}/profile`, {
+      firstName: editForm.firstName,
+      lastName: editForm.lastName,
+      email: editForm.email,
+      phone: editForm.phone,
+      companyName: editForm.companyName,
+      oib: editForm.oib,
+      memberType: editForm.memberType,
+      // URL ide na webshop leada ako ga ima, inače na web tvrtke
+      ...(lead.website ? { memberWebsite: editForm.website } : { companyWebsite: editForm.website }),
+    });
+    if (res.success) {
+      setShowEdit(false);
+      showToast('Podaci leada ažurirani');
+      await fetchLead();
+    } else {
+      const raw = res.error?.message;
+      setEditError(raw === 'EMAIL_TAKEN' || res.error?.code === 'EMAIL_TAKEN' ? 'Email adresa je već zauzeta' : raw || 'Greška pri spremanju');
+    }
+    setEditSaving(false);
+  }
 
   const fetchLead = useCallback(async () => {
     const res = await api.get<LeadDetail>(`/api/os/members/${id}`);
@@ -174,13 +223,21 @@ export default function LeadDetailPage() {
           </h1>
           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">LEAD</span>
         </div>
-        <button
-          onClick={deleteLead}
-          disabled={deleting}
-          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-        >
-          {deleting ? 'Brisanje...' : 'Obriši lead'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openEdit}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Uredi podatke
+          </button>
+          <button
+            onClick={deleteLead}
+            disabled={deleting}
+            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? 'Brisanje...' : 'Obriši lead'}
+          </button>
+        </div>
       </div>
 
       {toast && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{toast}</div>}
@@ -258,6 +315,72 @@ export default function LeadDetailPage() {
 
       {/* Ulaznice (ako su dodane za ovog leada) */}
       <MemberTickets memberId={id} showQuota={false} />
+
+      {/* Uredi podatke leada */}
+      {showEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowEdit(false)}>
+          <form
+            onSubmit={saveEdit}
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+          >
+            <div className="border-b border-gray-200 p-4">
+              <h2 className="text-lg font-bold text-gray-900">Uredi podatke leada</h2>
+            </div>
+            <div className="flex-1 space-y-3 overflow-auto p-5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Ime *</label>
+                  <input required value={editForm.firstName} onChange={(e) => setEditForm(f => ({ ...f, firstName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Prezime</label>
+                  <input value={editForm.lastName} onChange={(e) => setEditForm(f => ({ ...f, lastName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Email *</label>
+                  <input required type="email" value={editForm.email} onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Telefon</label>
+                  <input value={editForm.phone} onChange={(e) => setEditForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Naziv firme</label>
+                  <input value={editForm.companyName} onChange={(e) => setEditForm(f => ({ ...f, companyName: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">OIB</label>
+                  <input value={editForm.oib} onChange={(e) => setEditForm(f => ({ ...f, oib: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">URL</label>
+                <input value={editForm.website} onChange={(e) => setEditForm(f => ({ ...f, website: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Tip (kategorija)</label>
+                <select value={editForm.memberType} onChange={(e) => setEditForm(f => ({ ...f, memberType: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
+                  <option value="WEB_TRADER">Web trgovac</option>
+                  <option value="SERVICE_PROVIDER">Nuditelj usluga</option>
+                  <option value="PHYSICAL">Fizička osoba</option>
+                </select>
+              </div>
+              {editError && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-200 p-4">
+              <button type="button" onClick={() => setShowEdit(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Odustani</button>
+              <button type="submit" disabled={editSaving} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-light disabled:opacity-50">
+                {editSaving ? 'Spremanje...' : 'Spremi promjene'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Bilješke */}
       <div className="rounded-xl border border-gray-200 bg-white">

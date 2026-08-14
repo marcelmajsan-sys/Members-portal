@@ -829,11 +829,21 @@ export default function MemberDetailPage() {
                     <input value={editForm.companyWebsite} onChange={e => setEditForm(f => ({ ...f, companyWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Webshop (ovo članstvo)</label>
+                    <label className="block text-xs text-gray-500 mb-1">Webshop (glavni)</label>
                     <input value={editForm.memberWebsite} onChange={e => setEditForm(f => ({ ...f, memberWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    {isOwner && (
+                      <button
+                        type="button"
+                        onClick={() => setShowWebshopModal(true)}
+                        title="Dodaj novi (dodatni) webshop — kreira novo članstvo za istu osobu i tvrtku"
+                        className="mt-2 rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+                      >
+                        + Webshop
+                      </button>
+                    )}
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-400">Prazan „Webshop (ovo članstvo)" znači da članstvo koristi web tvrtke. Za dodatni webshop iste osobe koristite „+ Dodaj dodatan webshop".</p>
+                <p className="mt-1 text-xs text-gray-400">Prazan „Webshop (glavni)" znači da članstvo koristi web tvrtke. Novi webshop dodajete gumbom „+ Webshop".</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Članstvo</p>
@@ -1255,35 +1265,53 @@ export default function MemberDetailPage() {
               <dt className="text-gray-500">Grad</dt>
               <dd className="font-medium text-gray-900">{member.company.city}</dd>
             </div>
-            {member.website && (
+            {(member.website || member.company.website) && (
               <div className="flex justify-between">
-                <dt className="text-gray-500">Webshop (ovo članstvo)</dt>
-                <dd className="font-medium text-blue-600">{member.website}</dd>
-              </div>
-            )}
-            {member.company.website && (
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Web</dt>
-                <dd className="font-medium text-blue-600">{member.company.website}</dd>
+                <dt className="text-gray-500">Webshop (glavni)</dt>
+                <dd className="font-medium text-blue-600">{member.website || member.company.website}</dd>
               </div>
             )}
           </dl>
-          {member.otherMemberships && member.otherMemberships.length > 0 && (
-            <div className="mt-4 border-t border-gray-100 pt-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ostali webshopovi (članstva) ove osobe</p>
-              <div className="flex flex-wrap gap-2">
-                {member.otherMemberships.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => router.push(`/members/${m.id}`)}
-                    className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
-                  >
-                    {(m.website || m.company.website || m.company.name).replace(/^https?:\/\//, '').replace(/\/+$/, '')}
-                  </button>
-                ))}
+          {/* Ostali webshopovi: web tvrtke (ako se razlikuje od glavnog) + ostala članstva osobe */}
+          {(() => {
+            const norm = (u: string) => u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+            const stripped = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+            const mainSite = member.website || member.company.website || '';
+            const others: { key: string; label: string; memberId?: string }[] = [];
+            if (member.company.website && mainSite && norm(member.company.website) !== norm(mainSite)) {
+              others.push({ key: 'company-web', label: member.company.website });
+            }
+            for (const m of member.otherMemberships ?? []) {
+              const site = m.website || m.company.website || m.company.name;
+              if (site && (!mainSite || norm(site) !== norm(mainSite)) && !others.some((o) => norm(o.label) === norm(site))) {
+                others.push({ key: m.id, label: site, memberId: m.id });
+              }
+            }
+            if (others.length === 0) return null;
+            return (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ostali webshopovi</p>
+                <div className="flex flex-wrap gap-2">
+                  {others.map((o) =>
+                    o.memberId ? (
+                      <button
+                        key={o.key}
+                        onClick={() => router.push(`/members/${o.memberId}`)}
+                        title="Zasebno članstvo — otvori profil"
+                        className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
+                      >
+                        {stripped(o.label)}
+                      </button>
+                    ) : (
+                      <span key={o.key} title="Web tvrtke" className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-500">
+                        {stripped(o.label)}
+                      </span>
+                    ),
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 

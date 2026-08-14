@@ -169,6 +169,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     id: string;
     status: string;
     memberTier: string;
+    isLead?: boolean;
     user: { firstName: string; lastName: string; email: string };
     company: { name: string } | null;
   }>>([]);
@@ -390,7 +391,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {searchResults.map((m) => (
                       <Link
                         key={m.id}
-                        href={`/members/${m.id}`}
+                        href={m.isLead ? `/leads/${m.id}` : `/members/${m.id}`}
                         onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
                         className="flex items-center gap-3 px-4 py-3 transition hover:bg-gray-50"
                       >
@@ -406,11 +407,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                           </p>
                         </div>
                         <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          m.isLead ? 'bg-amber-100 text-amber-800' :
                           m.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' :
                           m.status === 'EXPIRED' ? 'bg-red-50 text-red-700' :
                           'bg-gray-100 text-gray-600'
                         }`}>
-                          {m.memberTier}
+                          {m.isLead ? 'LEAD' : m.memberTier}
                         </span>
                       </Link>
                     ))}

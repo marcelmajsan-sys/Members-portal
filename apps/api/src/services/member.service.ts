@@ -140,10 +140,9 @@ export async function searchMembers(query: string, limit = 8) {
   const words = q.split(/\s+/).filter(w => w.length > 0);
 
   // If multiple words, search for each word matching firstName/lastName (AND)
-  // Leadovi su isključeni — globalna tražilica vodi na profile članova
+  // Tražilica nalazi i leadove — frontend ih označava i linka na /leads/[id]
   const where = words.length > 1
     ? {
-        isLead: false,
         AND: words.map(word => ({
           OR: [
             { user: { firstName: { contains: word, mode: 'insensitive' as const } } },
@@ -152,7 +151,6 @@ export async function searchMembers(query: string, limit = 8) {
         })),
       }
     : {
-        isLead: false,
         OR: [
           { user: { firstName: { contains: q, mode: 'insensitive' as const } } },
           { user: { lastName: { contains: q, mode: 'insensitive' as const } } },
