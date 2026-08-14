@@ -287,8 +287,10 @@ router.put('/:id/tickets/:tid', validate(adminTicketSchema), async (req: AuthReq
     data,
   });
 
-  // Odobrenje (→ CONFIRMED): pošalji ulaznicu osobi + potvrdu članu, prije odgovora (serverless)
-  if (updated.status === 'CONFIRMED' && ticket.status !== 'CONFIRMED') {
+  // Odobrenje (PENDING → CONFIRMED): pošalji ulaznicu osobi + potvrdu članu, prije odgovora (serverless).
+  // Vraćanje otkazane ulaznice (CANCELLED → CONFIRMED) je TIHO — ne šalje se nikakav email,
+  // kao ni samo otkazivanje (za otkaz nikad nije ni postojao email).
+  if (updated.status === 'CONFIRMED' && ticket.status === 'PENDING') {
     try {
       const [conference, member] = await Promise.all([
         prisma.conference.findUnique({ where: { id: updated.conferenceId } }),

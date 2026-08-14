@@ -170,12 +170,16 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
 
   async function updateStatus(t: Ticket, status: Ticket['status']) {
     if (!conference || busyId) return;
-    if (status === 'CANCELLED' && !confirm(`Otkazati ulaznicu za ${t.fullName}?`)) return;
-    if (status === 'CONFIRMED' && !confirm(`Potvrditi ulaznicu za ${t.fullName}? Osobi će biti poslan email s ulaznicom.`)) return;
+    // Otkaz i vraćanje otkazane su TIHI (bez emaila); samo odobrenje PENDING → CONFIRMED šalje email
+    const isApprove = status === 'CONFIRMED' && t.status === 'PENDING';
+    const isRevive = status === 'CONFIRMED' && t.status === 'CANCELLED';
+    if (status === 'CANCELLED' && !confirm(`Otkazati ulaznicu za ${t.fullName}? (ne šalje se email)`)) return;
+    if (isApprove && !confirm(`Potvrditi ulaznicu za ${t.fullName}? Osobi će biti poslan email s ulaznicom.`)) return;
+    if (isRevive && !confirm(`Vratiti ulaznicu za ${t.fullName}? (ne šalje se email)`)) return;
     setBusyId(t.id);
     const res = await api.put(`/api/os/conferences/${conference.id}/tickets/${t.id}`, { status });
     if (res.success) {
-      showToast(status === 'CONFIRMED' ? 'Ulaznica potvrđena (email poslan)' : 'Ulaznica ažurirana');
+      showToast(isApprove ? 'Ulaznica potvrđena (email poslan)' : isRevive ? 'Ulaznica vraćena (bez slanja emaila)' : 'Ulaznica ažurirana');
       await Promise.all([fetchTickets(conference.id), fetchQuota()]);
     } else {
       showToast(res.error?.message || 'Greška');

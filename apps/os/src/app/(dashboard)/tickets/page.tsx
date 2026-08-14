@@ -142,7 +142,12 @@ export default function TicketsPage() {
     setBusyId(t.id);
     const res = await api.put(`/api/os/conferences/${selectedId}/tickets/${t.id}`, data);
     if (res.success) {
-      showToast(data.status === 'CONFIRMED' ? `Ulaznica potvrđena — ${t.fullName} (email poslan)` : 'Ulaznica ažurirana');
+      // Email se šalje samo kod odobrenja PENDING → CONFIRMED; otkaz i vraćanje otkazane su tihi
+      showToast(
+        data.status === 'CONFIRMED' && t.status === 'PENDING' ? `Ulaznica potvrđena — ${t.fullName} (email poslan)`
+        : data.status === 'CONFIRMED' && t.status === 'CANCELLED' ? `Ulaznica vraćena — ${t.fullName} (bez slanja emaila)`
+        : 'Ulaznica ažurirana',
+      );
       await Promise.all([fetchTickets(), fetchConferences()]);
     } else {
       showToast(res.error?.message || 'Greška');
