@@ -192,6 +192,8 @@ const adminCreateTicketSchema = z.object({
   phone: z.string().trim().min(1, 'Broj telefona je obavezan'),
   type: z.enum(['VIP', 'STANDARD']).default('STANDARD'),
   status: z.enum(['CONFIRMED', 'PENDING']).default('CONFIRMED'),
+  // false = "Potvrđena (ne šalje email)" — ulaznica se kreira, ali se NIKOME ne šalje mail
+  sendEmails: z.boolean().optional().default(true),
 });
 
 router.post('/:id/tickets', validate(adminCreateTicketSchema), async (req: AuthRequest, res) => {
@@ -233,7 +235,7 @@ router.post('/:id/tickets', validate(adminCreateTicketSchema), async (req: AuthR
     ? await prisma.conferenceTicket.update({ where: { id: existing.id }, data: { ...data, memberId: member.id } })
     : await prisma.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id, token: crypto.randomUUID() } });
 
-  if (ticket.status === 'CONFIRMED') {
+  if (ticket.status === 'CONFIRMED' && req.body.sendEmails !== false) {
     try {
       await sendTicketConfirmedEmail(conference, ticket, member);
       // Lead je sam ta osoba — obavijest "članu koji je dodao" bi bila duplikat na isti email

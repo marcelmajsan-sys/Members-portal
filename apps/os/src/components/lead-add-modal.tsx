@@ -59,7 +59,8 @@ export default function LeadAddModal({
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [createTicket, setCreateTicket] = useState(!!conference);
   const [ticketType, setTicketType] = useState<'STANDARD' | 'VIP'>('STANDARD');
-  const [ticketStatus, setTicketStatus] = useState<'CONFIRMED' | 'PENDING'>('CONFIRMED');
+  // CONFIRMED_SILENT = potvrđena, ali se NIKOME ne šalje email (CONFIRMED + sendEmails:false)
+  const [ticketStatus, setTicketStatus] = useState<'CONFIRMED' | 'CONFIRMED_SILENT' | 'PENDING'>('CONFIRMED');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -114,7 +115,8 @@ export default function LeadAddModal({
         email: form.email,
         phone: form.phone.trim(),
         type: ticketType,
-        status: ticketStatus,
+        status: ticketStatus === 'PENDING' ? 'PENDING' : 'CONFIRMED',
+        sendEmails: ticketStatus !== 'CONFIRMED_SILENT',
       });
       if (tRes.success) {
         ticketCreated = true;
@@ -246,8 +248,9 @@ export default function LeadAddModal({
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-gray-500">Status</label>
-                    <select value={ticketStatus} onChange={(e) => setTicketStatus(e.target.value as 'CONFIRMED' | 'PENDING')} className="w-full rounded-lg border bg-white px-3 py-2 text-sm">
+                    <select value={ticketStatus} onChange={(e) => setTicketStatus(e.target.value as 'CONFIRMED' | 'CONFIRMED_SILENT' | 'PENDING')} className="w-full rounded-lg border bg-white px-3 py-2 text-sm">
                       <option value="CONFIRMED">Potvrđena (odmah šalje email s ulaznicom)</option>
+                      <option value="CONFIRMED_SILENT">Potvrđena (ne šalje email s ulaznicom)</option>
                       <option value="PENDING">Na čekanju</option>
                     </select>
                   </div>

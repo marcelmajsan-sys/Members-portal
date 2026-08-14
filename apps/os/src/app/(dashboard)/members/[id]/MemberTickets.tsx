@@ -36,7 +36,8 @@ interface TicketForm {
   email: string;
   phone: string;
   type: 'VIP' | 'STANDARD';
-  status: 'CONFIRMED' | 'PENDING';
+  // CONFIRMED_SILENT = potvrđena, ali se NIKOME ne šalje email (mapira se na CONFIRMED + sendEmails:false)
+  status: 'CONFIRMED' | 'CONFIRMED_SILENT' | 'PENDING';
 }
 
 const emptyForm: TicketForm = { fullName: '', jobTitle: '', email: '', phone: '', type: 'STANDARD', status: 'CONFIRMED' };
@@ -146,11 +147,20 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
     if (!conference) return;
     setSaving(true);
     setError('');
-    const res = await api.post(`/api/os/conferences/${conference.id}/tickets`, { ...form, memberId });
+    const res = await api.post(`/api/os/conferences/${conference.id}/tickets`, {
+      ...form,
+      status: form.status === 'PENDING' ? 'PENDING' : 'CONFIRMED',
+      sendEmails: form.status !== 'CONFIRMED_SILENT',
+      memberId,
+    });
     if (res.success) {
       setShowForm(false);
       setForm(emptyForm);
-      showToast(form.status === 'CONFIRMED' ? 'Ulaznica dodana — email s ulaznicom poslan osobi' : 'Ulaznica dodana (na čekanju)');
+      showToast(
+        form.status === 'CONFIRMED' ? 'Ulaznica dodana — email s ulaznicom poslan osobi'
+        : form.status === 'CONFIRMED_SILENT' ? 'Ulaznica dodana (potvrđena, bez slanja emaila)'
+        : 'Ulaznica dodana (na čekanju)',
+      );
       await Promise.all([fetchTickets(conference.id), fetchQuota()]);
     } else {
       setError(res.error?.message || 'Dodavanje nije uspjelo');
@@ -269,6 +279,7 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
             <Field label="Status">
               <select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value as TicketForm['status'] }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
                 <option value="CONFIRMED">Potvrđena (odmah šalje email s ulaznicom)</option>
+                <option value="CONFIRMED_SILENT">Potvrđena (ne šalje email s ulaznicom)</option>
                 <option value="PENDING">Na čekanju</option>
               </select>
             </Field>
