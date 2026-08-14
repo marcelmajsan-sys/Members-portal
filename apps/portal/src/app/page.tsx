@@ -133,7 +133,7 @@ function fmtDateCompact(d: string | null) {
 
 export default function PortalHome() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, isImpersonating, logout } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -334,6 +334,18 @@ export default function PortalHome() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Admin testni način ("Logiraj se kao član") — vidljiva traka + izlaz natrag u admin */}
+      {isImpersonating && (
+        <div className="flex items-center justify-between gap-3 bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
+          <span>
+            Admin testni način — portal pregledavate kao {user?.firstName} {user?.lastName} ({user?.email})
+          </span>
+          <button onClick={logout} className="shrink-0 rounded-md bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wide transition hover:bg-white/30">
+            Izađi
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6">
         <img src="/logo.png" alt="eCommerce Hrvatska" className="h-8 w-auto" />

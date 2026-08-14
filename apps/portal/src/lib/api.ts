@@ -2,6 +2,21 @@ import type { ApiResponse } from '@ecommerce-hr/shared';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+// Admin impersonacija ("Logiraj se kao član"): token živi u sessionStorage (samo ovaj tab),
+// pa adminova prava sesija u localStorage (dijeli se s /admin aplikacijom) ostaje netaknuta.
+export function isImpersonating(): boolean {
+  return typeof window !== 'undefined' && !!sessionStorage.getItem('impAccessToken');
+}
+export function endImpersonation(): void {
+  sessionStorage.removeItem('impAccessToken');
+  sessionStorage.removeItem('impUser');
+  window.location.href = '/admin';
+}
+function getAccessToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem('impAccessToken') || localStorage.getItem('accessToken');
+}
+
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -54,7 +69,7 @@ async function request<T>(
       'Content-Type': 'application/json',
     };
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    const token = getAccessToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -66,6 +81,11 @@ async function request<T>(
     });
 
     if (res.status === 401 && retry && typeof window !== 'undefined') {
+      // Impersonacija nema refresh token — istekla znači kraj testnog načina, natrag u admin
+      if (isImpersonating()) {
+        endImpersonation();
+        return { success: false, error: { code: 'UNAUTHORIZED', message: 'Testna sesija je istekla' } };
+      }
       const refreshed = await refreshToken();
       if (refreshed) {
         return request<T>(method, path, body, false);

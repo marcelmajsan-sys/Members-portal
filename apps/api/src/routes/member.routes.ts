@@ -88,9 +88,13 @@ router.get('/profile', async (req: AuthRequest, res) => {
 
   // Zabilježi posjet (portal učitava /profile pri svakom otvaranju). Await prije odgovora
   // (serverless freeze); prigušeno na 1/30 min. Ne ruši dohvat profila ako zakaže.
-  try {
-    await recordMemberVisit(member.id);
-  } catch { /* ignore */ }
+  // Admin impersonacija (imp:true u tokenu) se NE bilježi — ne zagađuje analitiku posjeta.
+  const isImpersonation = (req.user as { imp?: boolean } | undefined)?.imp === true;
+  if (!isImpersonation) {
+    try {
+      await recordMemberVisit(member.id);
+    } catch { /* ignore */ }
+  }
 
   successResponse(res, member);
 });

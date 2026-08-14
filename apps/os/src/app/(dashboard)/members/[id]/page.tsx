@@ -27,6 +27,7 @@ interface MemberRaw {
   id: string;
   memberNumber: string;
   extraWebshops?: string[];
+  isLead?: boolean;
   memberType: string;
   memberTier: string;
   status: string;
@@ -262,6 +263,21 @@ export default function MemberDetailPage() {
     } else {
       setWebshopError(res.error?.message || 'Greška pri dodavanju');
     }
+  }
+
+  // Admin se prijavljuje na portal kao ovaj član (testni način) — otvara portal u novom tabu.
+  // Token putuje kroz URL hash i sprema se u sessionStorage tog taba, pa admin sesija ostaje.
+  async function impersonateMember() {
+    if (actionLoading) return;
+    setActionLoading('impersonate');
+    const res = await api.post<{ accessToken: string; user: unknown; memberId: string }>(`/api/os/members/${id}/impersonate`);
+    if (res.success && res.data) {
+      const payload = encodeURIComponent(JSON.stringify({ t: res.data.accessToken, u: res.data.user, m: res.data.memberId }));
+      window.open(`/#imp=${payload}`, '_blank');
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Prijava kao član nije uspjela'}`);
+    }
+    setActionLoading('');
   }
 
   // Uklanja web tvrtke s profila (chip u "Ostali webshopovi" kad nije glavni)
@@ -1079,6 +1095,16 @@ export default function MemberDetailPage() {
               className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
               Postavi lozinku
+            </button>
+          )}
+          {isOwner && !member.isLead && (
+            <button
+              onClick={impersonateMember}
+              disabled={actionLoading === 'impersonate'}
+              title="Otvara članski portal u novom tabu prijavljen kao ovaj član (testni način, 2h; vaša admin sesija ostaje)"
+              className="rounded-lg border border-violet-600 bg-white px-3 py-1.5 text-sm font-medium text-violet-700 transition hover:bg-violet-600 hover:text-white disabled:opacity-50"
+            >
+              {actionLoading === 'impersonate' ? 'Otvaranje...' : 'Logiraj se kao član'}
             </button>
           )}
           {isOwner && (

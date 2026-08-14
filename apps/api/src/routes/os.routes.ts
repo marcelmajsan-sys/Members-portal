@@ -22,6 +22,8 @@ import { checkEmailCooldown } from '../services/automation-executor.js';
 import { daysUntilExpiry } from '../services/renewal.service.js';
 import { hashPassword } from '../services/auth.service.js';
 import { getTicketQuota, getActiveConference, getTicketUsage } from '../services/ticket.service.js';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 
 
 const router = Router();
@@ -548,6 +550,44 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
   });
 
   successResponse(res, { ...member, otherMemberships });
+});
+
+// POST /members/:id/impersonate — OWNER se prijavljuje na portal kao član (testni način).
+// Vraća kratkotrajni access token (2h) s oznakom imp:true — NE stvara refresh token,
+// ne dira lastLoginAt niti bilježi posjete (imp zahtjevi preskaču recordMemberVisit).
+router.post('/members/:id/impersonate', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const member = await prisma.member.findUnique({
+    where: { id: req.params.id as string },
+    include: { user: { select: { id: true, email: true, firstName: true, lastName: true, role: true, isActive: true } } },
+  });
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  if (member.user.role !== 'MEMBER') {
+    errorResponse(res, 'FORBIDDEN', 'Prijava je moguća samo kao član', 403);
+    return;
+  }
+  if (!member.user.isActive) {
+    errorResponse(res, 'FORBIDDEN', 'Korisnički račun člana je deaktiviran', 403);
+    return;
+  }
+  const accessToken = jwt.sign(
+    { userId: member.user.id, email: member.user.email, role: member.user.role, imp: true },
+    env.JWT_SECRET,
+    { expiresIn: '2h' },
+  );
+  successResponse(res, {
+    accessToken,
+    user: {
+      id: member.user.id,
+      email: member.user.email,
+      firstName: member.user.firstName,
+      lastName: member.user.lastName,
+      role: member.user.role,
+    },
+    memberId: member.id,
+  });
 });
 
 // PATCH /members/:id/lead-note — uredi napomenu leada (samo za lead zapise)
