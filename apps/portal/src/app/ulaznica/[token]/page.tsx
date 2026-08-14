@@ -139,7 +139,16 @@ export default function TicketPage() {
           </div>
         </div>
 
-        <p className="mt-6 text-center text-sm text-gray-400">members.ecommerce.hr · {c.name}</p>
+        {/* Ispod ulaznice samo preuzimanje PDF-a (bez ikakvog drugog teksta) */}
+        <div className="mt-6 text-center">
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/tickets/${params.token}/pdf`}
+            className="inline-block rounded-lg px-8 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md transition hover:opacity-90"
+            style={{ backgroundColor: NAVY }}
+          >
+            Preuzmi PDF
+          </a>
+        </div>
       </div>
     </div>
   );

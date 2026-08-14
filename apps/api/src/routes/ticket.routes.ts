@@ -4,7 +4,7 @@ import { prisma } from '@ecommerce-hr/db';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { successResponse, errorResponse } from '../utils/api-response.js';
-import { generateTicketQr, ticketUrl } from '../services/ticket.service.js';
+import { generateTicketQr, generateTicketPdf, ticketUrl } from '../services/ticket.service.js';
 
 // ─── Javna ulaznica (bez autha, rate-limited) ────────────────────────────────
 
@@ -20,6 +20,28 @@ const publicTicketLimiter = rateLimit({
 });
 
 const publicRouter = Router();
+
+// GET /api/tickets/:token/pdf — preuzimanje ulaznice kao PDF (samo CONFIRMED)
+publicRouter.get('/:token/pdf', publicTicketLimiter, async (req, res) => {
+  const ticket = await prisma.conferenceTicket.findUnique({
+    where: { token: req.params.token as string },
+    include: {
+      conference: { select: { name: true, description: true, startDate: true, location: true } },
+      member: { include: { company: { select: { name: true } } } },
+    },
+  });
+  if (!ticket || ticket.status !== 'CONFIRMED') {
+    errorResponse(res, 'NOT_FOUND', 'Ulaznica nije pronađena ili još nije potvrđena', 404);
+    return;
+  }
+  const pdf = await generateTicketPdf(ticket, ticket.conference, ticket.member.company?.name ?? null);
+  const slug = ticket.conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="ulaznica-${slug}.pdf"`,
+  });
+  res.send(pdf);
+});
 
 // GET /api/tickets/:token — javni podaci ulaznice + QR (samo CONFIRMED)
 publicRouter.get('/:token', publicTicketLimiter, async (req, res) => {

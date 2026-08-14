@@ -26,6 +26,7 @@ interface SecondaryContact {
 interface MemberRaw {
   id: string;
   memberNumber: string;
+  extraWebshops?: string[];
   memberType: string;
   memberTier: string;
   status: string;
@@ -189,9 +190,9 @@ export default function MemberDetailPage() {
   const [hasSecond, setHasSecond] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
-  // Dodatan webshop (novo članstvo za istu osobu + istu tvrtku)
+  // Dodatan webshop ISTOG člana (Member.extraWebshops — bez zasebnog članstva/profila)
   const [showWebshopModal, setShowWebshopModal] = useState(false);
-  const [webshopForm, setWebshopForm] = useState({ website: '', memberType: 'WEB_TRADER', memberTier: 'FREE' });
+  const [webshopForm, setWebshopForm] = useState({ website: '' });
   const [webshopLoading, setWebshopLoading] = useState(false);
   const [webshopError, setWebshopError] = useState('');
   // Safe Shop pristupni podaci (email + lozinka za prijavu na Safe Shop)
@@ -243,29 +244,38 @@ export default function MemberDetailPage() {
     setTimeout(() => setToast(''), 3000);
   }
 
-  // Novo članstvo za istu osobu + istu tvrtku, s vlastitim webshopom/tipom/razinom
+  // Dodaje webshop na ISTI profil člana (extraWebshops) — bez novog članstva
   async function addWebshop(e: React.FormEvent) {
     e.preventDefault();
     if (!member) return;
     setWebshopLoading(true);
     setWebshopError('');
-    const res = await api.post<{ id: string }>('/api/os/members', {
-      email: member.user.email,
-      firstName: member.user.firstName,
-      lastName: member.user.lastName,
-      companyId: member.companyId,
-      website: webshopForm.website,
-      memberType: webshopForm.memberType,
-      memberTier: webshopForm.memberTier,
+    const res = await api.patch<{ extraWebshops: string[] }>(`/api/os/members/${member.id}/webshops`, {
+      extraWebshops: [...(member.extraWebshops ?? []), webshopForm.website],
     });
     setWebshopLoading(false);
     if (res.success && res.data) {
+      setMember((m) => (m ? { ...m, extraWebshops: res.data!.extraWebshops } : m));
       setShowWebshopModal(false);
-      setWebshopForm({ website: '', memberType: 'WEB_TRADER', memberTier: 'FREE' });
-      showToast('Dodano novo članstvo za webshop');
-      router.push(`/members/${res.data.id}`);
+      setWebshopForm({ website: '' });
+      showToast('Webshop dodan članu');
     } else {
       setWebshopError(res.error?.message || 'Greška pri dodavanju');
+    }
+  }
+
+  // Uklanja dodatni webshop s profila člana
+  async function removeWebshop(site: string) {
+    if (!member) return;
+    if (!confirm(`Ukloniti webshop ${site.replace(/^https?:\/\//, '')} s profila člana?`)) return;
+    const res = await api.patch<{ extraWebshops: string[] }>(`/api/os/members/${member.id}/webshops`, {
+      extraWebshops: (member.extraWebshops ?? []).filter((s) => s !== site),
+    });
+    if (res.success && res.data) {
+      setMember((m) => (m ? { ...m, extraWebshops: res.data!.extraWebshops } : m));
+      showToast('Webshop uklonjen');
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Uklanjanje nije uspjelo'}`);
     }
   }
 
@@ -835,20 +845,20 @@ export default function MemberDetailPage() {
                     </button>
                   )}
                 </div>
-                {/* Ostali webshopovi člana (samo prikaz): web tvrtke ako se razlikuje od glavnog + ostala članstva */}
+                {/* Ostali webshopovi člana (samo prikaz): web tvrtke ako se razlikuje + extraWebshops + legacy članstva */}
                 {(() => {
                   const norm = (u: string) => u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
                   const mainSite = member.website || member.company.website || '';
                   const others: string[] = [];
-                  if (member.company.website && mainSite && norm(member.company.website) !== norm(mainSite)) {
-                    others.push(member.company.website);
-                  }
-                  for (const m of member.otherMemberships ?? []) {
-                    const site = m.website || m.company.website;
-                    if (site && (!mainSite || norm(site) !== norm(mainSite)) && !others.some((o) => norm(o) === norm(site))) {
-                      others.push(site);
-                    }
-                  }
+                  const push = (site: string | null | undefined) => {
+                    if (!site) return;
+                    if (mainSite && norm(site) === norm(mainSite)) return;
+                    if (others.some((o) => norm(o) === norm(site))) return;
+                    others.push(site);
+                  };
+                  push(member.company.website);
+                  for (const w of member.extraWebshops ?? []) push(w);
+                  for (const m of member.otherMemberships ?? []) push(m.website || m.company.website);
                   if (others.length === 0) return null;
                   return (
                     <div className="mt-3">
@@ -956,37 +966,19 @@ export default function MemberDetailPage() {
         </div>
       )}
 
-      {/* Dodaj dodatan webshop modal — novo članstvo (ista osoba, ista tvrtka) */}
+      {/* Dodaj dodatan webshop modal — webshop se veže na ISTI profil člana (bez novog članstva) */}
       {showWebshopModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h2 className="text-lg font-bold text-gray-900 mb-1">Dodaj dodatan webshop</h2>
             <p className="mb-4 text-sm text-gray-500">
-              Novo članstvo za {member.user.firstName} {member.user.lastName} ({member.user.email}) u tvrtki {member.company.name}, s vlastitim webshopom, tipom i razinom.
+              Webshop se dodaje na ovaj profil ({member.user.firstName} {member.user.lastName}, {member.company.name}) — bez zasebnog članstva. Član na portalu može pokrenuti analizu za svaki svoj webshop.
             </p>
             {webshopError && <p className="text-sm text-red-600 mb-3">{webshopError}</p>}
             <form onSubmit={addWebshop} className="space-y-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Webshop (URL) *</label>
-                <input required value={webshopForm.website} onChange={e => setWebshopForm(f => ({ ...f, website: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Tip člana</label>
-                  <select value={webshopForm.memberType} onChange={e => setWebshopForm(f => ({ ...f, memberType: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
-                    <option value="WEB_TRADER">Web trgovac</option>
-                    <option value="SERVICE_PROVIDER">Nuditelj usluga</option>
-                    <option value="PHYSICAL">Fizički član</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Razina</label>
-                  <select value={webshopForm.memberTier} onChange={e => setWebshopForm(f => ({ ...f, memberTier: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm">
-                    <option value="FREE">Besplatno</option>
-                    <option value="STANDARD">Standard</option>
-                    <option value="PREMIUM">Premium</option>
-                  </select>
-                </div>
+                <input required value={webshopForm.website} onChange={e => setWebshopForm({ website: e.target.value })} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" autoFocus />
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => { setShowWebshopModal(false); setWebshopError(''); }} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
@@ -1291,20 +1283,23 @@ export default function MemberDetailPage() {
               </div>
             )}
           </dl>
-          {/* Ostali webshopovi: web tvrtke (ako se razlikuje od glavnog) + ostala članstva osobe */}
+          {/* Ostali webshopovi ISTOG člana: web tvrtke (ako se razlikuje) + extraWebshops (uklonjivi) + legacy zasebna članstva */}
           {(() => {
             const norm = (u: string) => u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
             const stripped = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/+$/, '');
             const mainSite = member.website || member.company.website || '';
-            const others: { key: string; label: string; memberId?: string }[] = [];
-            if (member.company.website && mainSite && norm(member.company.website) !== norm(mainSite)) {
-              others.push({ key: 'company-web', label: member.company.website });
-            }
+            const seen = new Set<string>(mainSite ? [norm(mainSite)] : []);
+            const others: { key: string; label: string; memberId?: string; removable?: boolean }[] = [];
+            const push = (o: { key: string; label: string; memberId?: string; removable?: boolean }) => {
+              if (seen.has(norm(o.label))) return;
+              seen.add(norm(o.label));
+              others.push(o);
+            };
+            if (member.company.website) push({ key: 'company-web', label: member.company.website });
+            for (const w of member.extraWebshops ?? []) push({ key: `extra-${w}`, label: w, removable: true });
             for (const m of member.otherMemberships ?? []) {
               const site = m.website || m.company.website || m.company.name;
-              if (site && (!mainSite || norm(site) !== norm(mainSite)) && !others.some((o) => norm(o.label) === norm(site))) {
-                others.push({ key: m.id, label: site, memberId: m.id });
-              }
+              if (site) push({ key: m.id, label: site, memberId: m.id });
             }
             if (others.length === 0) return null;
             return (
@@ -1316,11 +1311,24 @@ export default function MemberDetailPage() {
                       <button
                         key={o.key}
                         onClick={() => router.push(`/members/${o.memberId}`)}
-                        title="Zasebno članstvo — otvori profil"
+                        title="Zasebno članstvo (staro) — otvori profil"
                         className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
                       >
                         {stripped(o.label)}
                       </button>
+                    ) : o.removable ? (
+                      <span key={o.key} className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-700">
+                        {stripped(o.label)}
+                        {isOwner && (
+                          <button
+                            onClick={() => removeWebshop(o.label)}
+                            title="Ukloni webshop s profila"
+                            className="text-gray-400 transition hover:text-red-500"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
                     ) : (
                       <span key={o.key} title="Web tvrtke" className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-500">
                         {stripped(o.label)}

@@ -66,6 +66,11 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
   const [quotaForm, setQuotaForm] = useState<{ STANDARD: string; VIP: string }>({ STANDARD: '', VIP: '' });
   const [quotaSaving, setQuotaSaving] = useState(false);
   const [quotaError, setQuotaError] = useState('');
+  // Uređivanje postojeće ulaznice (bez promjene statusa → bez emailova)
+  const [editId, setEditId] = useState('');
+  const [editTicketForm, setEditTicketForm] = useState<{ fullName: string; jobTitle: string; email: string; phone: string; type: 'VIP' | 'STANDARD' }>({ fullName: '', jobTitle: '', email: '', phone: '', type: 'STANDARD' });
+  const [editTicketSaving, setEditTicketSaving] = useState(false);
+  const [editTicketError, setEditTicketError] = useState('');
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3500); }
 
@@ -166,6 +171,35 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
       setError(res.error?.message || 'Dodavanje nije uspjelo');
     }
     setSaving(false);
+  }
+
+  // Uređivanje podataka ulaznice — NE mijenja status pa backend ne šalje nikakav email
+  function openTicketEdit(t: Ticket) {
+    setEditId(t.id);
+    setEditTicketForm({ fullName: t.fullName, jobTitle: t.jobTitle || '', email: t.email, phone: t.phone, type: t.type });
+    setEditTicketError('');
+  }
+
+  async function saveTicketEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!conference || !editId || editTicketSaving) return;
+    setEditTicketSaving(true);
+    setEditTicketError('');
+    const res = await api.put(`/api/os/conferences/${conference.id}/tickets/${editId}`, {
+      fullName: editTicketForm.fullName,
+      jobTitle: editTicketForm.jobTitle || null,
+      email: editTicketForm.email,
+      phone: editTicketForm.phone,
+      type: editTicketForm.type,
+    });
+    if (res.success) {
+      setEditId('');
+      showToast('Ulaznica ažurirana (bez slanja emaila)');
+      await fetchTickets(conference.id);
+    } else {
+      setEditTicketError(res.error?.message || 'Spremanje nije uspjelo');
+    }
+    setEditTicketSaving(false);
   }
 
   async function updateStatus(t: Ticket, status: Ticket['status']) {
@@ -318,6 +352,13 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
                 {t.status === 'CONFIRMED' && (
                   <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Ulaznica</a>
                 )}
+                <button
+                  onClick={() => (editId === t.id ? setEditId('') : openTicketEdit(t))}
+                  title="Uredi podatke ulaznice — izmjene se NE šalju emailom"
+                  className="text-xs text-gray-400 hover:text-primary"
+                >
+                  {editId === t.id ? 'Zatvori' : 'Uredi'}
+                </button>
                 {t.status === 'PENDING' && (
                   <button onClick={() => updateStatus(t, 'CONFIRMED')} disabled={busyId === t.id} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{busyId === t.id ? '...' : 'Odobri'}</button>
                 )}
@@ -327,6 +368,38 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
                   <button onClick={() => updateStatus(t, 'CONFIRMED')} disabled={busyId === t.id} className="text-xs text-gray-400 hover:text-emerald-600 disabled:opacity-50">Vrati</button>
                 )}
               </div>
+              {editId === t.id && (
+                <form onSubmit={saveTicketEdit} className="mt-2 w-full space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Ime i prezime *">
+                      <input required value={editTicketForm.fullName} onChange={(e) => setEditTicketForm(f => ({ ...f, fullName: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+                    </Field>
+                    <Field label="Funkcija">
+                      <input value={editTicketForm.jobTitle} onChange={(e) => setEditTicketForm(f => ({ ...f, jobTitle: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+                    </Field>
+                    <Field label="Email *">
+                      <input required type="email" value={editTicketForm.email} onChange={(e) => setEditTicketForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+                    </Field>
+                    <Field label="Telefon *">
+                      <input required value={editTicketForm.phone} onChange={(e) => setEditTicketForm(f => ({ ...f, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+                    </Field>
+                    <Field label="Tip ulaznice">
+                      <select value={editTicketForm.type} onChange={(e) => setEditTicketForm(f => ({ ...f, type: e.target.value as 'VIP' | 'STANDARD' }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary">
+                        <option value="STANDARD">STANDARD</option>
+                        <option value="VIP">VIP</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <p className="text-xs text-gray-400">Izmjene se samo spremaju — nikome se ne šalje email.</p>
+                  {editTicketError && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{editTicketError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setEditId('')} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-white">Odustani</button>
+                    <button type="submit" disabled={editTicketSaving} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-light disabled:opacity-50">
+                      {editTicketSaving ? 'Spremanje...' : 'Spremi'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </li>
           ))}
         </ul>

@@ -39,11 +39,12 @@ function siteKey(url: string): string {
   return url.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
 }
 
-// Svi webshopovi jednog članstva: webshop članstva (prednost) + web tvrtke, bez duplikata.
-// Član s više webshopova na istom članstvu ima pravo na kvotu analiza za SVAKI od njih.
-export function memberAnalysisSites(member: { website: string | null; company?: { website: string | null } | null }): string[] {
+// Svi webshopovi jednog člana: glavni (webshop članstva, prednost, inače web tvrtke) +
+// dodatni webshopovi (Member.extraWebshops), bez duplikata. Član s više webshopova ima
+// pravo na kvotu analiza za SVAKI od njih.
+export function memberAnalysisSites(member: { website: string | null; extraWebshops?: string[]; company?: { website: string | null } | null }): string[] {
   const sites: string[] = [];
-  for (const raw of [member.website, member.company?.website]) {
+  for (const raw of [member.website, member.company?.website, ...(member.extraWebshops ?? [])]) {
     const t = raw?.trim();
     if (t && !sites.some((s) => siteKey(s) === siteKey(t))) sites.push(t);
   }
@@ -62,7 +63,7 @@ export async function getWebshopAnalysisQuota(userId: string, memberId?: string,
   const member = await prisma.member.findFirst({
     where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, memberType: true, memberTier: true, website: true, user: { select: { email: true } }, company: { select: { website: true } } },
+    select: { id: true, memberType: true, memberTier: true, website: true, extraWebshops: true, user: { select: { email: true } }, company: { select: { website: true } } },
   });
   if (!member || !ANALYZABLE_TYPES.includes(member.memberType)) return null;
   const limit = analysesLimitFor(member.user?.email, member.memberTier);
@@ -410,7 +411,7 @@ export async function getLatestWebshopAnalysis(userId: string, memberId?: string
   const member = await prisma.member.findFirst({
     where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, website: true, company: { select: { website: true } } },
+    select: { id: true, website: true, extraWebshops: true, company: { select: { website: true } } },
   });
   if (!member) return null;
   // Bez traženog webshopa: zadnja analiza bilo kojeg (staro ponašanje).

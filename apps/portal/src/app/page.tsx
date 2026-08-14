@@ -12,6 +12,7 @@ interface Profile {
   memberTier: string;
   status: string;
   website: string | null;
+  extraWebshops?: string[];
   joinedAt: string | null;
   expiresAt: string | null;
   hasCertificate: boolean;
@@ -210,7 +211,7 @@ export default function PortalHome() {
       // Član s više webshopova: početni prikaz mora biti analiza PRVOG webshopa (aktivni tab),
       // a generički dohvat gore vraća zadnju analizu bilo kojeg — dohvati je zato ciljano.
       if (p.success && p.data) {
-        const sites = [p.data.website, p.data.company.website]
+        const sites = [p.data.website, p.data.company.website, ...(p.data.extraWebshops ?? [])]
           .filter((v): v is string => !!v && !!v.trim())
           .filter((v, i, arr) => arr.findIndex((x) => siteKey(x) === siteKey(v)) === i);
         if (sites.length > 1) {
@@ -245,9 +246,9 @@ export default function PortalHome() {
     if (res.success) setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   }
 
-  // Webshopovi dostupni za analizu na ovom članstvu (webshop članstva + web tvrtke, bez duplikata)
+  // Webshopovi dostupni za analizu (glavni + web tvrtke + dodatni webshopovi člana, bez duplikata)
   const analysisSites: string[] = profile
-    ? [profile.website, profile.company.website]
+    ? [profile.website, profile.company.website, ...(profile.extraWebshops ?? [])]
         .filter((v): v is string => !!v && !!v.trim())
         .filter((v, i, arr) => arr.findIndex((x) => siteKey(x) === siteKey(v)) === i)
     : [];

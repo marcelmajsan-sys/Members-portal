@@ -200,6 +200,9 @@ model Member {
   // članskih lista/statistika/automatizacija. Leadovi se kreiraju sa status=PENDING i bez expiresAt.
   isLead   Boolean @default(false)
   leadNote String?
+  // Dodatni webshopovi ISTOG člana (bez zasebnog članstva) — uz glavni (website ?? company.website).
+  // Član na portalu može pokrenuti AI analizu za svaki (kvota po webshopu).
+  extraWebshops String[] @default([])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

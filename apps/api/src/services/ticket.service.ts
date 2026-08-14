@@ -2,11 +2,15 @@ import crypto from 'node:crypto';
 import { prisma } from '@ecommerce-hr/db';
 import type { Conference, ConferenceTicket, Member, TicketType, User, Company } from '@ecommerce-hr/db';
 import bwipjs from 'bwip-js';
+import { PDFDocument, rgb } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import { sendEmail } from '@ecommerce-hr/email';
+import { robotoRegularBase64, robotoBoldBase64 } from '../assets/embedded-assets.js';
 import { notifyStaff } from './notification.service.js';
 import { logger } from '../utils/logger.js';
 
 const PORTAL_URL = process.env.MEMBER_APP_URL ?? 'https://members.ecommerce.hr';
+const API_BASE = process.env.API_BASE_URL ?? 'https://api.ecommerce.hr';
 
 export const TICKET_TYPES: TicketType[] = ['VIP', 'STANDARD'];
 
@@ -310,6 +314,96 @@ export async function generateTicketQr(token: string): Promise<string> {
   return `data:image/png;base64,${png.toString('base64')}`;
 }
 
+// Javni URL za preuzimanje ulaznice kao PDF
+export function ticketPdfUrl(token: string): string {
+  return `${API_BASE}/api/tickets/${token}/pdf`;
+}
+
+// ─── PDF ulaznice ─────────────────────────────────────────────────────────────
+
+// Generira ulaznicu kao PDF (isti sadržaj kao javna stranica: konferencija, tip, vlasnik,
+// QR kod, dvojezična napomena). Roboto fontovi zbog hrvatskih znakova.
+export async function generateTicketPdf(
+  ticket: Pick<ConferenceTicket, 'fullName' | 'jobTitle' | 'email' | 'type' | 'token'>,
+  conference: Pick<Conference, 'name' | 'description' | 'startDate' | 'location'>,
+  companyName: string | null,
+): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
+  const fontRegular = await pdfDoc.embedFont(Buffer.from(robotoRegularBase64, 'base64'), { subset: true });
+  const fontBold = await pdfDoc.embedFont(Buffer.from(robotoBoldBase64, 'base64'), { subset: true });
+
+  const W = 700;
+  const H = 330;
+  const page = pdfDoc.addPage([W, H]);
+  const navy = rgb(0.06, 0.09, 0.16);
+  const dark = rgb(0.12, 0.16, 0.22);
+  const gray = rgb(0.42, 0.45, 0.5);
+  const light = rgb(0.62, 0.65, 0.7);
+  const orange = rgb(0.93, 0.5, 0.13);
+
+  // Tamni okvir + narančasti akcent gore desno (kao na javnoj stranici ulaznice)
+  page.drawRectangle({ x: 6, y: 6, width: W - 12, height: H - 12, borderColor: navy, borderWidth: 8 });
+  page.drawRectangle({ x: W - 290, y: H - 14, width: 276, height: 8, color: orange });
+
+  const left = 40;
+  let y = H - 62;
+  page.drawText('ULAZNICA · TICKET', { x: left, y, size: 9, font: fontBold, color: light });
+  y -= 30;
+  page.drawText(conference.name.toUpperCase(), { x: left, y, size: 25, font: fontBold, color: navy });
+  y -= 24;
+  page.drawText(fmtDate(conference.startDate), { x: left, y, size: 13, font: fontBold, color: dark });
+  y -= 17;
+  if (conference.location) {
+    page.drawText(conference.location, { x: left, y, size: 10.5, font: fontRegular, color: gray });
+    y -= 15;
+  }
+  if (conference.description) {
+    page.drawText(conference.description, { x: left, y, size: 10.5, font: fontBold, color: dark });
+    y -= 15;
+  }
+  y -= 10;
+  page.drawText(`Tip ulaznice: ${ticket.type}`, { x: left, y, size: 11, font: fontBold, color: dark });
+  y -= 20;
+  if (ticket.jobTitle) {
+    page.drawText(ticket.jobTitle, { x: left, y, size: 10.5, font: fontRegular, color: gray });
+    y -= 15;
+  }
+  page.drawText(ticket.email, { x: left, y, size: 10.5, font: fontRegular, color: dark });
+  y -= 15;
+  if (companyName) {
+    page.drawText(companyName, { x: left, y, size: 10.5, font: fontRegular, color: dark });
+  }
+
+  // Desno: QR kod + vlasnik
+  const qrPng = await bwipjs.toBuffer({ bcid: 'qrcode', text: ticketUrl(ticket.token), scale: 6, includetext: false });
+  const qrImage = await pdfDoc.embedPng(qrPng);
+  const qrSize = 150;
+  const qrX = W - qrSize - 55;
+  const qrY = H - qrSize - 55;
+  page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+  const ownerLabel = 'VLASNIK ULAZNICE';
+  const ownerLabelW = fontBold.widthOfTextAtSize(ownerLabel, 8);
+  page.drawText(ownerLabel, { x: qrX + qrSize / 2 - ownerLabelW / 2, y: qrY - 18, size: 8, font: fontBold, color: light });
+  const ownerW = fontBold.widthOfTextAtSize(ticket.fullName, 13);
+  page.drawText(ticket.fullName, { x: qrX + qrSize / 2 - ownerW / 2, y: qrY - 34, size: 13, font: fontBold, color: navy });
+
+  // Dvojezična napomena na dnu
+  const noteLines = [
+    'Ulaznica vrijedi za cijeli dan (uključujući party), glasi na ime i prezime i nije prenosiva.',
+    'Ulaznicu je potrebno zamijeniti za akreditaciju na registracijskom pultu konferencije.',
+    "The ticket is valid for all day (including party), it's under your name and it's not transferable.",
+    'The ticket needs to be exchanged for a Conference pass at the registration desk.',
+  ];
+  let ny = 58;
+  for (const line of noteLines) {
+    page.drawText(line, { x: left, y: ny, size: 8, font: fontRegular, color: gray });
+    ny -= 11;
+  }
+
+  return Buffer.from(await pdfDoc.save());
+}
+
 // ─── Emailovi ─────────────────────────────────────────────────────────────────
 
 function fmtDate(d: Date | null): string {
@@ -321,23 +415,42 @@ function emailShell(body: string): string {
   return `<!DOCTYPE html><html lang="hr"><body style="font-family:Helvetica,Arial,sans-serif;color:#1f2937;line-height:1.6;">${body}</body></html>`;
 }
 
-// 1. Osobi za ulaznicu — kad postane CONFIRMED (kod dodavanja ili admin odobrenja)
+// 1. Osobi za ulaznicu — kad postane CONFIRMED (kod dodavanja ili admin odobrenja).
+// Ulaznica (PDF) ide u privitku + gumbi "Otvori ulaznicu" i "Preuzmi PDF";
+// nigdje se ne spominje members portal (ni golim URL-om).
 export async function sendTicketConfirmedEmail(
   conference: Conference,
   ticket: ConferenceTicket,
   member: MemberWithUser,
 ): Promise<void> {
+  const pdfFilename = `ulaznica-${conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')}.pdf`;
+  let pdfBase64: string | null = null;
+  try {
+    const pdf = await generateTicketPdf(ticket, conference, member.company?.name ?? null);
+    pdfBase64 = pdf.toString('base64');
+  } catch (err) {
+    logger.error(err, 'Ticket PDF generation failed — email ide bez privitka');
+  }
+
   const html = emailShell(`
     <p>Poštovani ${ticket.fullName},</p>
     <p><strong>${member.company?.name || `${member.user.firstName} ${member.user.lastName}`}</strong> vam je osigurao/la ulaznicu za konferenciju <strong>${conference.name}</strong>${conference.location ? ` (${conference.location})` : ''}, ${fmtDate(conference.startDate)}</p>
     <p style="font-size:16px;font-weight:600;color:#1B365D;">Tip ulaznice: ${ticket.type}</p>
-    <p>Vaša ulaznica s QR kodom: <a href="${ticketUrl(ticket.token)}" style="color:#E8A838;font-weight:bold;">${ticketUrl(ticket.token)}</a></p>
+    <p>Vaša ulaznica s QR kodom nalazi se u privitku ovog emaila (PDF).</p>
+    <p>
+      <a href="${ticketUrl(ticket.token)}" style="display:inline-block;background:#1B365D;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold;">Otvori ulaznicu</a>
+      &nbsp;
+      <a href="${ticketPdfUrl(ticket.token)}" style="display:inline-block;background:#ffffff;color:#1B365D;border:2px solid #1B365D;padding:8px 18px;border-radius:8px;text-decoration:none;font-weight:bold;">Preuzmi PDF</a>
+    </p>
     <p style="font-size:13px;color:#6b7280;">Ulaznicu pokažite na ulazu (na mobitelu ili isprintanu).</p>
     <p>Srdačan pozdrav,<br/><strong>Udruga eCommerce Hrvatska</strong></p>
   `);
   await sendEmail(ticket.email, `Vaša ulaznica za ${conference.name}`, html, {
     templateName: 'ticket-confirmed',
     memberId: member.id,
+    ...(pdfBase64
+      ? { attachments: [{ filename: pdfFilename, content: pdfBase64, contentType: 'application/pdf' }] }
+      : {}),
   });
 }
 
@@ -354,7 +467,7 @@ export async function sendMemberAddedEmail(
        <p>Uskoro ćemo vam poslati ponudu za dodatnu ulaznicu uz <strong>${conference.extraDiscount}% popusta</strong>. Nakon uplate ulaznica se aktivira.</p>`
     : `<p>Poštovani ${member.user.firstName},</p>
        <p>Osoba <strong>${ticket.fullName}</strong> (${ticket.email}) uspješno je dodana za konferenciju <strong>${conference.name}</strong> (tip: ${ticket.type}).</p>
-       <p>Ulaznica s QR kodom poslana je na email osobe, a dostupna je i na: <a href="${ticketUrl(ticket.token)}" style="color:#E8A838;">${ticketUrl(ticket.token)}</a></p>`;
+       <p>Ulaznica s QR kodom poslana je na email osobe, a možete je i sami <a href="${ticketUrl(ticket.token)}" style="color:#E8A838;font-weight:bold;">otvoriti</a> ili <a href="${ticketPdfUrl(ticket.token)}" style="color:#E8A838;font-weight:bold;">preuzeti kao PDF</a>.</p>`;
   const html = emailShell(`${body}<p>Srdačan pozdrav,<br/><strong>Udruga eCommerce Hrvatska</strong></p>`);
   await sendEmail(
     member.user.email,

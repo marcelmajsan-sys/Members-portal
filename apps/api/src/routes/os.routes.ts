@@ -565,6 +565,36 @@ router.patch('/members/:id/lead-note', requireRole('OWNER'), validateParams(idPa
   successResponse(res, { leadNote: updated.leadNote });
 });
 
+// PATCH /members/:id/webshops — dodatni webshopovi ISTOG člana (bez zasebnog članstva).
+// Body { extraWebshops: string[] } zamjenjuje cijelu listu; normalizira/deduplicira i izbacuje glavni.
+router.patch('/members/:id/webshops', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const member = await prisma.member.findUnique({
+    where: { id: req.params.id as string },
+    select: { id: true, website: true, company: { select: { website: true } } },
+  });
+  if (!member) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  const raw = req.body?.extraWebshops;
+  if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) {
+    errorResponse(res, 'VALIDATION', 'Lista webshopova nije ispravna', 400);
+    return;
+  }
+  const norm = (u: string) => u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+  const main = member.website || member.company?.website || '';
+  const list: string[] = [];
+  for (const v of raw as string[]) {
+    const t = v.trim();
+    if (!t) continue;
+    if (main && norm(t) === norm(main)) continue; // glavni webshop se ne duplira u listi
+    if (list.some((x) => norm(x) === norm(t))) continue;
+    list.push(t);
+  }
+  const updated = await prisma.member.update({ where: { id: member.id }, data: { extraWebshops: list } });
+  successResponse(res, { extraWebshops: updated.extraWebshops });
+});
+
 // GET /members/:id/benefits — benefiti člana ({ available, claimed }) za admin prikaz na profilu
 router.get('/members/:id/benefits', validateParams(idParamSchema), async (req, res) => {
   const perks = await getMemberPerksById(req.params.id as string);
