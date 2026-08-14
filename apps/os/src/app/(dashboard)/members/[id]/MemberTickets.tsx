@@ -47,8 +47,9 @@ interface QuotaInfo {
   usage: { STANDARD: number; VIP: number } | null;
 }
 
-// Ulaznice člana na profilu — ručno dodavanje od strane admina (bez kvote)
-export default function MemberTickets({ memberId }: { memberId: string }) {
+// Ulaznice člana na profilu — ručno dodavanje od strane admina (bez kvote).
+// showQuota=false (profil leada): bez prikaza/uređivanja kvote za samostalni unos.
+export default function MemberTickets({ memberId, showQuota = true }: { memberId: string; showQuota?: boolean }) {
   const [conference, setConference] = useState<Conference | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,7 +201,7 @@ export default function MemberTickets({ memberId }: { memberId: string }) {
         </button>
       </div>
 
-      {quotaInfo?.quota && (
+      {showQuota && quotaInfo?.quota && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
           <span className="font-medium text-gray-700">Kvota za samostalni unos (portal):</span>
           <span>STANDARD {quotaInfo.usage?.STANDARD ?? 0}/{quotaInfo.quota.STANDARD}</span>

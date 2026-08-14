@@ -159,8 +159,10 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
 
   const companyIdParam = req.query.companyId as string | undefined;
 
-  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean } = {};
+  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean; isLead?: boolean } = {};
   if (companyIdParam) filters.companyId = companyIdParam;
+  // ?isLead=true → lista leadova (stranica /admin/leads); bez toga samo članovi
+  if (req.query.isLead === 'true') filters.isLead = true;
   if (tier && ['FREE', 'STANDARD', 'PREMIUM'].includes(tier)) filters.tier = tier;
 
   // Expiring soon filter: ?expiring=30 (days)
@@ -219,15 +221,15 @@ router.get('/members/counts', async (_req, res) => {
     statusGroups, certGroups, academyGroups,
     promoKonfG, promoMeetG, promoMagG, promoWebG, promoOstG, magazinG,
   ] = await Promise.all([
-    prisma.member.groupBy({ by: ['memberType', 'status'], _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { hasCertificate: true }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { hasAcademy: true }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { promoKonferencija: true }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { promoMeetup: true }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { promoMagazin: true }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { promoWeb: true }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { promoOstalo: { not: null } }, _count: { _all: true } }),
-    prisma.member.groupBy({ by: ['memberType'], where: { magazinDobrePrice: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType', 'status'], where: { isLead: false }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, hasCertificate: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, hasAcademy: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, promoKonferencija: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, promoMeetup: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, promoMagazin: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, promoWeb: true }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, promoOstalo: { not: null } }, _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false, magazinDobrePrice: true }, _count: { _all: true } }),
   ]);
 
   type TypeGroup = { memberType: MemberType; _count: { _all: number } };
@@ -320,7 +322,7 @@ router.get('/companies', async (_req: AuthRequest, res) => {
 // Tvrtka: postojeća preko companyId, reuse po OIB-u, ili nova.
 router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const { email, firstName, lastName, companyId, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus } = req.body;
+    const { email, firstName, lastName, companyId, companyName, oib, website, address, phone, memberType, memberTier, hasCertificate, hasAcademy, safeShopStatus, isLead, leadNote } = req.body;
 
     if (!email || !firstName || !memberType) {
       errorResponse(res, 'VALIDATION', 'Email, ime i tip su obavezni', 400);
@@ -393,9 +395,12 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
           website: website?.trim() || null,
           memberType,
           memberTier: tier,
-          status: 'ACTIVE',
-          joinedAt: now,
-          expiresAt,
+          // Lead NIJE član: PENDING bez datuma isteka → renewal cron i automatizacije
+          // za ACTIVE članove ga preskaču.
+          status: isLead ? 'PENDING' : 'ACTIVE',
+          joinedAt: isLead ? null : now,
+          expiresAt: isLead ? null : expiresAt,
+          ...(isLead && { isLead: true, leadNote: (leadNote as string | undefined)?.trim() || null }),
           ...(hasCertificate !== undefined && { hasCertificate: !!hasCertificate }),
           ...(hasAcademy !== undefined && { hasAcademy: !!hasAcademy }),
           ...(safeShopStatus !== undefined && { safeShopStatus: safeShopStatus || null }),
@@ -404,16 +409,18 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
       });
     });
 
-    // Emit activation event (triggers welcome email automation)
-    await emitEvent('member.activated', { memberId: member.id, userId: member.userId });
+    // Emit activation event (triggers welcome email automation) — ne za leadove
+    if (!isLead) {
+      await emitEvent('member.activated', { memberId: member.id, userId: member.userId });
+    }
 
-    // Inbox: notify staff about the new member (await — serverless freeze nakon odgovora)
+    // Inbox: notify staff about the new member/lead (await — serverless freeze nakon odgovora)
     try {
       await notifyStaff({
         type: 'INFO',
-        title: 'Novi član',
-        message: `${member.user.firstName} ${member.user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} dodan/a kao član.`,
-        actionUrl: `/members/${member.id}`,
+        title: isLead ? 'Novi lead' : 'Novi član',
+        message: `${member.user.firstName} ${member.user.lastName}${member.company?.name ? ` (${member.company.name})` : ''} ${isLead ? 'dodan/a kao lead.' : 'dodan/a kao član.'}`,
+        actionUrl: isLead ? `/leads/${member.id}` : `/members/${member.id}`,
       });
     } catch { /* ne ruši kreiranje člana */ }
 
@@ -427,6 +434,7 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
 // GET /members/export — Download all members as CSV
 router.get('/members/export', async (_req: AuthRequest, res) => {
   const members = await prisma.member.findMany({
+    where: { isLead: false },
     include: {
       user: { select: { firstName: true, lastName: true, email: true } },
       company: true,
@@ -539,6 +547,21 @@ router.get('/members/:id', validateParams(idParamSchema), async (req, res) => {
   });
 
   successResponse(res, { ...member, otherMemberships });
+});
+
+// PATCH /members/:id/lead-note — uredi napomenu leada (samo za lead zapise)
+router.patch('/members/:id/lead-note', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const member = await prisma.member.findUnique({
+    where: { id: req.params.id as string },
+    select: { id: true, isLead: true },
+  });
+  if (!member || !member.isLead) {
+    errorResponse(res, 'NOT_FOUND', 'Lead nije pronađen', 404);
+    return;
+  }
+  const leadNote = typeof req.body.leadNote === 'string' ? req.body.leadNote.trim() || null : null;
+  const updated = await prisma.member.update({ where: { id: member.id }, data: { leadNote } });
+  successResponse(res, { leadNote: updated.leadNote });
 });
 
 // GET /members/:id/benefits — benefiti člana ({ available, claimed }) za admin prikaz na profilu

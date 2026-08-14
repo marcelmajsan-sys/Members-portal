@@ -36,11 +36,12 @@ export async function recordMemberVisit(memberId: string, windowMinutes = 30): P
 export async function getAllMembers(
   page: number,
   limit: number,
-  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean },
+  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean; isLead?: boolean },
 ): Promise<{ members: Member[]; total: number }> {
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = {};
+  // Leadovi su odvojeni od članova — bez eksplicitnog isLead=true lista vraća samo članove
+  const where: Record<string, unknown> = { isLead: filters?.isLead ?? false };
   if (filters?.companyId) where.companyId = filters.companyId;
   if (filters?.tier) where.memberTier = filters.tier;
   if (filters?.type) {
@@ -139,8 +140,10 @@ export async function searchMembers(query: string, limit = 8) {
   const words = q.split(/\s+/).filter(w => w.length > 0);
 
   // If multiple words, search for each word matching firstName/lastName (AND)
+  // Leadovi su isključeni — globalna tražilica vodi na profile članova
   const where = words.length > 1
     ? {
+        isLead: false,
         AND: words.map(word => ({
           OR: [
             { user: { firstName: { contains: word, mode: 'insensitive' as const } } },
@@ -149,6 +152,7 @@ export async function searchMembers(query: string, limit = 8) {
         })),
       }
     : {
+        isLead: false,
         OR: [
           { user: { firstName: { contains: q, mode: 'insensitive' as const } } },
           { user: { lastName: { contains: q, mode: 'insensitive' as const } } },

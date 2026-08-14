@@ -26,11 +26,11 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     ticketsThisMonth,
     recentLogins,
   ] = await Promise.all([
-    prisma.member.count(),
-    prisma.member.count({ where: { status: 'ACTIVE' } }),
-    prisma.member.count({ where: { status: 'PENDING' } }),
-    prisma.member.count({ where: { status: 'EXPIRED' } }),
-    prisma.member.count({ where: { status: 'SUSPENDED' } }),
+    prisma.member.count({ where: { isLead: false } }),
+    prisma.member.count({ where: { isLead: false, status: 'ACTIVE' } }),
+    prisma.member.count({ where: { isLead: false, status: 'PENDING' } }),
+    prisma.member.count({ where: { isLead: false, status: 'EXPIRED' } }),
+    prisma.member.count({ where: { isLead: false, status: 'SUSPENDED' } }),
     prisma.offer.count({ where: { status: 'SENT' } }),
     prisma.payment.aggregate({
       _sum: { amount: true },
@@ -47,6 +47,7 @@ export async function getDashboardStats(userId: string, userRole?: string) {
       },
     }),
     prisma.member.findMany({
+      where: { isLead: false },
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -64,6 +65,7 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     }),
     prisma.member.findMany({
       where: {
+        isLead: false,
         status: 'ACTIVE',
         expiresAt: {
           gte: now,
@@ -86,6 +88,7 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     }),
     prisma.member.findMany({
       where: {
+        isLead: false,
         status: 'ACTIVE',
         expiresAt: {
           gte: now,
@@ -117,7 +120,7 @@ export async function getDashboardStats(userId: string, userRole?: string) {
     prisma.conferenceTicket.count({ where: { status: 'PENDING' } }).catch(() => 0),
     prisma.conferenceTicket.count({ where: { status: { not: 'CANCELLED' }, createdAt: { gte: startOfMonth } } }).catch(() => 0),
     prisma.member.findMany({
-      where: { lastLoginAt: { not: null } },
+      where: { isLead: false, lastLoginAt: { not: null } },
       orderBy: { lastLoginAt: 'desc' },
       take: 8,
       select: {
@@ -171,6 +174,7 @@ export async function getDashboardAnalytics() {
   // Fetch all data in parallel
   const [allMembers, allPayments, operators] = await Promise.all([
     prisma.member.findMany({
+      where: { isLead: false },
       select: {
         id: true,
         status: true,
@@ -327,6 +331,7 @@ export async function getRecentActivity(limit: number) {
       },
     }),
     prisma.member.findMany({
+      where: { isLead: false },
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {

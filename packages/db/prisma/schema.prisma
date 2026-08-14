@@ -196,6 +196,10 @@ model Member {
   promoOstalo       String?
   // Per-member override kvote ulaznica: { "STANDARD": 3, "VIP": 1 } — ima prednost pred Conference.ticketQuotas
   ticketQuotaOverride Json?
+  // Lead (potencijalni kontakt, NIJE član) — vidljiv samo pod /admin/leads, isključen iz svih
+  // članskih lista/statistika/automatizacija. Leadovi se kreiraju sa status=PENDING i bez expiresAt.
+  isLead   Boolean @default(false)
+  leadNote String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

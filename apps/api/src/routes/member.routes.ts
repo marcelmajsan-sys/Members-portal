@@ -49,8 +49,9 @@ function selectedMemberId(req: AuthRequest): string | undefined {
 
 // GET /memberships — sva članstva korisnika (portal switcher webshopova)
 router.get('/memberships', async (req: AuthRequest, res) => {
+  // Leadovi se ne prikazuju u portal switcheru (isti email može biti i član i lead)
   const memberships = await prisma.member.findMany({
-    where: { userId: req.user!.userId },
+    where: { userId: req.user!.userId, isLead: false },
     orderBy: { createdAt: 'asc' },
     select: {
       id: true,

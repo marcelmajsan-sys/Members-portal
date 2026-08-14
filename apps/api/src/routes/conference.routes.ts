@@ -236,7 +236,8 @@ router.post('/:id/tickets', validate(adminCreateTicketSchema), async (req: AuthR
   if (ticket.status === 'CONFIRMED') {
     try {
       await sendTicketConfirmedEmail(conference, ticket, member);
-      await sendMemberAddedEmail(conference, ticket, member, false);
+      // Lead je sam ta osoba — obavijest "članu koji je dodao" bi bila duplikat na isti email
+      if (!member.isLead) await sendMemberAddedEmail(conference, ticket, member, false);
     } catch (err) {
       logger.error(err, 'Admin ticket creation emails failed');
     }
@@ -296,7 +297,7 @@ router.put('/:id/tickets/:tid', validate(adminTicketSchema), async (req: AuthReq
       ]);
       if (conference && member) {
         await sendTicketConfirmedEmail(conference, updated, member);
-        await sendMemberAddedEmail(conference, updated, member, false);
+        if (!member.isLead) await sendMemberAddedEmail(conference, updated, member, false);
       }
     } catch (err) {
       logger.error(err, 'Ticket approval emails failed');

@@ -103,7 +103,7 @@ router.post('/:id/trigger', async (req, res) => {
 
     // Get all active members to send event notifications
     const members = await prisma.member.findMany({
-      where: { status: 'ACTIVE' },
+      where: { isLead: false, status: 'ACTIVE' },
       select: { id: true, userId: true },
     });
 

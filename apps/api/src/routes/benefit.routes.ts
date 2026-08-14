@@ -38,7 +38,7 @@ const benefitInclude = {
 router.get('/', async (_req, res) => {
   const [benefits, membersByType] = await Promise.all([
     prisma.benefit.findMany({ include: benefitInclude, orderBy: { createdAt: 'desc' } }),
-    prisma.member.groupBy({ by: ['memberType'], _count: { _all: true } }),
+    prisma.member.groupBy({ by: ['memberType'], where: { isLead: false }, _count: { _all: true } }),
   ]);
   const typeCount = (t: string) => membersByType.find((g) => g.memberType === t)?._count._all ?? 0;
 
@@ -63,7 +63,7 @@ router.get('/:id/members', async (req, res) => {
   const [eligible, grants] = await Promise.all([
     prisma.member.findMany({
       where: benefit.memberTypes.length > 0
-        ? { memberType: { in: benefit.memberTypes } }
+        ? { isLead: false, memberType: { in: benefit.memberTypes } }
         : { id: { in: [] } }, // no type targeting → only individually assigned (below)
       select: {
         id: true, memberType: true, status: true,

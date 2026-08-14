@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
+import LeadAddModal from '@/components/lead-add-modal';
 
 interface Conference {
   id: string;
@@ -31,6 +33,7 @@ interface Ticket {
   createdAt: string;
   member: {
     id: string;
+    isLead?: boolean;
     company: { name: string } | null;
     user: { firstName: string; lastName: string; email: string };
   };
@@ -81,6 +84,7 @@ export default function TicketsPage() {
   const [search, setSearch] = useState('');
 
   const [showSettings, setShowSettings] = useState(false);
+  const [showLeadModal, setShowLeadModal] = useState(false);
 
   const selected = conferences.find((c) => c.id === selectedId) || null;
 
@@ -188,6 +192,13 @@ export default function TicketsPage() {
           )}
           {selected && (
             <>
+              <button
+                onClick={() => setShowLeadModal(true)}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-dark"
+                title="Dodaj novi kontakt (lead) i izradi mu ulaznicu"
+              >
+                + Dodaj kontakt
+              </button>
               <button onClick={() => setShowSettings(true)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
                 ⚙ Postavke
               </button>
@@ -284,6 +295,17 @@ export default function TicketsPage() {
         </>
       )}
 
+      {showLeadModal && selected && (
+        <LeadAddModal
+          conference={{ id: selected.id, name: selected.name }}
+          onClose={() => setShowLeadModal(false)}
+          onCreated={({ ticketCreated }) => {
+            showToast(ticketCreated ? 'Kontakt dodan i ulaznica izrađena' : 'Kontakt dodan (lead)');
+            Promise.all([fetchTickets(), fetchConferences()]);
+          }}
+        />
+      )}
+
       {showSettings && (
         <ConferenceSettingsModal
           conference={selected}
@@ -332,7 +354,18 @@ function TicketTable({
                 {t.jobTitle && <p className="text-xs text-gray-400">{t.jobTitle}</p>}
               </td>
               <td className="px-4 py-3">
-                <p className="text-gray-700">{t.member.user.firstName} {t.member.user.lastName}</p>
+                <p className="text-gray-700">
+                  {t.member.isLead ? (
+                    <Link href={`/leads/${t.member.id}`} className="hover:underline">
+                      {t.member.user.firstName} {t.member.user.lastName}
+                    </Link>
+                  ) : (
+                    <>{t.member.user.firstName} {t.member.user.lastName}</>
+                  )}
+                  {t.member.isLead && (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">LEAD</span>
+                  )}
+                </p>
                 {t.member.company?.name && <p className="text-xs text-gray-400">{t.member.company.name}</p>}
               </td>
               <td className="px-4 py-3">
