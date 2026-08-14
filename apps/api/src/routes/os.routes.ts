@@ -895,14 +895,14 @@ router.patch('/members/:id/certificates', validateParams(idParamSchema), async (
 router.patch('/members/:id/profile', validateParams(idParamSchema), async (req: AuthRequest, res) => {
   try {
     const {
-      firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberType, joinedAt, expiresAt,
+      firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberWebsite, companyWebsite, memberType, joinedAt, expiresAt,
       // Osobni podaci kontakt osobe (član kao fizička osoba)
       dateOfBirth, personalOib, personalAddress, personalZip, personalCity, personalCountry, personalPhone, personalNote,
       // Druga kontakt osoba (objekt = upsert, null = ukloni, undefined = ne diraj)
       secondaryContact,
     } = req.body;
     const member = await adminUpdateMemberProfile(req.params.id as string, {
-      firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberType,
+      firstName, lastName, email, companyName, oib, address, city, postalCode, phone, website, memberWebsite, companyWebsite, memberType,
       dateOfBirth, personalOib, personalAddress, personalZip, personalCity, personalCountry, personalPhone, personalNote,
       secondaryContact,
       ...(joinedAt && { joinedAt: new Date(joinedAt) }),

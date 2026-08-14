@@ -269,21 +269,29 @@ router.post('/perks/:benefitId/claim', async (req: AuthRequest, res) => {
   successResponse(res, { message: 'Benefit zatražen', alreadyClaimed: result.alreadyClaimed });
 });
 
+// Odabrani webshop za analizu — opcionalni ?website= (član s više webshopova bira koji analizira;
+// servis ga validira protiv webshopova članstva, tuđi URL se ignorira/odbija).
+function selectedWebsite(req: AuthRequest): string | undefined {
+  const v = req.query.website;
+  return typeof v === 'string' && v ? v : undefined;
+}
+
 // GET /webshop-analysis — latest AI webshop analysis for the member (or null)
 router.get('/webshop-analysis', async (req: AuthRequest, res) => {
-  const analysis = await getLatestWebshopAnalysis(req.user!.userId, selectedMemberId(req));
+  const analysis = await getLatestWebshopAnalysis(req.user!.userId, selectedMemberId(req), selectedWebsite(req));
   successResponse(res, analysis);
 });
 
-// GET /webshop-analysis/quota — koliko je analiza član iskoristio/preostalo (godišnji limit)
+// GET /webshop-analysis/quota — koliko je analiza član iskoristio/preostalo (godišnji limit po webshopu)
 router.get('/webshop-analysis/quota', async (req: AuthRequest, res) => {
-  const quota = await getWebshopAnalysisQuota(req.user!.userId, selectedMemberId(req));
+  const quota = await getWebshopAnalysisQuota(req.user!.userId, selectedMemberId(req), selectedWebsite(req));
   successResponse(res, quota);
 });
 
 // POST /webshop-analysis — run a fresh AI webshop analysis (synchronous)
 router.post('/webshop-analysis', async (req: AuthRequest, res) => {
-  const result = await requestWebshopAnalysis(req.user!.userId, selectedMemberId(req));
+  const bodyWebsite = typeof req.body?.website === 'string' && req.body.website ? req.body.website : undefined;
+  const result = await requestWebshopAnalysis(req.user!.userId, selectedMemberId(req), bodyWebsite);
 
   // Uspješan rezultat je WebshopAnalysis zapis koji TAKOĐER ima polje `error` (nullable
   // kolona, `null` pri uspjehu) — zato `'error' in result` ne razlikuje uspjeh od greške.

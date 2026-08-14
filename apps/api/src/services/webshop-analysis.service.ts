@@ -34,19 +34,46 @@ function analysesLimitFor(email?: string | null, memberTier?: string | null): nu
   return memberTier === 'PREMIUM' ? ANALYSES_PER_YEAR_PREMIUM : ANALYSES_PER_YEAR;
 }
 
+// Normalizirani ključ webshopa za usporedbu URL-ova (bez protokola/www/kose crte na kraju).
+function siteKey(url: string): string {
+  return url.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+}
+
+// Svi webshopovi jednog članstva: webshop članstva (prednost) + web tvrtke, bez duplikata.
+// Član s više webshopova na istom članstvu ima pravo na kvotu analiza za SVAKI od njih.
+export function memberAnalysisSites(member: { website: string | null; company?: { website: string | null } | null }): string[] {
+  const sites: string[] = [];
+  for (const raw of [member.website, member.company?.website]) {
+    const t = raw?.trim();
+    if (t && !sites.some((s) => siteKey(s) === siteKey(t))) sites.push(t);
+  }
+  return sites;
+}
+
+// Odabrani webshop: traženi (ako pripada članstvu) ili prvi dostupni.
+function resolveSite(sites: string[], requested?: string): string | undefined {
+  if (!requested) return sites[0];
+  return sites.find((s) => siteKey(s) === siteKey(requested));
+}
+
 // Koliko je analiza član iskoristio u zadnjih godinu dana + koliko ih je preostalo.
-export async function getWebshopAnalysisQuota(userId: string, memberId?: string) {
+// Kvota se broji PO WEBSHOPU (websiteUrl) — svaki webshop članstva ima vlastiti limit.
+export async function getWebshopAnalysisQuota(userId: string, memberId?: string, website?: string) {
   const member = await prisma.member.findFirst({
     where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, memberType: true, memberTier: true, user: { select: { email: true } } },
+    select: { id: true, memberType: true, memberTier: true, website: true, user: { select: { email: true } }, company: { select: { website: true } } },
   });
   if (!member || !ANALYZABLE_TYPES.includes(member.memberType)) return null;
   const limit = analysesLimitFor(member.user?.email, member.memberTier);
-  const used = await prisma.webshopAnalysis.count({
+  const sites = memberAnalysisSites(member);
+  const target = resolveSite(sites, website);
+  const rows = await prisma.webshopAnalysis.findMany({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
+    select: { websiteUrl: true },
   });
-  return { used, remaining: Math.max(0, limit - used), limit };
+  const used = target ? rows.filter((r) => siteKey(r.websiteUrl) === siteKey(target)).length : rows.length;
+  return { used, remaining: Math.max(0, limit - used), limit, website: target ?? null };
 }
 
 function normalizeUrl(raw: string): string {
@@ -379,16 +406,29 @@ async function fetchCoreWebVitals(url: string): Promise<CoreWebVitals | null> {
   }
 }
 
-export async function getLatestWebshopAnalysis(userId: string, memberId?: string) {
-  const member = await prisma.member.findFirst({ where: { userId, ...(memberId ? { id: memberId } : {}) }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+export async function getLatestWebshopAnalysis(userId: string, memberId?: string, website?: string) {
+  const member = await prisma.member.findFirst({
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, website: true, company: { select: { website: true } } },
+  });
   if (!member) return null;
-  return prisma.webshopAnalysis.findFirst({
+  // Bez traženog webshopa: zadnja analiza bilo kojeg (staro ponašanje).
+  // S traženim webshopom: zadnja analiza upravo tog webshopa (usporedba normaliziranih URL-ova).
+  if (!website) {
+    return prisma.webshopAnalysis.findFirst({ where: { memberId: member.id }, orderBy: { createdAt: 'desc' } });
+  }
+  const target = resolveSite(memberAnalysisSites(member), website);
+  if (!target) return null;
+  const rows = await prisma.webshopAnalysis.findMany({
     where: { memberId: member.id },
     orderBy: { createdAt: 'desc' },
+    take: 30,
   });
+  return rows.find((r) => siteKey(r.websiteUrl) === siteKey(target)) ?? null;
 }
 
-export async function requestWebshopAnalysis(userId: string, memberId?: string) {
+export async function requestWebshopAnalysis(userId: string, memberId?: string, requestedWebsite?: string) {
   const member = await prisma.member.findFirst({
     where: { userId, ...(memberId ? { id: memberId } : {}) },
     orderBy: { createdAt: 'asc' },
@@ -399,8 +439,9 @@ export async function requestWebshopAnalysis(userId: string, memberId?: string) 
   if (!ANALYZABLE_TYPES.includes(member.memberType)) return { error: 'NOT_TRADER' } as RequestError;
   if (member.status !== 'ACTIVE') return { error: 'INACTIVE' } as RequestError;
 
-  // Webshop članstva ima prednost pred webshopom tvrtke (ista tvrtka, više webshopova)
-  const website = member.website?.trim() || member.company?.website?.trim();
+  // Webshop članstva ima prednost pred webshopom tvrtke; član s više webshopova
+  // može eksplicitno odabrati koji analizira (mora pripadati članstvu).
+  const website = resolveSite(memberAnalysisSites(member), requestedWebsite);
   if (!website) return { error: 'NO_WEBSITE' } as RequestError;
 
   // Spriječi paralelno dvostruko pokretanje — ali samo za stvarno tekući zahtjev.
@@ -432,10 +473,13 @@ export async function requestWebshopAnalysis(userId: string, memberId?: string) 
   });
   if (startedToday >= dailyCap) return { error: 'LIMIT_REACHED' } as RequestError;
 
-  // Godišnji limit: najviše `limit` USPJEŠNIH analiza u zadnjih 365 dana.
-  const usedThisYear = await prisma.webshopAnalysis.count({
+  // Godišnji limit: najviše `limit` USPJEŠNIH analiza u zadnjih 365 dana — PO WEBSHOPU
+  // (član s više webshopova ima kvotu za svaki zasebno).
+  const yearRows = await prisma.webshopAnalysis.findMany({
     where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
+    select: { websiteUrl: true },
   });
+  const usedThisYear = yearRows.filter((r) => siteKey(r.websiteUrl) === siteKey(website)).length;
   if (usedThisYear >= limit) return { error: 'LIMIT_REACHED' } as RequestError;
 
   const websiteUrl = normalizeUrl(website);

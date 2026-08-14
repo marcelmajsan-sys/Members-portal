@@ -747,6 +747,10 @@ export async function adminUpdateMemberProfile(
     postalCode?: string;
     phone?: string;
     website?: string;
+    // Eksplicitni ciljevi (imaju prednost pred legacy `website` koji bira sam):
+    // memberWebsite = webshop OVOG članstva, companyWebsite = web tvrtke.
+    memberWebsite?: string | null;
+    companyWebsite?: string | null;
     memberType?: MemberType;
     joinedAt?: Date;
     expiresAt?: Date;
@@ -790,15 +794,17 @@ export async function adminUpdateMemberProfile(
   }
 
   // Update company fields
-  const companyData: Record<string, string> = {};
+  const companyData: Record<string, string | null> = {};
   if (companyName !== undefined) companyData.name = companyName;
   if (oib !== undefined) companyData.oib = oib;
   if (address !== undefined) companyData.address = address;
   if (city !== undefined) companyData.city = city;
   if (postalCode !== undefined) companyData.zip = postalCode;
   if (phone !== undefined) companyData.phone = phone;
-  // Webshop: članstvo s vlastitim webshopom (member.website) uređuje njega, ostali webshop tvrtke
+  // Legacy `website`: članstvo s vlastitim webshopom (member.website) uređuje njega, ostali webshop tvrtke
   if (website !== undefined && member.website === null) companyData.website = website;
+  // Eksplicitno uređivanje weba tvrtke (radi i kad članstvo ima vlastiti webshop)
+  if (data.companyWebsite !== undefined) companyData.website = emptyToNull(data.companyWebsite) ?? null;
   if (Object.keys(companyData).length > 0) {
     ops.push(prisma.company.update({ where: { id: member.companyId }, data: companyData }));
   }
@@ -806,6 +812,8 @@ export async function adminUpdateMemberProfile(
   // Update member fields (membership + osobni podaci kontakt osobe)
   const memberData: Record<string, unknown> = {};
   if (website !== undefined && member.website !== null) memberData.website = emptyToNull(website);
+  // Eksplicitno uređivanje webshopa OVOG članstva (može se i postaviti gdje ga još nema)
+  if (data.memberWebsite !== undefined) memberData.website = emptyToNull(data.memberWebsite);
   if (memberType !== undefined) memberData.memberType = memberType;
   if (joinedAt !== undefined) memberData.joinedAt = joinedAt;
   if (expiresAt !== undefined) memberData.expiresAt = expiresAt;

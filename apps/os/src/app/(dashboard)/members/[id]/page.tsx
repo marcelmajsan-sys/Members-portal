@@ -180,7 +180,7 @@ export default function MemberDetailPage() {
   const [lastReminder, setLastReminder] = useState<{ lastSent: string | null; daysAgo: number | null; cooldownActive: boolean; templateName?: string } | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', address: '', city: '', website: '', memberType: '', joinedAt: '', expiresAt: '',
+    firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', address: '', city: '', memberWebsite: '', companyWebsite: '', memberType: '', joinedAt: '', expiresAt: '',
     // Osobni podaci kontakt osobe
     dateOfBirth: '', personalOib: '', personalAddress: '', personalZip: '', personalCity: '', personalPhone: '',
     // Druga kontakt osoba
@@ -527,7 +527,8 @@ export default function MemberDetailPage() {
       oib: member.company.oib,
       address: member.company.address,
       city: member.company.city,
-      website: member.website ?? (member.company.website || ''),
+      memberWebsite: member.website || '',
+      companyWebsite: member.company.website || '',
       memberType: member.memberType,
       joinedAt: dateInput(member.joinedAt),
       expiresAt: dateInput(member.expiresAt),
@@ -567,7 +568,9 @@ export default function MemberDetailPage() {
       oib: editForm.oib,
       address: editForm.address,
       city: editForm.city,
-      website: editForm.website,
+      // Odvojeno: webshop OVOG članstva vs. web tvrtke (član može imati oba)
+      memberWebsite: editForm.memberWebsite,
+      companyWebsite: editForm.companyWebsite,
       memberType: editForm.memberType,
       ...(editForm.joinedAt && { joinedAt: editForm.joinedAt }),
       ...(editForm.expiresAt && { expiresAt: editForm.expiresAt }),
@@ -816,16 +819,21 @@ export default function MemberDetailPage() {
                   <label className="block text-xs text-gray-500 mb-1">Adresa</label>
                   <input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                 </div>
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-500 mb-1">Grad</label>
+                  <input value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Grad</label>
-                    <input value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    <label className="block text-xs text-gray-500 mb-1">Web (tvrtka)</label>
+                    <input value={editForm.companyWebsite} onChange={e => setEditForm(f => ({ ...f, companyWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Web stranica</label>
-                    <input value={editForm.website} onChange={e => setEditForm(f => ({ ...f, website: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    <label className="block text-xs text-gray-500 mb-1">Webshop (ovo članstvo)</label>
+                    <input value={editForm.memberWebsite} onChange={e => setEditForm(f => ({ ...f, memberWebsite: e.target.value }))} placeholder="https://..." className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                 </div>
+                <p className="mt-1 text-xs text-gray-400">Prazan „Webshop (ovo članstvo)" znači da članstvo koristi web tvrtke. Za dodatni webshop iste osobe koristite „+ Dodaj dodatan webshop".</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Članstvo</p>
@@ -1202,7 +1210,27 @@ export default function MemberDetailPage() {
 
         {/* Company info */}
         <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Podaci o firmi</h2>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-gray-900">Podaci o firmi</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openEditModal}
+                title="Uredi podatke firme (naziv, OIB, adresa, web) i webshop članstva"
+                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+              >
+                Uredi
+              </button>
+              {isOwner && (
+                <button
+                  onClick={() => setShowWebshopModal(true)}
+                  title="Kreira novo članstvo za istu osobu i istu tvrtku, s vlastitim webshopom"
+                  className="rounded-lg border border-emerald-600 px-2.5 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+                >
+                  + Webshop
+                </button>
+              )}
+            </div>
+          </div>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-gray-500">Naziv</dt>
@@ -1240,6 +1268,22 @@ export default function MemberDetailPage() {
               </div>
             )}
           </dl>
+          {member.otherMemberships && member.otherMemberships.length > 0 && (
+            <div className="mt-4 border-t border-gray-100 pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ostali webshopovi (članstva) ove osobe</p>
+              <div className="flex flex-wrap gap-2">
+                {member.otherMemberships.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => router.push(`/members/${m.id}`)}
+                    className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
+                  >
+                    {(m.website || m.company.website || m.company.name).replace(/^https?:\/\//, '').replace(/\/+$/, '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -77,6 +77,20 @@ function mq(path: string): string {
   return id ? `${path}${path.includes('?') ? '&' : '?'}memberId=${id}` : path;
 }
 
+// Normalizirani ključ webshopa (za usporedbu URL-ova bez protokola/www/kose crte)
+function siteKey(u: string): string {
+  return u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+}
+// Prikaz webshopa bez protokola/kose crte
+function siteLabel(u: string): string {
+  return u.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+// mq() + odabrani webshop za analizu (?website=)
+function sq(path: string, site: string): string {
+  const p = mq(path);
+  return site ? `${p}${p.includes('?') ? '&' : '?'}website=${encodeURIComponent(site)}` : p;
+}
+
 const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
 };
@@ -134,6 +148,9 @@ export default function PortalHome() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
   const [quota, setQuota] = useState<WebshopQuota | null>(null);
+  // Odabrani webshop za analizu (član s više webshopova na istom članstvu bira koji analizira).
+  // Prazno = prvi/zadani (webshop članstva, inače web tvrtke) — isto što API vraća bez parametra.
+  const [analysisSite, setAnalysisSite] = useState('');
   const [showSafeShopPw, setShowSafeShopPw] = useState(false);
   const [perks, setPerks] = useState<Perks | null>(null);
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -153,7 +170,7 @@ export default function PortalHome() {
       setProfileErrorCode(null);
       // Reset podataka prethodnog članstva (switcher) da ne ostanu stari prikazi
       setEmails([]); setOffers([]); setTicketConf(null); setTickets([]);
-      setAnalysis(null); setQuota(null); setPerks(null); setAnalysisError('');
+      setAnalysis(null); setQuota(null); setPerks(null); setAnalysisError(''); setAnalysisSite('');
 
       // Sva članstva korisnika (više webshopova) → odaberi spremljeno ili prvo
       const ms = await api.get<Membership[]>('/api/member/memberships');
@@ -190,6 +207,17 @@ export default function PortalHome() {
       if (wa.success && wa.data) setAnalysis(wa.data);
       if (wq.success && wq.data) setQuota(wq.data);
       if (pk.success && pk.data) setPerks(pk.data);
+      // Član s više webshopova: početni prikaz mora biti analiza PRVOG webshopa (aktivni tab),
+      // a generički dohvat gore vraća zadnju analizu bilo kojeg — dohvati je zato ciljano.
+      if (p.success && p.data) {
+        const sites = [p.data.website, p.data.company.website]
+          .filter((v): v is string => !!v && !!v.trim())
+          .filter((v, i, arr) => arr.findIndex((x) => siteKey(x) === siteKey(v)) === i);
+        if (sites.length > 1) {
+          const first = await api.get<WebshopAnalysis | null>(sq('/api/member/webshop-analysis', sites[0]));
+          if (first.success) setAnalysis(first.data ?? null);
+        }
+      }
       setLoading(false);
       // Ako je analiza pokrenuta u prethodnom posjetu i još traje, nastavi pollati.
       if (wa.success && wa.data?.status === 'PENDING') pollAnalysis();
@@ -217,8 +245,29 @@ export default function PortalHome() {
     if (res.success) setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   }
 
+  // Webshopovi dostupni za analizu na ovom članstvu (webshop članstva + web tvrtke, bez duplikata)
+  const analysisSites: string[] = profile
+    ? [profile.website, profile.company.website]
+        .filter((v): v is string => !!v && !!v.trim())
+        .filter((v, i, arr) => arr.findIndex((x) => siteKey(x) === siteKey(v)) === i)
+    : [];
+  const activeAnalysisSite = analysisSite || analysisSites[0] || '';
+
+  // Promjena odabranog webshopa → dohvati njegovu zadnju analizu i kvotu
+  async function switchAnalysisSite(site: string) {
+    if (siteKey(site) === siteKey(activeAnalysisSite)) return;
+    setAnalysisSite(site);
+    setAnalysisError('');
+    const [a, q] = await Promise.all([
+      api.get<WebshopAnalysis | null>(sq('/api/member/webshop-analysis', site)),
+      api.get<WebshopQuota | null>(sq('/api/member/webshop-analysis/quota', site)),
+    ]);
+    setAnalysis(a.success ? (a.data ?? null) : null);
+    setQuota(q.success ? (q.data ?? null) : null);
+  }
+
   async function refreshQuota() {
-    const res = await api.get<WebshopQuota | null>(mq('/api/member/webshop-analysis/quota'));
+    const res = await api.get<WebshopQuota | null>(sq('/api/member/webshop-analysis/quota', activeAnalysisSite));
     if (res.success && res.data) setQuota(res.data);
   }
 
@@ -229,7 +278,7 @@ export default function PortalHome() {
     const start = Date.now();
     while (Date.now() - start < maxMs) {
       await new Promise((r) => setTimeout(r, 5000));
-      const res = await api.get<WebshopAnalysis | null>(mq('/api/member/webshop-analysis'));
+      const res = await api.get<WebshopAnalysis | null>(sq('/api/member/webshop-analysis', activeAnalysisSite));
       if (res.success && res.data) {
         if (res.data.status === 'COMPLETED') { setAnalysis(res.data); setAnalyzing(false); refreshQuota(); return; }
         if (res.data.status === 'FAILED') {
@@ -247,8 +296,9 @@ export default function PortalHome() {
   async function runAnalysis() {
     setAnalysisError('');
     setAnalyzing(true);
-    // Pokreni analizu (na serveru se izvršava sinkrono, ~1 min).
-    const res = await api.post<WebshopAnalysis>(mq('/api/member/webshop-analysis'));
+    // Pokreni analizu (na serveru se izvršava sinkrono, ~1 min). Šalje se i odabrani
+    // webshop — član s više webshopova ima kvotu za svaki zasebno.
+    const res = await api.post<WebshopAnalysis>(mq('/api/member/webshop-analysis'), activeAnalysisSite ? { website: activeAnalysisSite } : undefined);
     if (res.success && res.data?.status === 'COMPLETED') {
       setAnalysis(res.data);
       setAnalyzing(false);
@@ -533,13 +583,35 @@ export default function PortalHome() {
                           Preostalo analiza {quota.remaining}/{quota.limit}
                         </p>
                         <p className="max-w-[220px] text-right text-[11px] leading-snug text-gray-400">
-                          Dostupno: {quota.limit} {quota.limit === 1 ? 'analiza' : quota.limit < 5 ? 'analize' : 'analiza'} godišnje po članu.
+                          Dostupno: {quota.limit} {quota.limit === 1 ? 'analiza' : quota.limit < 5 ? 'analize' : 'analiza'} godišnje po webshopu.
                         </p>
                       </>
                     )}
                   </div>
                 )}
               </div>
+
+              {/* Član s više webshopova (webshop članstva + web tvrtke) bira koji analizira — svaki ima vlastitu kvotu */}
+              {analysisSites.length > 1 && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Webshop za analizu:</span>
+                  {analysisSites.map((site) => {
+                    const active = siteKey(site) === siteKey(activeAnalysisSite);
+                    return (
+                      <button
+                        key={site}
+                        onClick={() => switchAnalysisSite(site)}
+                        disabled={analyzing}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                          active ? 'border-primary bg-primary text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {siteLabel(site)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {profile.status !== 'ACTIVE' ? (
                 <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
