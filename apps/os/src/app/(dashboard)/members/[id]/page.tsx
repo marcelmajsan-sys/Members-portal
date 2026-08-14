@@ -264,6 +264,19 @@ export default function MemberDetailPage() {
     }
   }
 
+  // Uklanja web tvrtke s profila (chip u "Ostali webshopovi" kad nije glavni)
+  async function removeCompanyWeb() {
+    if (!member) return;
+    if (!confirm(`Ukloniti webshop ${(member.company.website || '').replace(/^https?:\/\//, '')} s profila člana?`)) return;
+    const res = await api.patch(`/api/os/members/${member.id}/profile`, { companyWebsite: '' });
+    if (res.success) {
+      setMember((m) => (m ? { ...m, company: { ...m.company, website: null } } : m));
+      showToast('Webshop uklonjen');
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Uklanjanje nije uspjelo'}`);
+    }
+  }
+
   // Uklanja dodatni webshop s profila člana
   async function removeWebshop(site: string) {
     if (!member) return;
@@ -1316,22 +1329,18 @@ export default function MemberDetailPage() {
                       >
                         {stripped(o.label)}
                       </button>
-                    ) : o.removable ? (
+                    ) : (
                       <span key={o.key} className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-700">
                         {stripped(o.label)}
                         {isOwner && (
                           <button
-                            onClick={() => removeWebshop(o.label)}
+                            onClick={() => (o.removable ? removeWebshop(o.label) : removeCompanyWeb())}
                             title="Ukloni webshop s profila"
                             className="text-gray-400 transition hover:text-red-500"
                           >
                             ✕
                           </button>
                         )}
-                      </span>
-                    ) : (
-                      <span key={o.key} title="Web tvrtke" className="rounded-full border border-gray-200 bg-gray-50 px-3 py-0.5 text-xs font-medium text-gray-500">
-                        {stripped(o.label)}
                       </span>
                     ),
                   )}
