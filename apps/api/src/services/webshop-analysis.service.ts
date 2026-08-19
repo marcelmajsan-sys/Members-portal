@@ -9,6 +9,7 @@ import {
   type WebshopSiteSignals,
 } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
+import { fetchHtmlRobust as fetchHtml } from './html-fetch.js';
 
 // Tko ima pravo na analizu: Web trgovci (analiza webshopa, 6 kategorija) i
 // Nuditelji usluga (analiza online prisutnosti po uzoru na žiri: Best Web/Copy/Marketing).
@@ -83,31 +84,9 @@ function normalizeUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
-// Dohvat HTML-a stranice (best-effort). Greška/timeout → prazan string.
-async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; eCommerceHR-Analiza/1.0; +https://www.ecommerce.hr)',
-        Accept: 'text/html,application/xhtml+xml',
-      },
-    });
-    if (!res.ok) return '';
-    const ct = res.headers.get('content-type') || '';
-    if (!ct.includes('html')) return '';
-    return await res.text();
-  } catch (error) {
-    logger.warn({ error: String(error), url }, 'Webshop analysis: HTML fetch failed');
-    return '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+// Dohvat HTML-a: browser UA + reader-proxy fallback (dijeljeni helper). Neki webshopovi
+// (npr. otos.hr) blokiraju "bot" UA-ove i datacenter IP-ove pa je naslovnica znala doći
+// prazna — tada su UX/Legal padali na 0 jer se ne mogu potvrditi iz markupa.
 
 // Stranice koje ne želimo dohvaćati kao "kategoriju/proizvod" (login, košarica, pravne...).
 const SKIP_PATH = /(prijav|login|register|registr|kosaric|cart|checkout|blagajn|account|moj-racun|wishlist|kontakt|contact|o-nama|about|blog|uvjeti|terms|privatnost|privacy|kolacic|cookie|reklamacij|dostava-i-placanje|faq|\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|xml|css|js))(\/|$|\?)/i;
@@ -123,7 +102,7 @@ function discoverSubpages(homepageUrl: string, html: string): AnalysisPage[] {
     return [];
   }
   const hrefs = new Set<string>();
-  const re = /href\s*=\s*["']([^"'#]+)["']/gi;
+  const re = /href\s*=\s*["']([^"']+)["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) && hrefs.size < 400) {
     const raw = m[1].trim();
@@ -214,7 +193,7 @@ export function discoverLegalPages(homepageUrl: string, html: string): AnalysisP
   }
   const hrefs: string[] = [];
   const seen = new Set<string>();
-  const re = /href\s*=\s*["']([^"'#]+)["']/gi;
+  const re = /href\s*=\s*["']([^"']+)["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) && seen.size < 500) {
     const raw = m[1].trim();
@@ -263,7 +242,7 @@ function discoverProviderSubpages(homepageUrl: string, html: string): AnalysisPa
   }
   const hrefs: string[] = [];
   const seen = new Set<string>();
-  const re = /href\s*=\s*["']([^"'#]+)["']/gi;
+  const re = /href\s*=\s*["']([^"']+)["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) && seen.size < 400) {
     const raw = m[1].trim();

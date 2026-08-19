@@ -1,6 +1,7 @@
 import { prisma } from '@ecommerce-hr/db';
 import { runSafeShopCertification, type SafeShopPage } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
+import { fetchHtmlRobust as fetchHtml } from './html-fetch.js';
 
 type RequestError = {
   error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED' | 'CONTENT_UNAVAILABLE';
@@ -22,87 +23,6 @@ function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
-}
-
-// Realan browser User-Agent — mnogi webshopovi (anti-bot/WAF) blokiraju "bot" UA-ove
-// i datacenter IP-ove (Vercel fra1), zbog čega je dohvat znao vratiti prazno (npr. otos.hr).
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-
-// Cloudflare / anti-bot challenge stranice vraćaju 200 + HTML, ali BEZ stvarnog sadržaja
-// (interstitial "Just a moment..."). Tretiramo ih kao neuspjeh da (1) padnemo na reader
-// proxy i (2) ne nahranimo model praznim sadržajem pa spremimo lažni 0/10.
-function looksLikeChallenge(html: string): boolean {
-  const head = html.slice(0, 4000).toLowerCase();
-  return (
-    head.includes('just a moment') ||
-    head.includes('cf-browser-verification') ||
-    head.includes('/cdn-cgi/challenge-platform') ||
-    head.includes('challenge-platform') ||
-    head.includes('attention required') ||
-    head.includes('enable javascript and cookies to continue')
-  );
-}
-
-async function fetchHtmlOnce(url: string, timeoutMs: number): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': BROWSER_UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'hr-HR,hr;q=0.9,en;q=0.8',
-      },
-    });
-    if (!res.ok) return '';
-    const ct = res.headers.get('content-type') || '';
-    if (!ct.includes('html')) return '';
-    const text = await res.text();
-    if (looksLikeChallenge(text)) return '';
-    return text;
-  } catch (error) {
-    logger.warn({ error: String(error), url }, 'Safe Shop analysis: HTML fetch failed');
-    return '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// Reader proxy (r.jina.ai) dohvaća stranicu sa SVOJE infrastrukture i vraća čist markdown.
-// Fallback kad direktan dohvat s Vercel datacenter IP-a (fra1) bude blokiran — neki
-// webshopovi (npr. otos.hr) blokiraju datacenter IP-ove bez obzira na User-Agent.
-async function fetchViaReader(url: string, timeoutMs: number): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`https://r.jina.ai/${url}`, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': BROWSER_UA,
-        Accept: 'text/plain, text/markdown, */*',
-        ...(process.env.JINA_API_KEY ? { Authorization: `Bearer ${process.env.JINA_API_KEY}` } : {}),
-      },
-    });
-    if (!res.ok) return '';
-    const text = await res.text();
-    if (looksLikeChallenge(text)) return '';
-    return text;
-  } catch (error) {
-    logger.warn({ error: String(error), url }, 'Safe Shop analysis: reader fetch failed');
-    return '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// Direktan dohvat (brz); ako vrati prazno (timeout / blokada datacenter IP-a), padni na reader proxy.
-async function fetchHtml(url: string, timeoutMs = 12000): Promise<string> {
-  const direct = await fetchHtmlOnce(url, timeoutMs);
-  if (direct) return direct;
-  return fetchViaReader(url, 30000);
 }
 
 // Pravne stranice na kojima počivaju Safe Shop kriteriji — kategorija -> ključne riječi u putanji/tekstu linka.
@@ -139,7 +59,7 @@ function discoverLegalPages(homepageUrl: string, html: string): SafeShopPage[] {
     links.push({ url: abs.origin + abs.pathname, text });
   };
 
-  const htmlRe = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const htmlRe = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   const mdRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   let m: RegExpExecArray | null;
   let guard = 0;
