@@ -738,6 +738,14 @@ router.post('/members/:id/safeshop-analysis', validateParams(idParamSchema), asy
       case 'ANALYSIS_FAILED':
         errorResponse(res, 'ANALYSIS_FAILED', 'Analiza nije uspjela, pokušajte ponovno kasnije', 502);
         return;
+      case 'CONTENT_UNAVAILABLE':
+        errorResponse(
+          res,
+          'CONTENT_UNAVAILABLE',
+          'Sadržaj webshopa trenutno nije moguće dohvatiti (moguće blokiranje automatiziranog pristupa). Analiza nije spremljena i ne troši godišnji limit — pokušajte kasnije.',
+          503,
+        );
+        return;
       default:
         errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
         return;

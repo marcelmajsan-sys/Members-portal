@@ -3,7 +3,7 @@ import { runSafeShopCertification, type SafeShopPage } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
 
 type RequestError = {
-  error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED';
+  error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED' | 'CONTENT_UNAVAILABLE';
 };
 
 // Najviše ovoliko USPJEŠNIH Safe Shop analiza po članu u kliznom prozoru od 365 dana.
@@ -29,6 +29,21 @@ function normalizeUrl(raw: string): string {
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
+// Cloudflare / anti-bot challenge stranice vraćaju 200 + HTML, ali BEZ stvarnog sadržaja
+// (interstitial "Just a moment..."). Tretiramo ih kao neuspjeh da (1) padnemo na reader
+// proxy i (2) ne nahranimo model praznim sadržajem pa spremimo lažni 0/10.
+function looksLikeChallenge(html: string): boolean {
+  const head = html.slice(0, 4000).toLowerCase();
+  return (
+    head.includes('just a moment') ||
+    head.includes('cf-browser-verification') ||
+    head.includes('/cdn-cgi/challenge-platform') ||
+    head.includes('challenge-platform') ||
+    head.includes('attention required') ||
+    head.includes('enable javascript and cookies to continue')
+  );
+}
+
 async function fetchHtmlOnce(url: string, timeoutMs: number): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -45,7 +60,9 @@ async function fetchHtmlOnce(url: string, timeoutMs: number): Promise<string> {
     if (!res.ok) return '';
     const ct = res.headers.get('content-type') || '';
     if (!ct.includes('html')) return '';
-    return await res.text();
+    const text = await res.text();
+    if (looksLikeChallenge(text)) return '';
+    return text;
   } catch (error) {
     logger.warn({ error: String(error), url }, 'Safe Shop analysis: HTML fetch failed');
     return '';
@@ -70,7 +87,9 @@ async function fetchViaReader(url: string, timeoutMs: number): Promise<string> {
       },
     });
     if (!res.ok) return '';
-    return await res.text();
+    const text = await res.text();
+    if (looksLikeChallenge(text)) return '';
+    return text;
   } catch (error) {
     logger.warn({ error: String(error), url }, 'Safe Shop analysis: reader fetch failed');
     return '';
@@ -220,6 +239,23 @@ export async function requestSafeShopAnalysis(memberId: string) {
 
   try {
     const homepageHtml = await fetchHtml(websiteUrl);
+
+    // Bez sadržaja naslovnice model bi sve kriterije konzervativno označio kao nezadovoljene
+    // i spremili bismo lažni 0/10 (uz to bi potrošio 1 od 2 godišnje analize). Umjesto toga
+    // analizu označimo neuspjelom — status FAILED se NE broji u godišnju kvotu, pa je moguć
+    // ponovni pokušaj (npr. nakon što se konfigurira JINA_API_KEY / reader proxy).
+    if (!homepageHtml.trim()) {
+      await prisma.safeShopAnalysis.update({
+        where: { id: record.id },
+        data: {
+          status: 'FAILED',
+          error:
+            'Sadržaj webshopa nije bilo moguće dohvatiti (moguće blokiranje automatiziranog pristupa). Analiza nije spremljena i ne troši godišnji limit.',
+        },
+      });
+      return { error: 'CONTENT_UNAVAILABLE' } as RequestError;
+    }
+
     const pages: SafeShopPage[] = [{ url: websiteUrl, label: 'Naslovnica', html: homepageHtml }];
 
     if (homepageHtml) {
