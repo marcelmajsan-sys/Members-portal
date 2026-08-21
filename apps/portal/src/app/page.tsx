@@ -854,6 +854,32 @@ export default function PortalHome() {
                 </ul>
               )}
             </Section>
+
+            {/* Reklama za eCommerce Akademiju — članovi ostvaruju 30% popusta */}
+            <section className="overflow-hidden rounded-xl border border-primary/20 bg-primary/5 p-6">
+              <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">
+                Članska pogodnost · 30% popusta
+              </span>
+              <h2 className="mt-3 text-base font-bold text-primary">eCommerce Akademija</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-700">
+                Mentorski program u 8 praktičnih modula koji vode stručnjaci iz prakse — od strategije i
+                razvoja webshopa, SEO-a i CRO-a, psihologije prodaje i digitalnog marketinga, do analitike,
+                korisničkog iskustva i pravne usklađenosti. Nastava je dva puta tjedno navečer, uživo u
+                Zagrebu ili online. Polaznici koji polože sve ispite dobivaju certifikat{' '}
+                <strong>eCommerce Specialist</strong> — od 2017. certificirano je više od 300 stručnjaka.
+              </p>
+              <p className="mt-3 text-sm font-semibold text-gray-900">
+                Kao član Udruge ostvarujete <span className="text-primary">30% popusta na cijelu Akademiju</span>.
+              </p>
+              <a
+                href="https://ecommerce.hr/ecommerce-akademija/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-block rounded-md bg-primary px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Saznaj više o Akademiji
+              </a>
+            </section>
           </>
         )}
       </main>
