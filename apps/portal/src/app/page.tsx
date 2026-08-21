@@ -984,6 +984,23 @@ function TicketsSection({
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="mb-4 border-b border-gray-100 pb-4">
+        <h2 className="text-base font-bold uppercase tracking-wide text-primary">
+          CRO Commerce konferencija
+        </h2>
+        <p className="mt-0.5 text-sm text-gray-600">Najveće okupljanje trgovaca u regiji</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Pogledaj snimke s prošle godine:{' '}
+          <a
+            href="https://www.youtube.com/playlist?list=PLh0dpf63k_OPVs640lFKl2T44wK-60ff8"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-primary underline hover:no-underline"
+          >
+            YouTube playlista
+          </a>
+        </p>
+      </div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">
