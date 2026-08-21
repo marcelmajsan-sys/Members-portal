@@ -54,6 +54,21 @@ export async function executeAutomationEvent(
 
     if (sequences.length === 0) return;
 
+    // Admin je mogao isključiti automatizacije za ovog člana — tada preskačemo SVE sekvence
+    // (podsjetnici o obnovi, dobrodošlica, istek, notifikacije, zadaci). Ručna slanja i
+    // admin test (testSequenceEmail) ovo ne diraju jer ne prolaze kroz executeAutomationEvent.
+    const targetMemberId = payload.memberId as string | undefined;
+    if (targetMemberId) {
+      const target = await prisma.member.findUnique({
+        where: { id: targetMemberId },
+        select: { automationsPaused: true },
+      });
+      if (target?.automationsPaused) {
+        logger.info({ event, memberId: targetMemberId }, 'Automations paused for member — skipping all sequences');
+        return;
+      }
+    }
+
     logger.info({ event, sequenceCount: sequences.length }, 'Executing automation sequences');
 
     for (const sequence of sequences) {

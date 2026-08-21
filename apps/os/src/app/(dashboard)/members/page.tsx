@@ -15,6 +15,7 @@ interface MemberRaw {
   hasCertificate: boolean;
   hasAcademy: boolean;
   safeShopStatus: string | null;
+  automationsPaused?: boolean;
   user: { id: string; firstName: string; lastName: string; email: string };
   company: { name: string };
   emailLogs?: Array<{ subject: string; sentAt: string }>;
@@ -100,6 +101,9 @@ export default function MembersPage() {
   const [companyMembers, setCompanyMembers] = useState<MemberRaw[]>([]);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Multi-select za skupno uključivanje/isključivanje automatizacija
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // Filteri: glavni tab (tip) + podfilteri (status / certifikat / promo) koji ovise o tipu.
   const legacyFilter = searchParams.get('filter'); // dashboard kartice linkaju ?filter=active itd.
@@ -217,6 +221,8 @@ export default function MembersPage() {
     fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
     // Osvježi i brojke uz svako učitavanje liste (npr. nakon promjene zastavica na profilu).
     refreshCounts();
+    // Odabir vrijedi za trenutni prikaz — očisti ga pri promjeni stranice/filtera
+    setSelected(new Set());
   }, [page, type, status, extra, expiring, expiryMonth, companyId, fetchMembers, refreshCounts]);
 
   // Osvježi brojke kad se korisnik vrati na karticu (npr. back nakon uređivanja profila).
@@ -286,6 +292,40 @@ export default function MembersPage() {
       setAddError(res.error?.message || 'Greška pri dodavanju');
     }
     setAddLoading(false);
+  }
+
+  function toggleSelect(memberId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId);
+      else next.add(memberId);
+      return next;
+    });
+  }
+
+  const allOnPageSelected = members.length > 0 && members.every((m) => selected.has(m.id));
+  function toggleSelectAllOnPage() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) members.forEach((m) => next.delete(m.id));
+      else members.forEach((m) => next.add(m.id));
+      return next;
+    });
+  }
+
+  async function bulkSetAutomations(paused: boolean) {
+    if (selected.size === 0 || bulkLoading) return;
+    const ids = Array.from(selected);
+    setBulkLoading(true);
+    const res = await api.post<{ count: number; paused: boolean }>('/api/os/members/automations', { ids, paused });
+    setBulkLoading(false);
+    if (res.success && res.data) {
+      // Osvježi zastavicu na trenutnoj listi bez ponovnog dohvaćanja
+      setMembers((prev) => prev.map((m) => (selected.has(m.id) ? { ...m, automationsPaused: paused } : m)));
+      setSelected(new Set());
+    } else {
+      alert(res.error?.message || 'Promjena nije uspjela');
+    }
   }
 
   return (
@@ -443,11 +483,49 @@ export default function MembersPage() {
         </div>
       )}
 
+      {/* Skupne akcije — vidljive kad je odabran barem jedan član */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#1B365D]/20 bg-[#1B365D]/5 px-4 py-2.5">
+          <span className="text-sm font-medium text-[#1B365D]">Odabrano: {selected.size}</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              onClick={() => bulkSetAutomations(true)}
+              disabled={bulkLoading}
+              className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              {bulkLoading ? 'Spremanje...' : '🔕 Isključi automatizacije'}
+            </button>
+            <button
+              onClick={() => bulkSetAutomations(false)}
+              disabled={bulkLoading}
+              className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50"
+            >
+              {bulkLoading ? 'Spremanje...' : '🔔 Uključi automatizacije'}
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+            >
+              Poništi odabir
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectAllOnPage}
+                    aria-label="Odaberi sve na stranici"
+                    className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#1B365D] focus:ring-[#1B365D]"
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium text-gray-500">Ime</th>
                 <th className="hidden px-4 py-3 font-medium text-gray-500 md:table-cell">Firma</th>
                 <th className="px-4 py-3 font-medium text-gray-500">Razina</th>
@@ -460,13 +538,13 @@ export default function MembersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
                     Učitavanje...
                   </td>
                 </tr>
               ) : members.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
                     Nema članova
                   </td>
                 </tr>
@@ -479,11 +557,25 @@ export default function MembersPage() {
                     <tr
                       key={m.id}
                       onClick={() => router.push(`/members/${m.id}`)}
-                      className="cursor-pointer border-b border-gray-50 transition hover:bg-gray-50"
+                      className={`cursor-pointer border-b border-gray-50 transition hover:bg-gray-50 ${
+                        selected.has(m.id) ? 'bg-[#1B365D]/5' : ''
+                      }`}
                     >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(m.id)}
+                          onChange={() => toggleSelect(m.id)}
+                          aria-label={`Odaberi ${m.user.firstName} ${m.user.lastName}`}
+                          className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#1B365D] focus:ring-[#1B365D]"
+                        />
+                      </td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">
+                        <p className="flex items-center gap-1.5 font-medium text-gray-900">
                           {m.user.firstName} {m.user.lastName}
+                          {m.automationsPaused && (
+                            <span title="Automatizacije isključene" className="text-xs">🔕</span>
+                          )}
                         </p>
                         <p className="text-xs text-gray-400">{m.user.email}</p>
                       </td>

@@ -605,6 +605,45 @@ router.patch('/members/:id/lead-note', requireRole('OWNER'), validateParams(idPa
   successResponse(res, { leadNote: updated.leadNote });
 });
 
+// POST /members/automations — skupno uključi/isključi automatizacije za više članova odjednom
+// Body: { ids: string[], paused: boolean }. Koristi multi-select na listi članova.
+// (Literalna putanja — ne kolidira s /members/:id/* rutama.)
+router.post('/members/automations', async (req: AuthRequest, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? (req.body.ids as unknown[]).filter((x): x is string => typeof x === 'string')
+    : [];
+  const paused = req.body?.paused === true;
+  if (ids.length === 0) {
+    errorResponse(res, 'VALIDATION_ERROR', 'Odaberite barem jednog člana', 400);
+    return;
+  }
+  const result = await prisma.member.updateMany({
+    where: { id: { in: ids } },
+    data: { automationsPaused: paused },
+  });
+  successResponse(res, { count: result.count, paused });
+});
+
+// PATCH /members/:id/automations — uključi/isključi automatizacije za jednog člana
+// Body: { paused: boolean }
+router.patch('/members/:id/automations', validateParams(idParamSchema), async (req: AuthRequest, res) => {
+  const paused = req.body?.paused === true;
+  const existing = await prisma.member.findUnique({
+    where: { id: req.params.id as string },
+    select: { id: true },
+  });
+  if (!existing) {
+    errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  const updated = await prisma.member.update({
+    where: { id: existing.id },
+    data: { automationsPaused: paused },
+    select: { automationsPaused: true },
+  });
+  successResponse(res, { automationsPaused: updated.automationsPaused });
+});
+
 // PATCH /members/:id/webshops — dodatni webshopovi ISTOG člana (bez zasebnog članstva).
 // Body { extraWebshops: string[] } zamjenjuje cijelu listu; normalizira/deduplicira i izbacuje glavni.
 router.patch('/members/:id/webshops', requireRole('OWNER'), validateParams(idParamSchema), async (req: AuthRequest, res) => {

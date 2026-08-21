@@ -203,6 +203,9 @@ model Member {
   // Dodatni webshopovi ISTOG člana (bez zasebnog članstva) — uz glavni (website ?? company.website).
   // Član na portalu može pokrenuti AI analizu za svaki (kvota po webshopu).
   extraWebshops String[] @default([])
+  // Admin isključio automatizacije (podsjetnici o obnovi, dobrodošlica, istek...) za ovog člana —
+  // executeAutomationEvent preskače SVE sekvence za člana kad je true. Ne dira ručna slanja/testove.
+  automationsPaused Boolean @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

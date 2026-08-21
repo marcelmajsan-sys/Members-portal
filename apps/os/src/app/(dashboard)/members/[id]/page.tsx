@@ -28,6 +28,7 @@ interface MemberRaw {
   memberNumber: string;
   extraWebshops?: string[];
   isLead?: boolean;
+  automationsPaused?: boolean;
   memberType: string;
   memberTier: string;
   status: string;
@@ -321,6 +322,21 @@ export default function MemberDetailPage() {
           }
         : data
     );
+  }
+
+  // Uključi/isključi automatizacije (podsjetnici o obnovi, dobrodošlica, istek...) za ovog člana
+  async function toggleAutomations() {
+    if (!member || actionLoading) return;
+    const next = !member.automationsPaused;
+    setActionLoading('automations');
+    const res = await api.patch<{ automationsPaused: boolean }>(`/api/os/members/${id}/automations`, { paused: next });
+    if (res.success && res.data) {
+      setMember((m) => (m ? { ...m, automationsPaused: res.data!.automationsPaused } : m));
+      showToast(next ? 'Automatizacije isključene za ovog člana' : 'Automatizacije uključene');
+    } else {
+      showToast(`Greška: ${res.error?.message || 'Promjena nije uspjela'}`);
+    }
+    setActionLoading('');
   }
 
   async function changeStatus(status: string) {
@@ -1116,6 +1132,22 @@ export default function MemberDetailPage() {
               + Dodaj dodatan webshop
             </button>
           )}
+          <button
+            onClick={toggleAutomations}
+            disabled={actionLoading === 'automations'}
+            title={member.automationsPaused
+              ? 'Automatizacije su isključene — član ne prima automatske emailove (podsjetnici o obnovi, dobrodošlica, istek). Kliknite za uključivanje.'
+              : 'Član prima automatske emailove. Kliknite da isključite sve automatizacije za ovog člana.'}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+              member.automationsPaused
+                ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {actionLoading === 'automations'
+              ? 'Spremanje...'
+              : member.automationsPaused ? '🔕 Automatizacije isključene' : '🔔 Automatizacije uključene'}
+          </button>
           <button
             onClick={openEditModal}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
