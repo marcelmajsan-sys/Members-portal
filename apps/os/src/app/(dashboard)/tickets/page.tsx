@@ -360,13 +360,9 @@ function TicketTable({
               </td>
               <td className="px-4 py-3">
                 <p className="text-gray-700">
-                  {t.member.isLead ? (
-                    <Link href={`/leads/${t.member.id}`} className="hover:underline">
-                      {t.member.user.firstName} {t.member.user.lastName}
-                    </Link>
-                  ) : (
-                    <>{t.member.user.firstName} {t.member.user.lastName}</>
-                  )}
+                  <Link href={t.member.isLead ? `/leads/${t.member.id}` : `/members/${t.member.id}`} className="font-medium text-primary hover:underline">
+                    {t.member.user.firstName} {t.member.user.lastName}
+                  </Link>
                   {t.member.isLead && (
                     <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">LEAD</span>
                   )}

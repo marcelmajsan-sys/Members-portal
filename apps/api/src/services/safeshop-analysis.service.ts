@@ -1,9 +1,10 @@
 import { prisma } from '@ecommerce-hr/db';
 import { runSafeShopCertification, type SafeShopPage } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
+import { fetchHtmlRobust as fetchHtml } from './html-fetch.js';
 
 type RequestError = {
-  error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED';
+  error: 'NOT_FOUND' | 'NO_WEBSITE' | 'IN_PROGRESS' | 'ANALYSIS_FAILED' | 'LIMIT_REACHED' | 'CONTENT_UNAVAILABLE';
 };
 
 // Najviše ovoliko USPJEŠNIH Safe Shop analiza po članu u kliznom prozoru od 365 dana.
@@ -22,68 +23,6 @@ function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
-}
-
-// Realan browser User-Agent — mnogi webshopovi (anti-bot/WAF) blokiraju "bot" UA-ove
-// i datacenter IP-ove (Vercel fra1), zbog čega je dohvat znao vratiti prazno (npr. otos.hr).
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-
-async function fetchHtmlOnce(url: string, timeoutMs: number): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': BROWSER_UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'hr-HR,hr;q=0.9,en;q=0.8',
-      },
-    });
-    if (!res.ok) return '';
-    const ct = res.headers.get('content-type') || '';
-    if (!ct.includes('html')) return '';
-    return await res.text();
-  } catch (error) {
-    logger.warn({ error: String(error), url }, 'Safe Shop analysis: HTML fetch failed');
-    return '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// Reader proxy (r.jina.ai) dohvaća stranicu sa SVOJE infrastrukture i vraća čist markdown.
-// Fallback kad direktan dohvat s Vercel datacenter IP-a (fra1) bude blokiran — neki
-// webshopovi (npr. otos.hr) blokiraju datacenter IP-ove bez obzira na User-Agent.
-async function fetchViaReader(url: string, timeoutMs: number): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`https://r.jina.ai/${url}`, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': BROWSER_UA,
-        Accept: 'text/plain, text/markdown, */*',
-        ...(process.env.JINA_API_KEY ? { Authorization: `Bearer ${process.env.JINA_API_KEY}` } : {}),
-      },
-    });
-    if (!res.ok) return '';
-    return await res.text();
-  } catch (error) {
-    logger.warn({ error: String(error), url }, 'Safe Shop analysis: reader fetch failed');
-    return '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// Direktan dohvat (brz); ako vrati prazno (timeout / blokada datacenter IP-a), padni na reader proxy.
-async function fetchHtml(url: string, timeoutMs = 12000): Promise<string> {
-  const direct = await fetchHtmlOnce(url, timeoutMs);
-  if (direct) return direct;
-  return fetchViaReader(url, 30000);
 }
 
 // Pravne stranice na kojima počivaju Safe Shop kriteriji — kategorija -> ključne riječi u putanji/tekstu linka.
@@ -120,7 +59,7 @@ function discoverLegalPages(homepageUrl: string, html: string): SafeShopPage[] {
     links.push({ url: abs.origin + abs.pathname, text });
   };
 
-  const htmlRe = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const htmlRe = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   const mdRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
   let m: RegExpExecArray | null;
   let guard = 0;
@@ -220,6 +159,23 @@ export async function requestSafeShopAnalysis(memberId: string) {
 
   try {
     const homepageHtml = await fetchHtml(websiteUrl);
+
+    // Bez sadržaja naslovnice model bi sve kriterije konzervativno označio kao nezadovoljene
+    // i spremili bismo lažni 0/10 (uz to bi potrošio 1 od 2 godišnje analize). Umjesto toga
+    // analizu označimo neuspjelom — status FAILED se NE broji u godišnju kvotu, pa je moguć
+    // ponovni pokušaj (npr. nakon što se konfigurira JINA_API_KEY / reader proxy).
+    if (!homepageHtml.trim()) {
+      await prisma.safeShopAnalysis.update({
+        where: { id: record.id },
+        data: {
+          status: 'FAILED',
+          error:
+            'Sadržaj webshopa nije bilo moguće dohvatiti (moguće blokiranje automatiziranog pristupa). Analiza nije spremljena i ne troši godišnji limit.',
+        },
+      });
+      return { error: 'CONTENT_UNAVAILABLE' } as RequestError;
+    }
+
     const pages: SafeShopPage[] = [{ url: websiteUrl, label: 'Naslovnica', html: homepageHtml }];
 
     if (homepageHtml) {

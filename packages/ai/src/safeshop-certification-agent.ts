@@ -88,12 +88,38 @@ Odgovori ISKLJUČIVO JSON-om ovog oblika (bez markdowna, bez code fence-ova):
 }
 Vrati svih 10 kriterija, istim redoslijedom i naslovima kao gore.`;
 
-// Sidro za glavni (pravni) sadržaj stranice.
-const LEGAL_ANCHOR =
-  /(entry-content|page-content|<article|<main|class="[^"]*(content|uvjeti|terms|privacy|privatnost|reklamacij|dostav|kolacic|povrat)[^"]*")/i;
+// Signali stvarnog PRAVNOG TEKSTA (ne samo linkova u izborniku): tijelo pravne stranice ih
+// gusto sadrži, dok ih mega-menu ima rijetko. Koristi se za pronalazak najgušćeg pravnog
+// dijela stranice (KNE/otos i sl. platforme guraju pravni tekst ~100 KB iza megamenija).
+const LEGAL_SIGNAL =
+  /(raskid|reklamacij|materijaln\w*\s+nedosta|14\s*dana|azop|\bpdv\b|dostav|povrat|jamstv|osobn\w*\s+podat|kolači|privatnost|plaćanj|prigovor|uvjeti)/gi;
+
+// Odaberi prozor veličine `budget` koji pokriva NAJVIŠE pravnih signala (gustoća pravnog
+// teksta). Robusnije od sidrenja na prvi `class="...content..."` — taj je znao pasti na
+// element izbornika pa se vraćao samo meni umjesto pravnog teksta.
+function densestLegalWindow(clean: string, budget: number): string {
+  if (clean.length <= budget) return clean;
+  const offsets: number[] = [];
+  const re = new RegExp(LEGAL_SIGNAL);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(clean)) && offsets.length < 8000) offsets.push(m.index);
+  if (offsets.length === 0) return clean.slice(0, budget);
+  let bestStart = 0;
+  let bestCount = -1;
+  for (const o of offsets) {
+    const start = Math.max(0, o - 2000);
+    let count = 0;
+    for (const x of offsets) if (x >= start && x < start + budget) count++;
+    if (count > bestCount) {
+      bestCount = count;
+      bestStart = start;
+    }
+  }
+  return clean.slice(bestStart, bestStart + budget);
+}
 
 // Pravne stranice: makni boilerplate (head/header/nav/footer/aside) jer veliki mega-menu
-// inače gura pravni tekst izvan budžeta; po potrebi recentriraj na glavni sadržaj.
+// inače gura pravni tekst izvan budžeta; po potrebi izreži najgušći pravni dio.
 function prepLegal(html: string, budget: number): string {
   const stripped = html
     .replace(/<head[\s\S]*?<\/head>/i, ' ')
@@ -102,13 +128,7 @@ function prepLegal(html: string, budget: number): string {
     .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
     .replace(/<aside[\s\S]*?<\/aside>/gi, ' ');
   const clean = sanitizeForAnalysis(stripped);
-  if (clean.length <= budget) return clean;
-  const m = clean.match(LEGAL_ANCHOR);
-  if (m && m.index !== undefined && m.index > budget - 8000) {
-    const start = Math.max(0, m.index - 4000);
-    return clean.slice(start, start + budget);
-  }
-  return clean.slice(0, budget);
+  return densestLegalWindow(clean, budget);
 }
 
 function pageBlock(pages: SafeShopPage[]): string {
