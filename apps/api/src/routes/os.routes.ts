@@ -161,7 +161,7 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
 
   const companyIdParam = req.query.companyId as string | undefined;
 
-  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean; isLead?: boolean } = {};
+  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean; isLead?: boolean; automationsPaused?: boolean } = {};
   if (companyIdParam) filters.companyId = companyIdParam;
   // ?isLead=true → lista leadova (stranica /admin/leads); bez toga samo članovi
   if (req.query.isLead === 'true') filters.isLead = true;
@@ -209,6 +209,8 @@ router.get('/members', validateQuery(paginationSchema), async (req, res) => {
   if (req.query.hasCertificate === 'false') filters.hasCertificate = false;
   if (req.query.magazinDobrePrice === 'true') filters.magazinDobrePrice = true;
   if (req.query.magazinDobrePrice === 'false') filters.magazinDobrePrice = false;
+  if (req.query.automationsPaused === 'true') filters.automationsPaused = true;
+  if (req.query.automationsPaused === 'false') filters.automationsPaused = false;
 
   const { members, total } = await getAllMembers(page, limit, filters);
 

@@ -83,6 +83,19 @@ function expiryInfo(days: number | null): { text: string; style: string } | null
   return { text: `${years}g ${Math.floor((days % 365) / 30)}mj`, style: 'text-gray-400' };
 }
 
+// Brojevi stranica za prikaz: uvijek prva i zadnja, ± prozor oko trenutne, '…' za praznine
+function getPageNumbers(current: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | '…')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push('…');
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < total - 1) pages.push('…');
+  pages.push(total);
+  return pages;
+}
+
 export default function MembersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -115,6 +128,8 @@ export default function MembersPage() {
     return searchParams.get('status') || '';
   });
   const [extra, setExtra] = useState<string>('');
+  const [tier, setTier] = useState<string>(() => searchParams.get('tier') || ''); // '' | FREE | STANDARD | PREMIUM
+  const [autoPaused, setAutoPaused] = useState<boolean>(false); // samo članovi s isključenim automatizacijama
   const [expiring, setExpiring] = useState<boolean>(() => legacyFilter === 'expiring_soon');
   const [expiryMonth, setExpiryMonth] = useState<string>(() => searchParams.get('expiryMonth') || '');
   const [companyId, setCompanyId] = useState<string | null>(() => searchParams.get('companyId'));
@@ -180,6 +195,7 @@ export default function MembersPage() {
 
   const fetchMembers = useCallback(async (
     p: number, t: string, st: string, ex: string, exp: boolean, em: string, filterCompanyId?: string | null,
+    tr?: string, ap?: boolean,
   ) => {
     const reqId = ++fetchRequestId.current;
     setLoading(true);
@@ -189,6 +205,8 @@ export default function MembersPage() {
     if (filterCompanyId) params.set('companyId', filterCompanyId);
     if (t && t !== 'all') params.set('type', t);
     if (st) params.set('status', st);
+    if (tr) params.set('tier', tr);
+    if (ap) params.set('automationsPaused', 'true');
     if (exp) params.set('expiring', '30');
     if (em) params.set('expiryMonth', em);
     if (ex === 'cert') params.set('hasCertificate', 'true');
@@ -218,12 +236,12 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
+    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId, tier, autoPaused);
     // Osvježi i brojke uz svako učitavanje liste (npr. nakon promjene zastavica na profilu).
     refreshCounts();
     // Odabir vrijedi za trenutni prikaz — očisti ga pri promjeni stranice/filtera
     setSelected(new Set());
-  }, [page, type, status, extra, expiring, expiryMonth, companyId, fetchMembers, refreshCounts]);
+  }, [page, type, status, extra, tier, autoPaused, expiring, expiryMonth, companyId, fetchMembers, refreshCounts]);
 
   // Osvježi brojke kad se korisnik vrati na karticu (npr. back nakon uređivanja profila).
   useEffect(() => {
@@ -246,6 +264,14 @@ export default function MembersPage() {
   }
   function toggleExtra(v: string) {
     setExtra((e) => (e === v ? '' : v));
+    setPage(1);
+  }
+  function toggleTier(v: string) {
+    setTier((t) => (t === v ? '' : v));
+    setPage(1);
+  }
+  function toggleAutoPaused() {
+    setAutoPaused((v) => !v);
     setPage(1);
   }
   function toggleMonth(v: string) {
@@ -286,7 +312,7 @@ export default function MembersPage() {
     if (res.success) {
       setShowAddModal(false);
       setAddForm(emptyAddForm);
-      fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId);
+      fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId, tier, autoPaused);
       refreshCounts();
     } else {
       setAddError(res.error?.message || 'Greška pri dodavanju');
@@ -432,6 +458,42 @@ export default function MembersPage() {
           })}
         </div>
       )}
+
+      {/* Razina članstva + automatizacije (vrijedi za sve tipove) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-gray-400">Razina:</span>
+        {[
+          { value: 'FREE', label: 'Besplatni' },
+          { value: 'STANDARD', label: 'Standard' },
+          { value: 'PREMIUM', label: 'Premium' },
+        ].map((o) => {
+          const isActive = tier === o.value;
+          return (
+            <button
+              key={o.value}
+              onClick={() => toggleTier(o.value)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                isActive
+                  ? 'border-[#1B365D] bg-[#1B365D] text-white'
+                  : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+        <span className="mx-1 h-4 w-px bg-gray-200" />
+        <button
+          onClick={toggleAutoPaused}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+            autoPaused
+              ? 'border-red-400 bg-red-50 text-red-700'
+              : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          🔕 Automatizacije isključene
+        </button>
+      </div>
 
       {/* Mjeseci isteka — kao "Obnove" na dashboardu (tekući + 5 idućih) */}
       <div className="flex flex-wrap items-center gap-2">
@@ -661,7 +723,7 @@ export default function MembersPage() {
             <p className="text-sm text-gray-500">
               Stranica {page} od {totalPages}
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
@@ -669,6 +731,24 @@ export default function MembersPage() {
               >
                 Prethodna
               </button>
+              {getPageNumbers(page, totalPages).map((p, i) =>
+                p === '…' ? (
+                  <span key={`gap-${i}`} className="px-1.5 text-sm text-gray-400">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    aria-current={p === page ? 'page' : undefined}
+                    className={`min-w-[36px] rounded-lg border px-3 py-1.5 text-sm transition ${
+                      p === page
+                        ? 'border-[#1B365D] bg-[#1B365D] text-white'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
