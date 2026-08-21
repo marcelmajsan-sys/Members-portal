@@ -988,7 +988,7 @@ function TicketsSection({
         <h2 className="text-base font-bold uppercase tracking-wide text-primary">
           CRO Commerce konferencija
         </h2>
-        <p className="mt-0.5 text-sm text-gray-600">Najveće okupljanje trgovaca u regiji</p>
+        <p className="mt-0.5 text-sm text-gray-600">Najveće okupljanje web trgovaca u regiji</p>
         <p className="mt-1 text-xs text-gray-500">
           Pogledaj snimke s prošle godine:{' '}
           <a
