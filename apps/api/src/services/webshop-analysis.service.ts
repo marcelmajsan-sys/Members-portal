@@ -10,6 +10,7 @@ import {
 } from '@ecommerce-hr/ai';
 import { logger } from '../utils/logger.js';
 import { fetchHtmlRobust as fetchHtml } from './html-fetch.js';
+import { notifyStaff } from './notification.service.js';
 
 // Tko ima pravo na analizu: Web trgovci (analiza webshopa, 6 kategorija) i
 // Nuditelji usluga (analiza online prisutnosti po uzoru na žiri: Best Web/Copy/Marketing).
@@ -386,6 +387,72 @@ async function fetchCoreWebVitals(url: string): Promise<CoreWebVitals | null> {
   }
 }
 
+// Zaglavljeni PENDING (serverless funkcija umrla prije upisa rezultata) inače zauvijek
+// prikazuje "Analiziram…" na portalu — član misli da analiza traje danima. Sve starije
+// od 5 min tretiramo kao neuspjelo (isti prag kao u requestWebshopAnalysis).
+const STALE_PENDING_MS = 5 * 60 * 1000;
+const STALE_ERROR = 'Napušteno (prekoračeno vrijeme)';
+
+type AnalysisRow = Awaited<ReturnType<typeof prisma.webshopAnalysis.findFirst>>;
+
+async function expireIfStalePending(row: AnalysisRow): Promise<AnalysisRow> {
+  if (!row || row.status !== 'PENDING') return row;
+  if (Date.now() - row.createdAt.getTime() < STALE_PENDING_MS) return row;
+  return prisma.webshopAnalysis.update({
+    where: { id: row.id },
+    data: { status: 'FAILED', error: STALE_ERROR },
+  });
+}
+
+// Neuspjela analiza je do sada bila potpuno tiha — saznalo bi se tek kad se član javi
+// mailom (incident 6.–24.8.2026.: zaglavljena analiza stajala 18 dana). Obavijest je
+// best-effort: nikad ne smije srušiti ni analizu ni cron sweep.
+async function notifyAnalysisFailure(memberId: string, websiteUrl: string, reason: string): Promise<void> {
+  try {
+    const member = await prisma.member.findUnique({
+      where: { id: memberId },
+      select: { user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { name: true } } },
+    });
+    const who =
+      member?.company?.name ??
+      [member?.user?.firstName, member?.user?.lastName].filter(Boolean).join(' ') ??
+      member?.user?.email ??
+      'nepoznat član';
+    await notifyStaff({
+      type: 'WARNING',
+      title: 'Analiza webshopa nije uspjela',
+      message: `${who} — ${websiteUrl}. Razlog: ${reason.slice(0, 300)}`,
+      actionUrl: `/members/${memberId}`,
+    });
+  } catch (error) {
+    logger.error({ error: String(error), memberId, websiteUrl }, 'Obavijest o neuspjeloj analizi nije spremljena');
+  }
+}
+
+// Cron sweep: zaglavljeni PENDING se na read putanji liječi SAMO ako ga netko pročita.
+// Ako član ne otvori portal, zapis stoji zauvijek i nitko ne zna — zato ga i cron
+// periodički pokupi i javi timu. Prijelaz PENDING → FAILED je atomaran (updateMany sa
+// statusom u WHERE), pa se obavijest pošalje točno jednom čak i ako se dva cron ciklusa
+// preklope.
+export async function sweepStalePendingAnalyses(): Promise<{ swept: number }> {
+  const stale = await prisma.webshopAnalysis.findMany({
+    where: { status: 'PENDING', createdAt: { lt: new Date(Date.now() - STALE_PENDING_MS) } },
+    select: { id: true, memberId: true, websiteUrl: true },
+  });
+  let swept = 0;
+  for (const row of stale) {
+    const claimed = await prisma.webshopAnalysis.updateMany({
+      where: { id: row.id, status: 'PENDING' },
+      data: { status: 'FAILED', error: STALE_ERROR },
+    });
+    if (claimed.count === 0) continue; // netko drugi ju je već zatvorio
+    swept++;
+    await notifyAnalysisFailure(row.memberId, row.websiteUrl, STALE_ERROR);
+  }
+  if (swept) logger.warn({ swept }, 'Sweep: zaglavljene analize označene neuspjelima');
+  return { swept };
+}
+
 export async function getLatestWebshopAnalysis(userId: string, memberId?: string, website?: string) {
   const member = await prisma.member.findFirst({
     where: { userId, ...(memberId ? { id: memberId } : {}) },
@@ -396,7 +463,9 @@ export async function getLatestWebshopAnalysis(userId: string, memberId?: string
   // Bez traženog webshopa: zadnja analiza bilo kojeg (staro ponašanje).
   // S traženim webshopom: zadnja analiza upravo tog webshopa (usporedba normaliziranih URL-ova).
   if (!website) {
-    return prisma.webshopAnalysis.findFirst({ where: { memberId: member.id }, orderBy: { createdAt: 'desc' } });
+    return expireIfStalePending(
+      await prisma.webshopAnalysis.findFirst({ where: { memberId: member.id }, orderBy: { createdAt: 'desc' } }),
+    );
   }
   const target = resolveSite(memberAnalysisSites(member), website);
   if (!target) return null;
@@ -405,7 +474,7 @@ export async function getLatestWebshopAnalysis(userId: string, memberId?: string
     orderBy: { createdAt: 'desc' },
     take: 30,
   });
-  return rows.find((r) => siteKey(r.websiteUrl) === siteKey(target)) ?? null;
+  return expireIfStalePending(rows.find((r) => siteKey(r.websiteUrl) === siteKey(target)) ?? null);
 }
 
 export async function requestWebshopAnalysis(userId: string, memberId?: string, requestedWebsite?: string) {
@@ -540,6 +609,8 @@ export async function requestWebshopAnalysis(userId: string, memberId?: string, 
       where: { id: record.id },
       data: { status: 'FAILED', error: String(error) },
     });
+    // Awaita se prije odgovora (serverless freeze) — inače obavijest zna biti presječena.
+    await notifyAnalysisFailure(member.id, websiteUrl, String(error));
     return { error: 'ANALYSIS_FAILED' } as RequestError;
   }
 }

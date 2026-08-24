@@ -31,10 +31,18 @@ export async function ask(
   return block.text;
 }
 
+// Retry na pokvaren JSON traje otprilike koliko i prvi poziv. Na Vercelu funkcija ima
+// 300 s, pa kod dugih analiza (webshop/nuditelj, ~150–220 s po pozivu) retry zajamčeno
+// prelazi limit — funkcija se ubije PRIJE nego što se zapis stigne označiti FAILED i
+// ostane zaglavljen u PENDING. Zato retry pokrećemo samo ako procijenjeno ukupno
+// vrijeme (prvi poziv × 2) stane u budžet. Brzi agenti (klasifikacija, sažeci — nekoliko
+// sekundi) zadržavaju retry; gube ga samo pozivi koji bi ionako srušili funkciju.
+const RETRY_TIME_BUDGET_MS = 200_000;
+
 export async function askJson<T>(
   systemPrompt: string,
   userMessage: string,
-  options?: { maxTokens?: number; temperature?: number },
+  options?: { maxTokens?: number; temperature?: number; retryBudgetMs?: number },
 ): Promise<T> {
   const fullSystem =
     systemPrompt +
@@ -46,12 +54,22 @@ export async function askJson<T>(
     return JSON.parse(cleaned) as T;
   };
 
+  const startedAt = Date.now();
   const text = await ask(fullSystem, userMessage, options);
+  const firstCallMs = Date.now() - startedAt;
   try {
     return parseAttempt(text);
   } catch (firstError) {
     // Model povremeno vrati pokvaren JSON (npr. neescapani navodnici u citatima) —
     // jedan retry cijelog zahtjeva u pravilu rješava (odgovori su nedeterministički).
+    const budget = options?.retryBudgetMs ?? RETRY_TIME_BUDGET_MS;
+    if (firstCallMs * 2 > budget) {
+      throw new Error(
+        // Uzrok je i u tekstu, ne samo u `cause` — servisi grešku spremaju kroz String(error).
+        `Model je vratio neispravan JSON, a nema vremena za ponovni pokušaj (prvi poziv ${Math.round(firstCallMs / 1000)}s). Uzrok: ${String(firstError)}`,
+        { cause: firstError },
+      );
+    }
     try {
       const retryText = await ask(fullSystem, userMessage, options);
       return parseAttempt(retryText);

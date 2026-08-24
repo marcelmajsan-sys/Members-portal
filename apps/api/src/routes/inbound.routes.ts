@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { fetchInboundEmails } from '../services/inbound-email.service.js';
 import { runDailyRenewal } from '../services/renewal.service.js';
+import { sweepStalePendingAnalyses } from '../services/webshop-analysis.service.js';
 import { successResponse, errorResponse } from '../utils/api-response.js';
 
 const router = Router();
@@ -35,6 +36,19 @@ router.get('/daily-renewal', async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Greška pri provjeri obnova';
     errorResponse(res, 'RENEWAL_ERROR', message, 500);
+  }
+});
+
+// GET /api/cron/sweep-analyses — zaglavljene analize webshopa (PENDING > 5 min, funkcija
+// ubijena timeoutom prije upisa rezultata) označi neuspjelima i javi timu.
+router.get('/sweep-analyses', async (req, res) => {
+  if (!checkCronSecret(req)) { errorResponse(res, 'UNAUTHORIZED', 'Neispravan cron secret', 401); return; }
+  try {
+    const stats = await sweepStalePendingAnalyses();
+    successResponse(res, stats);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Greška pri čišćenju zaglavljenih analiza';
+    errorResponse(res, 'SWEEP_ERROR', message, 500);
   }
 });
 
