@@ -29,6 +29,8 @@ const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 // Pojedini članovi (npr. testni/admin) imaju povišeni limit.
 const ANALYSES_LIMIT_OVERRIDES: Record<string, number> = {
   'marcel.majsan@gmail.com': 100,
+  // Analiza mu je zbog buga stajala zaglavljena 18 dana (kolovoz 2026.) — vraćena kvota.
+  'elvis@altruist.hr': 4,
 };
 function analysesLimitFor(email?: string | null, memberTier?: string | null): number {
   const override = email ? ANALYSES_LIMIT_OVERRIDES[email.toLowerCase()] : undefined;

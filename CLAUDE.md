@@ -9,7 +9,7 @@ Interni OS za Udrugu eCommerce Hrvatska. pnpm monorepo (Turborepo): Express API 
 ```
 apps/api/src/routes/os.routes.ts          — glavni admin API (~1000 linija)
 apps/api/src/routes/index.ts              — registracija svih ruta
-apps/api/src/routes/inbound.routes.ts     — cron endpointi (fetch-inbound, daily-renewal)
+apps/api/src/routes/inbound.routes.ts     — cron endpointi (fetch-inbound, daily-renewal, run-analyses, sweep-analyses)
 apps/api/src/routes/auth.routes.ts        — login/register/refresh/reset; member login bilježi lastLoginAt + MemberVisit + "Nova prijava"
 apps/api/src/routes/member.routes.ts      — member-scoped portal API (profile [bilježi MemberVisit], emails, offers, perks, perks/:id/claim)
 apps/api/src/routes/benefit.routes.ts     — /api/os/benefits CRUD + assign + :id/members (admin stranica uklonjena; prikaz vidi "Benefiti" niže)
@@ -25,6 +25,8 @@ apps/api/build-vercel.mjs                 — esbuild pre-bundle (src/app.ts -> 
 apps/api/vercel.json                      — buildCommand, crons, maxDuration, regions:["fra1"]
 apps/api/src/services/inbound-email.service.ts  — IMAP dohvat dolaznih odgovora članova
 apps/api/src/services/renewal.service.ts        — dnevna provjera obnova (podsjetnici + auto-istek)
+apps/api/src/services/webshop-analysis.service.ts — AI analiza weba: red (PENDING→RUNNING), worker, sweep, kvote
+apps/api/src/services/html-fetch.ts       — fetchHtmlRobust(): browser UA + reader-proxy fallback, detekcija Cloudflare challengea
 apps/os/src/app/login/page.tsx            — login (logo src="/admin/logo.png")
 apps/os/src/app/(dashboard)/             — sve admin stranice (Next.js App Router)
 apps/os/src/app/(dashboard)/tickets/page.tsx        — admin Ulaznice (tablica, filteri, check-in, postavke konferencije)
@@ -39,7 +41,7 @@ packages/db/prisma/schema.prisma          — Prisma schema (svi modeli)
 packages/db/prisma/sql/rls-lockdown.sql   — RLS lockdown (idempotentno; re-run nakon nove tablice)
 packages/email/src/send.ts                — sendEmail() preko Resenda + tracking pixel + logger
 packages/email/src/resend-client.ts       — Resend klijent
-packages/ai/src/claude.ts                 — Anthropic SDK ask() (claude-opus-4-8)
+packages/ai/src/claude.ts                 — Anthropic SDK ask() / askJson() (claude-opus-4-8) + retry guard
 ```
 
 ## Infrastruktura
@@ -78,6 +80,7 @@ Automatizacije na događaje rade INLINE u API-ju (event-bus → automation-execu
 
 ### AI (Anthropic)
 `packages/ai/src/claude.ts` `ask()` koristi **`claude-opus-4-8`** (bez `temperature` — Opus ga odbija s 400). Svi AI agenti (member-summary, audit, safeshop, inbox, academy, competitor, price) idu kroz isti `ask()`. Env: `ANTHROPIC_API_KEY`.
+- **`askJson()` retry guard**: na pokvaren JSON radi JEDAN retry cijelog zahtjeva, ali samo ako `prvi poziv × 2` stane u `retryBudgetMs` (default 200 s). Retry traje otprilike koliko i prvi poziv, pa bi kod dugih analiza (~150–220 s) zajamčeno prešao Vercelov limit od 300 s — funkcija bi bila ubijena PRIJE nego što `catch` stigne upisati `FAILED`. Brzi agenti retry zadržavaju.
 
 ### Supabase RLS
 Aplikacija NE koristi PostgREST/anon ključ — sav pristup ide kroz Prisma kao rola `postgres` (BYPASSRLS). RLS je uključen na svim tablicama u `public` (bez policy = deny-all za anon/authenticated) + grantovi povučeni. `prisma db push` NE upravlja RLS-om → **nakon dodavanja nove tablice ponovno pokreni `packages/db/prisma/sql/rls-lockdown.sql`** (idempotentno). Dodavanje samo nove kolone ne dira RLS.
