@@ -312,7 +312,7 @@ model WebshopAnalysis {
   id           String   @id @default(cuid())
   memberId     String
   websiteUrl   String
-  status       String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  status       String   @default("PENDING") // PENDING (u redu) | RUNNING (worker preuzeo) | COMPLETED | FAILED
   overallScore Int?
   summary      String?
   result       Json? // WebshopCategory[]

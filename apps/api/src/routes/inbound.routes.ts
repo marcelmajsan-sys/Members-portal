@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { fetchInboundEmails } from '../services/inbound-email.service.js';
 import { runDailyRenewal } from '../services/renewal.service.js';
-import { sweepStalePendingAnalyses } from '../services/webshop-analysis.service.js';
+import { processQueuedAnalyses, sweepStaleAnalyses } from '../services/webshop-analysis.service.js';
 import { successResponse, errorResponse } from '../utils/api-response.js';
 
 const router = Router();
@@ -39,12 +39,27 @@ router.get('/daily-renewal', async (req, res) => {
   }
 });
 
-// GET /api/cron/sweep-analyses — zaglavljene analize webshopa (PENDING > 5 min, funkcija
-// ubijena timeoutom prije upisa rezultata) označi neuspjelima i javi timu.
+// GET /api/cron/run-analyses — worker reda analiza webshopa: preuzmi jednu PENDING
+// analizu i izvrši je. Posao NE ide u zahtjevu člana (Vercel ubija funkciju na 300 s),
+// pa worker dobiva vlastitih 300 s. Preuzimanje je atomarno → ciklusi koji se preklope
+// obrađuju red paralelno umjesto da rade isti posao dvaput.
+router.get('/run-analyses', async (req, res) => {
+  if (!checkCronSecret(req)) { errorResponse(res, 'UNAUTHORIZED', 'Neispravan cron secret', 401); return; }
+  try {
+    const stats = await processQueuedAnalyses();
+    successResponse(res, stats);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Greška pri obradi reda analiza';
+    errorResponse(res, 'QUEUE_ERROR', message, 500);
+  }
+});
+
+// GET /api/cron/sweep-analyses — mrtve analize (PENDING koji nitko nije pokupio, RUNNING
+// čiji je worker ubijen prije upisa rezultata) označi neuspjelima i javi timu.
 router.get('/sweep-analyses', async (req, res) => {
   if (!checkCronSecret(req)) { errorResponse(res, 'UNAUTHORIZED', 'Neispravan cron secret', 401); return; }
   try {
-    const stats = await sweepStalePendingAnalyses();
+    const stats = await sweepStaleAnalyses();
     successResponse(res, stats);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Greška pri čišćenju zaglavljenih analiza';

@@ -12,6 +12,7 @@
   "crons": [
     { "path": "/api/cron/fetch-inbound", "schedule": "0 * * * *" },
     { "path": "/api/cron/daily-renewal", "schedule": "0 8 * * *" },
+    { "path": "/api/cron/run-analyses", "schedule": "* * * * *" },
     { "path": "/api/cron/sweep-analyses", "schedule": "30 * * * *" }
   ]
 }

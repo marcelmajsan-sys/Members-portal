@@ -387,17 +387,31 @@ async function fetchCoreWebVitals(url: string): Promise<CoreWebVitals | null> {
   }
 }
 
-// Zaglavljeni PENDING (serverless funkcija umrla prije upisa rezultata) inače zauvijek
-// prikazuje "Analiziram…" na portalu — član misli da analiza traje danima. Sve starije
-// od 5 min tretiramo kao neuspjelo (isti prag kao u requestWebshopAnalysis).
-const STALE_PENDING_MS = 5 * 60 * 1000;
+// ─── Red čekanja: PENDING (u redu) → RUNNING (worker preuzeo) → COMPLETED | FAILED ──
+//
+// Analiza se NE izvršava u zahtjevu člana: POST samo upiše PENDING i odmah odgovori,
+// a cron `run-analyses` preuzima posao. Time timeout više ne pogađa člana (ne visi na
+// dugoj konekciji) i worker dobiva vlastitih 300 s umjesto da ih dijeli s dohvatom
+// stranica u zahtjevu.
+const ACTIVE_STATUSES = ['PENDING', 'RUNNING'];
+
+// Koliko zapis smije stajati prije nego što ga smatramo mrtvim. PENDING mjerimo od
+// `createdAt` (koliko čeka u redu — cron ga mora pokupiti u roku minute), a RUNNING od
+// `updatedAt` (preuzimanje ga postavi, pa je to stvarno trajanje obrade).
+const QUEUE_STALE_MS = 15 * 60 * 1000; // nitko ga nije pokupio → cron ne radi
+const RUN_STALE_MS = 10 * 60 * 1000; // worker umro usred posla (limit funkcije je 300 s)
 const STALE_ERROR = 'Napušteno (prekoračeno vrijeme)';
 
 type AnalysisRow = Awaited<ReturnType<typeof prisma.webshopAnalysis.findFirst>>;
 
-async function expireIfStalePending(row: AnalysisRow): Promise<AnalysisRow> {
-  if (!row || row.status !== 'PENDING') return row;
-  if (Date.now() - row.createdAt.getTime() < STALE_PENDING_MS) return row;
+function isStale(row: { status: string; createdAt: Date; updatedAt: Date }): boolean {
+  if (row.status === 'PENDING') return Date.now() - row.createdAt.getTime() >= QUEUE_STALE_MS;
+  if (row.status === 'RUNNING') return Date.now() - row.updatedAt.getTime() >= RUN_STALE_MS;
+  return false;
+}
+
+async function expireIfStale(row: AnalysisRow): Promise<AnalysisRow> {
+  if (!row || !isStale(row)) return row;
   return prisma.webshopAnalysis.update({
     where: { id: row.id },
     data: { status: 'FAILED', error: STALE_ERROR },
@@ -429,20 +443,24 @@ async function notifyAnalysisFailure(memberId: string, websiteUrl: string, reaso
   }
 }
 
-// Cron sweep: zaglavljeni PENDING se na read putanji liječi SAMO ako ga netko pročita.
-// Ako član ne otvori portal, zapis stoji zauvijek i nitko ne zna — zato ga i cron
-// periodički pokupi i javi timu. Prijelaz PENDING → FAILED je atomaran (updateMany sa
-// statusom u WHERE), pa se obavijest pošalje točno jednom čak i ako se dva cron ciklusa
-// preklope.
-export async function sweepStalePendingAnalyses(): Promise<{ swept: number }> {
-  const stale = await prisma.webshopAnalysis.findMany({
-    where: { status: 'PENDING', createdAt: { lt: new Date(Date.now() - STALE_PENDING_MS) } },
-    select: { id: true, memberId: true, websiteUrl: true },
+// Cron sweep: mrtav zapis se na read putanji liječi SAMO ako ga netko pročita. Ako član
+// ne otvori portal, stoji zauvijek i nitko ne zna — zato ga i cron periodički pokupi i
+// javi timu. Prijelaz u FAILED je atomaran (updateMany sa statusom u WHERE), pa se
+// obavijest pošalje točno jednom čak i ako se dva cron ciklusa preklope.
+//
+// Mrtav RUNNING se NAMJERNO ne vraća u red: analiza koja stalno pada (npr. web koji uvijek
+// ode u timeout) inače bi se vrtjela u krug i trošila Opus pozive. Član ponovno klikne sam,
+// a neuspjeh mu ne troši godišnju kvotu (kvota broji samo COMPLETED).
+export async function sweepStaleAnalyses(): Promise<{ swept: number }> {
+  const active = await prisma.webshopAnalysis.findMany({
+    where: { status: { in: ACTIVE_STATUSES } },
+    select: { id: true, memberId: true, websiteUrl: true, status: true, createdAt: true, updatedAt: true },
   });
   let swept = 0;
-  for (const row of stale) {
+  for (const row of active) {
+    if (!isStale(row)) continue;
     const claimed = await prisma.webshopAnalysis.updateMany({
-      where: { id: row.id, status: 'PENDING' },
+      where: { id: row.id, status: row.status },
       data: { status: 'FAILED', error: STALE_ERROR },
     });
     if (claimed.count === 0) continue; // netko drugi ju je već zatvorio
@@ -453,89 +471,40 @@ export async function sweepStalePendingAnalyses(): Promise<{ swept: number }> {
   return { swept };
 }
 
-export async function getLatestWebshopAnalysis(userId: string, memberId?: string, website?: string) {
-  const member = await prisma.member.findFirst({
-    where: { userId, ...(memberId ? { id: memberId } : {}) },
+// ─── Worker: preuzimanje i izvršavanje analize iz reda ───────────────────────
+
+// Preuzmi najstariji zapis iz reda. Atomarno (updateMany sa statusom u WHERE) — dvije
+// istovremene cron instance ne mogu preuzeti isti zapis, pa se preklapanje ciklusa
+// pretvara u paralelnu obradu reda umjesto u dvostruki rad.
+async function claimNextQueued(): Promise<AnalysisRow> {
+  const candidates = await prisma.webshopAnalysis.findMany({
+    where: { status: 'PENDING' },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, website: true, extraWebshops: true, company: { select: { website: true } } },
+    take: 5,
+    select: { id: true },
   });
-  if (!member) return null;
-  // Bez traženog webshopa: zadnja analiza bilo kojeg (staro ponašanje).
-  // S traženim webshopom: zadnja analiza upravo tog webshopa (usporedba normaliziranih URL-ova).
-  if (!website) {
-    return expireIfStalePending(
-      await prisma.webshopAnalysis.findFirst({ where: { memberId: member.id }, orderBy: { createdAt: 'desc' } }),
-    );
+  for (const candidate of candidates) {
+    const claimed = await prisma.webshopAnalysis.updateMany({
+      where: { id: candidate.id, status: 'PENDING' },
+      data: { status: 'RUNNING' },
+    });
+    if (claimed.count === 1) return prisma.webshopAnalysis.findUnique({ where: { id: candidate.id } });
   }
-  const target = resolveSite(memberAnalysisSites(member), website);
-  if (!target) return null;
-  const rows = await prisma.webshopAnalysis.findMany({
-    where: { memberId: member.id },
-    orderBy: { createdAt: 'desc' },
-    take: 30,
-  });
-  return expireIfStalePending(rows.find((r) => siteKey(r.websiteUrl) === siteKey(target)) ?? null);
+  return null;
 }
 
-export async function requestWebshopAnalysis(userId: string, memberId?: string, requestedWebsite?: string) {
-  const member = await prisma.member.findFirst({
-    where: { userId, ...(memberId ? { id: memberId } : {}) },
-    orderBy: { createdAt: 'asc' },
-    include: { company: true, user: { select: { email: true } } },
-  });
-
-  if (!member) return { error: 'NOT_FOUND' } as RequestError;
-  if (!ANALYZABLE_TYPES.includes(member.memberType)) return { error: 'NOT_TRADER' } as RequestError;
-  if (member.status !== 'ACTIVE') return { error: 'INACTIVE' } as RequestError;
-
-  // Webshop članstva ima prednost pred webshopom tvrtke; član s više webshopova
-  // može eksplicitno odabrati koji analizira (mora pripadati članstvu).
-  const website = resolveSite(memberAnalysisSites(member), requestedWebsite);
-  if (!website) return { error: 'NO_WEBSITE' } as RequestError;
-
-  // Spriječi paralelno dvostruko pokretanje — ali samo za stvarno tekući zahtjev.
-  // Zaglavljeni PENDING (prekinuta veza, timeout) stariji od 5 min smatramo napuštenim
-  // i označavamo FAILED kako član ne bi ostao trajno zaključan.
-  const pending = await prisma.webshopAnalysis.findFirst({
-    where: { memberId: member.id, status: 'PENDING' },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (pending) {
-    const ageMs = Date.now() - pending.createdAt.getTime();
-    if (ageMs < 5 * 60 * 1000) return { error: 'IN_PROGRESS' } as RequestError;
+// Izvrši jednu preuzetu analizu. NIKAD ne baca — ishod uvijek završi u zapisu, jer bi
+// iznimka ostavila RUNNING zapis koji onda čeka sweep.
+async function runClaimedAnalysis(record: { id: string; memberId: string; websiteUrl: string }): Promise<void> {
+  const { id, websiteUrl } = record;
+  const member = await prisma.member.findUnique({ where: { id: record.memberId }, include: { company: true } });
+  if (!member) {
     await prisma.webshopAnalysis.update({
-      where: { id: pending.id },
-      data: { status: 'FAILED', error: 'Napušteno (prekoračeno vrijeme)' },
+      where: { id },
+      data: { status: 'FAILED', error: 'Član više ne postoji' },
     });
+    return;
   }
-
-  const limit = analysesLimitFor(member.user?.email, member.memberTier);
-
-  // Dnevni cap na broj POKRENUTIH analiza (bilo koji status) u zadnjih 24h.
-  // Godišnja kvota broji samo COMPLETED, pa bi bez ovoga kompromitirani račun mogao
-  // beskonačno ponavljati NEuspjele analize (svaka i dalje troši Opus poziv) i nikad
-  // dosegnuti godišnji limit. Cap je iznad legitimne potrebe (nitko ne radi >par/dan).
-  const DAY_MS = 24 * 60 * 60 * 1000;
-  const dailyCap = Math.max(limit, 6);
-  const startedToday = await prisma.webshopAnalysis.count({
-    where: { memberId: member.id, createdAt: { gte: new Date(Date.now() - DAY_MS) } },
-  });
-  if (startedToday >= dailyCap) return { error: 'LIMIT_REACHED' } as RequestError;
-
-  // Godišnji limit: najviše `limit` USPJEŠNIH analiza u zadnjih 365 dana — PO WEBSHOPU
-  // (član s više webshopova ima kvotu za svaki zasebno).
-  const yearRows = await prisma.webshopAnalysis.findMany({
-    where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
-    select: { websiteUrl: true },
-  });
-  const usedThisYear = yearRows.filter((r) => siteKey(r.websiteUrl) === siteKey(website)).length;
-  if (usedThisYear >= limit) return { error: 'LIMIT_REACHED' } as RequestError;
-
-  const websiteUrl = normalizeUrl(website);
-
-  const record = await prisma.webshopAnalysis.create({
-    data: { memberId: member.id, websiteUrl, status: 'PENDING' },
-  });
 
   try {
     const isProvider = member.memberType === 'SERVICE_PROVIDER';
@@ -592,8 +561,8 @@ export async function requestWebshopAnalysis(userId: string, memberId?: string, 
           webshopSignals,
         );
 
-    return prisma.webshopAnalysis.update({
-      where: { id: record.id },
+    await prisma.webshopAnalysis.update({
+      where: { id },
       data: {
         status: 'COMPLETED',
         overallScore: Math.round(result.overallScore),
@@ -606,11 +575,112 @@ export async function requestWebshopAnalysis(userId: string, memberId?: string, 
   } catch (error) {
     logger.error({ error: String(error), websiteUrl }, 'Webshop analysis failed');
     await prisma.webshopAnalysis.update({
-      where: { id: record.id },
+      where: { id },
       data: { status: 'FAILED', error: String(error) },
     });
-    // Awaita se prije odgovora (serverless freeze) — inače obavijest zna biti presječena.
     await notifyAnalysisFailure(member.id, websiteUrl, String(error));
-    return { error: 'ANALYSIS_FAILED' } as RequestError;
   }
+}
+
+// Cron `run-analyses`: obradi jednu analizu po ciklusu. Jedna analiza traje ~2–4 min, a
+// funkcija ima 300 s — zato jedna po pozivu. Backlog se ne gomila jer cron ide svake
+// minute, a preuzimanje je atomarno pa ciklusi koji se preklope rade paralelno.
+export async function processQueuedAnalyses(maxItems = 1): Promise<{ processed: number }> {
+  let processed = 0;
+  for (let i = 0; i < maxItems; i++) {
+    const claimed = await claimNextQueued();
+    if (!claimed) break;
+    logger.info({ id: claimed.id, websiteUrl: claimed.websiteUrl }, 'Analiza preuzeta iz reda');
+    await runClaimedAnalysis(claimed);
+    processed++;
+  }
+  return { processed };
+}
+
+export async function getLatestWebshopAnalysis(userId: string, memberId?: string, website?: string) {
+  const member = await prisma.member.findFirst({
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, website: true, extraWebshops: true, company: { select: { website: true } } },
+  });
+  if (!member) return null;
+  // Bez traženog webshopa: zadnja analiza bilo kojeg (staro ponašanje).
+  // S traženim webshopom: zadnja analiza upravo tog webshopa (usporedba normaliziranih URL-ova).
+  if (!website) {
+    return expireIfStale(
+      await prisma.webshopAnalysis.findFirst({ where: { memberId: member.id }, orderBy: { createdAt: 'desc' } }),
+    );
+  }
+  const target = resolveSite(memberAnalysisSites(member), website);
+  if (!target) return null;
+  const rows = await prisma.webshopAnalysis.findMany({
+    where: { memberId: member.id },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+  });
+  return expireIfStale(rows.find((r) => siteKey(r.websiteUrl) === siteKey(target)) ?? null);
+}
+
+export async function requestWebshopAnalysis(userId: string, memberId?: string, requestedWebsite?: string) {
+  const member = await prisma.member.findFirst({
+    where: { userId, ...(memberId ? { id: memberId } : {}) },
+    orderBy: { createdAt: 'asc' },
+    include: { company: true, user: { select: { email: true } } },
+  });
+
+  if (!member) return { error: 'NOT_FOUND' } as RequestError;
+  if (!ANALYZABLE_TYPES.includes(member.memberType)) return { error: 'NOT_TRADER' } as RequestError;
+  if (member.status !== 'ACTIVE') return { error: 'INACTIVE' } as RequestError;
+
+  // Webshop članstva ima prednost pred webshopom tvrtke; član s više webshopova
+  // može eksplicitno odabrati koji analizira (mora pripadati članstvu).
+  const website = resolveSite(memberAnalysisSites(member), requestedWebsite);
+  if (!website) return { error: 'NO_WEBSITE' } as RequestError;
+
+  // Spriječi dvostruko pokretanje — analiza koja čeka u redu (PENDING) ili se upravo
+  // izvršava (RUNNING) blokira novu. Mrtav zapis (vidi isStale) se ne računa kao tekući
+  // pa član ne ostaje trajno zaključan ako worker padne.
+  const active = await prisma.webshopAnalysis.findFirst({
+    where: { memberId: member.id, status: { in: ACTIVE_STATUSES } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (active) {
+    if (!isStale(active)) return { error: 'IN_PROGRESS' } as RequestError;
+    await prisma.webshopAnalysis.update({
+      where: { id: active.id },
+      data: { status: 'FAILED', error: STALE_ERROR },
+    });
+  }
+
+  const limit = analysesLimitFor(member.user?.email, member.memberTier);
+
+  // Dnevni cap na broj POKRENUTIH analiza (bilo koji status) u zadnjih 24h.
+  // Godišnja kvota broji samo COMPLETED, pa bi bez ovoga kompromitirani račun mogao
+  // beskonačno ponavljati NEuspjele analize (svaka i dalje troši Opus poziv) i nikad
+  // dosegnuti godišnji limit. Cap je iznad legitimne potrebe (nitko ne radi >par/dan).
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const dailyCap = Math.max(limit, 6);
+  const startedToday = await prisma.webshopAnalysis.count({
+    where: { memberId: member.id, createdAt: { gte: new Date(Date.now() - DAY_MS) } },
+  });
+  if (startedToday >= dailyCap) return { error: 'LIMIT_REACHED' } as RequestError;
+
+  // Godišnji limit: najviše `limit` USPJEŠNIH analiza u zadnjih 365 dana — PO WEBSHOPU
+  // (član s više webshopova ima kvotu za svaki zasebno).
+  const yearRows = await prisma.webshopAnalysis.findMany({
+    where: { memberId: member.id, status: 'COMPLETED', createdAt: { gte: new Date(Date.now() - YEAR_MS) } },
+    select: { websiteUrl: true },
+  });
+  const usedThisYear = yearRows.filter((r) => siteKey(r.websiteUrl) === siteKey(website)).length;
+  if (usedThisYear >= limit) return { error: 'LIMIT_REACHED' } as RequestError;
+
+  const websiteUrl = normalizeUrl(website);
+
+  const record = await prisma.webshopAnalysis.create({
+    data: { memberId: member.id, websiteUrl, status: 'PENDING' },
+  });
+
+  // Posao je u redu — worker (cron `run-analyses`) ga preuzima unutar minute.
+  // Portal dobiva PENDING zapis i polla dok ne postane COMPLETED/FAILED.
+  return record;
 }

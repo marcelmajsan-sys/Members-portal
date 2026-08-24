@@ -96,6 +96,8 @@ const TYPE_LABELS: Record<string, string> = {
   WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član',
 };
 const TIER_LABELS: Record<string, string> = { FREE: 'Besplatno', STANDARD: 'Standard', PREMIUM: 'Premium' };
+// Analiza je "u tijeku" dok čeka u redu (PENDING) ili je worker obrađuje (RUNNING).
+const isAnalysisActive = (status?: string) => status === 'PENDING' || status === 'RUNNING';
 const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Aktivno', PENDING: 'Na čekanju', EXPIRED: 'Isteklo', SUSPENDED: 'Pauzirano' };
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-success-light text-success', PENDING: 'bg-gray-100 text-gray-600',
@@ -221,7 +223,8 @@ export default function PortalHome() {
       }
       setLoading(false);
       // Ako je analiza pokrenuta u prethodnom posjetu i još traje, nastavi pollati.
-      if (wa.success && wa.data?.status === 'PENDING') pollAnalysis();
+      // PENDING = čeka u redu, RUNNING = worker je već obrađuje.
+      if (wa.success && isAnalysisActive(wa.data?.status)) pollAnalysis();
     })();
   }, [isLoading, isAuthenticated, user, reloadKey]);
 
@@ -273,8 +276,9 @@ export default function PortalHome() {
   }
 
   // Periodički provjerava spremljenu analizu dok ne postane COMPLETED/FAILED.
-  // Tako se dovršena analiza prikaže i ako se duga POST veza prekine.
-  async function pollAnalysis(maxMs = 180000) {
+  // Analizu izvršava worker na serveru (POST je samo stavlja u red), pa je prozor širi:
+  // do ~1 min čekanja na worker + do ~5 min same analize.
+  async function pollAnalysis(maxMs = 600000) {
     setAnalyzing(true);
     const start = Date.now();
     while (Date.now() - start < maxMs) {
