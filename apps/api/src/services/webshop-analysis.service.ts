@@ -43,6 +43,20 @@ function siteKey(url: string): string {
   return url.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
 }
 
+// Host bez vodećeg "www." za usporedbu "je li isti site". Discovery je prije uspoređivao
+// PUNI origin (protokol+host+port), pa je za shopove koji se poslužuju na www., a interno
+// linkaju na ne-www (ili obrnuto / http↔https), odbacivao gotovo sve podstranice — npr.
+// babyland.hr (naslovnica na www., 459/469 linkova na golu domenu) davao je 0 podstranica
+// pa su LEGAL/ANALYTICS/UX ocijenjeni samo iz naslovnice. Usporedba po hostu (www-neosjetljiva)
+// hvata i te linkove; apsolutni URL koji vraćamo i dalje pokazuje na stvarno odredište.
+function sameSiteHost(url: string): string | null {
+  try {
+    return new URL(url).host.replace(/^www\./i, '').toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 // Svi webshopovi jednog člana: glavni (webshop članstva, prednost, inače web tvrtke) +
 // dodatni webshopovi (Member.extraWebshops), bez duplikata. Član s više webshopova ima
 // pravo na kvotu analiza za SVAKI od njih.
@@ -98,12 +112,8 @@ const CATEGORY_HINT = /(\/kategorij|\/categor|\/c\/|\/trgovina|\/shop|\/proizvod
 
 // Iz HTML-a naslovnice izvuci kandidate za stranicu kategorije i proizvoda (best-effort).
 function discoverSubpages(homepageUrl: string, html: string): AnalysisPage[] {
-  let origin: string;
-  try {
-    origin = new URL(homepageUrl).origin;
-  } catch {
-    return [];
-  }
+  const rootHost = sameSiteHost(homepageUrl);
+  if (!rootHost) return [];
   const hrefs = new Set<string>();
   const re = /href\s*=\s*["']([^"']+)["']/gi;
   let m: RegExpExecArray | null;
@@ -116,7 +126,7 @@ function discoverSubpages(homepageUrl: string, html: string): AnalysisPage[] {
     } catch {
       continue;
     }
-    if (abs.origin !== origin) continue; // samo isti host
+    if (sameSiteHost(abs.href) !== rootHost) continue; // isti site (www-neosjetljivo)
     if (abs.pathname === '/' || abs.pathname === '') continue;
     if (SKIP_PATH.test(abs.pathname)) continue;
     hrefs.add(abs.origin + abs.pathname);
@@ -188,12 +198,8 @@ export function detectWithdrawalLink(homepageUrl: string, html: string): { prese
 // Otkrij do 3 pravne/potrošačke podstranice (raskid, uvjeti/reklamacije, privatnost/kolačići) —
 // discoverSubpages ih namjerno preskače (SKIP_PATH), a LEGAL/ANALYTICS ih trebaju pročitati.
 export function discoverLegalPages(homepageUrl: string, html: string): AnalysisPage[] {
-  let origin: string;
-  try {
-    origin = new URL(homepageUrl).origin;
-  } catch {
-    return [];
-  }
+  const rootHost = sameSiteHost(homepageUrl);
+  if (!rootHost) return [];
   const hrefs: string[] = [];
   const seen = new Set<string>();
   const re = /href\s*=\s*["']([^"']+)["']/gi;
@@ -207,7 +213,7 @@ export function discoverLegalPages(homepageUrl: string, html: string): AnalysisP
     } catch {
       continue;
     }
-    if (abs.origin !== origin) continue;
+    if (sameSiteHost(abs.href) !== rootHost) continue;
     if (abs.pathname === '/' || abs.pathname === '') continue;
     if (/\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|xml|css|js)(\?|$)/i.test(abs.pathname)) continue;
     const key = abs.origin + abs.pathname;
@@ -237,12 +243,8 @@ const PROVIDER_HINTS: Array<{ re: RegExp; label: string }> = [
 const PROVIDER_SKIP = /(prijav|login|register|registr|account|kontakt|contact|uvjeti|terms|privatnost|privacy|kolacic|cookie|faq|\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|xml|css|js))(\/|$|\?)/i;
 
 function discoverProviderSubpages(homepageUrl: string, html: string): AnalysisPage[] {
-  let origin: string;
-  try {
-    origin = new URL(homepageUrl).origin;
-  } catch {
-    return [];
-  }
+  const rootHost = sameSiteHost(homepageUrl);
+  if (!rootHost) return [];
   const hrefs: string[] = [];
   const seen = new Set<string>();
   const re = /href\s*=\s*["']([^"']+)["']/gi;
@@ -256,7 +258,7 @@ function discoverProviderSubpages(homepageUrl: string, html: string): AnalysisPa
     } catch {
       continue;
     }
-    if (abs.origin !== origin) continue;
+    if (sameSiteHost(abs.href) !== rootHost) continue;
     if (abs.pathname === '/' || abs.pathname === '') continue;
     if (PROVIDER_SKIP.test(abs.pathname)) continue;
     const key = abs.origin + abs.pathname;
