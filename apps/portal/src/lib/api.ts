@@ -20,7 +20,7 @@ function getAccessToken(): string | null {
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-async function refreshToken(): Promise<boolean> {
+export async function refreshToken(): Promise<boolean> {
   if (isRefreshing && refreshPromise) {
     return refreshPromise;
   }

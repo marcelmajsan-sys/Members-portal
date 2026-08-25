@@ -8,7 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
-import { api, isImpersonating as isImpersonatingFn, endImpersonation } from './api';
+import { api, isImpersonating as isImpersonatingFn, endImpersonation, refreshToken } from './api';
 
 interface User {
   id: string;
@@ -53,29 +53,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       history.replaceState(null, '', window.location.pathname);
     }
 
-    if (isImpersonatingFn()) {
-      const impUser = sessionStorage.getItem('impUser');
-      if (impUser) {
-        try {
-          setUser(JSON.parse(impUser));
-          setImpersonating(true);
-          setIsLoading(false);
-          return;
-        } catch { /* padne na normalnu prijavu ispod */ }
+    void (async () => {
+      if (isImpersonatingFn()) {
+        const impUser = sessionStorage.getItem('impUser');
+        if (impUser) {
+          try {
+            setUser(JSON.parse(impUser));
+            setImpersonating(true);
+            setIsLoading(false);
+            return;
+          } catch { /* padne na normalnu prijavu ispod */ }
+        }
       }
-    }
 
-    const stored = localStorage.getItem('user');
-    const token = localStorage.getItem('accessToken');
-    if (stored && token) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem('user');
+      const stored = localStorage.getItem('user');
+      const refresh = localStorage.getItem('refreshToken');
+      // Access token traje samo 15 min pa je pri povratku gotovo uvijek istekao.
+      // Proaktivno ga osvježi PRIJE nego korisnika proglasimo prijavljenim — inače
+      // portal renderira "prijavljeno" iz stale localStoragea, a prvi API poziv padne na 401.
+      if (stored && refresh) {
+        const ok = await refreshToken();
+        if (ok) {
+          try { setUser(JSON.parse(stored)); }
+          catch { localStorage.removeItem('user'); }
+        } else {
+          // Refresh token istekao ili opozvan (npr. nakon reset lozinke) → čista odjava.
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        }
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    })();
   }, []);
+
+  // Pozadinski tihi refresh dok je tab otvoren (access token traje 15 min) —
+  // sesija nikad ne dođe do 401 usred korištenja. Impersonacija nema refresh token.
+  useEffect(() => {
+    if (!user || impersonating) return;
+    const id = setInterval(() => { void refreshToken(); }, 12 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [user, impersonating]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {
