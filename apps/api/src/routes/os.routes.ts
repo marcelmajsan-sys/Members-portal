@@ -928,6 +928,12 @@ router.patch('/members/:id/status', validateParams(idParamSchema), async (req: A
   try {
     const member = await updateMember(req.params.id as string, { status: status as 'ACTIVE' | 'PENDING' | 'SUSPENDED' | 'EXPIRED' });
 
+    // Aktivacija članstva mora otključati i login: status→ACTIVE ne dira User.isActive,
+    // pa bi obnovljen član inače ostao zaključan s "račun nije aktivan" (isti izvor buga kao reset lozinke).
+    if (status === 'ACTIVE') {
+      await prisma.user.update({ where: { id: member.userId }, data: { isActive: true } });
+    }
+
     // Notify the member
     await createNotification({
       userId: member.userId,

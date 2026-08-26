@@ -151,7 +151,9 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   }
 
   if (!user.isActive) {
-    errorResponse(res, 'ACCOUNT_DISABLED', 'Račun je deaktiviran', 403);
+    // Reset lozinke NE mijenja isActive — član koji ovdje zapne vrti reset u krug bez učinka.
+    // Zato ga usmjeravamo na udrugu (samo OWNER može reaktivirati kroz send-invite/set-password).
+    errorResponse(res, 'ACCOUNT_DISABLED', 'Vaš račun trenutačno nije aktivan. Resetiranje lozinke to neće riješiti — javite se Udruzi na udruga@ecommerce.hr da vam ponovno otvorimo pristup.', 403);
     return;
   }
 
