@@ -885,6 +885,19 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
     }
   }
 
+  // Audit trag — vidi se je li/kada je invite (postavi-lozinku link) poslan i kome.
+  try {
+    await prisma.memberNote.create({
+      data: {
+        memberId: member.id,
+        authorId: req.user!.userId,
+        content: `✉️ Poslan pristupni link (postavi lozinku) na ${user.email}${secondarySent ? ` i ${secondarySent}` : ''}.`,
+      },
+    });
+  } catch {
+    // audit ne smije srušiti glavnu operaciju
+  }
+
   successResponse(res, { message: 'Pristupni podaci poslani', email: user.email, secondaryEmail: secondarySent });
 });
 
@@ -912,6 +925,21 @@ router.post('/members/:id/set-password', requireRole('OWNER'), validateParams(id
   });
   // Poništi postojeće sesije i stare reset linkove (isti tretman kao /api/auth/reset-password)
   await prisma.refreshToken.deleteMany({ where: { userId: member.userId } });
+
+  // Audit trag — bez ovoga se ne vidi je li/kada je lozinka uopće postavljena
+  // (User.updatedAt se prepisuje svakim idućim upisom pa nema pouzdanog traga za debug).
+  // Obični MemberNote → vidljiv u "Bilješke" na profilu, BEZ staff-notifikacije (ta ide samo kroz notes rutu).
+  try {
+    await prisma.memberNote.create({
+      data: {
+        memberId: member.id,
+        authorId: req.user!.userId,
+        content: `🔑 Lozinka za članski portal ručno postavljena (za ${member.user.email}).`,
+      },
+    });
+  } catch {
+    // audit ne smije srušiti glavnu operaciju
+  }
 
   successResponse(res, { message: 'Lozinka postavljena', email: member.user.email });
 });
