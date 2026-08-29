@@ -730,6 +730,10 @@ export async function renewMembership(
     },
   });
 
+  // Produženje mora otključati i login: status→ACTIVE ne dira User.isActive sam po sebi,
+  // pa bi obnovljeni član inače ostao zaključan (login-gate) unatoč aktivnom članstvu.
+  await prisma.user.update({ where: { id: member.userId }, data: { isActive: true } });
+
   return { member: updatedMember, newExpiresAt, amount };
 }
 
@@ -781,13 +785,22 @@ export async function adminUpdateMemberProfile(
     if (existing && existing.id !== member.userId) throw new Error('EMAIL_TAKEN');
   }
 
+  // Produženje članstva (expiresAt gurnut u budućnost) automatski vraća EXPIRED člana u ACTIVE
+  // i otključava mu login (isActive) — inače status ostane u proturječju s datumom isteka
+  // (član se prikazuje "istekao"/crveno i ne može se prijaviti unatoč valjanom članstvu).
+  // Ne dira leadove, PENDING (obrisane) ni SUSPENDED (namjerna admin akcija).
+  const reactivate =
+    expiresAt !== undefined && !member.isLead &&
+    member.status === 'EXPIRED' && expiresAt > new Date();
+
   const ops: Prisma.PrismaPromise<unknown>[] = [];
 
   // Update user fields
-  const userData: Record<string, string> = {};
+  const userData: Record<string, string | boolean> = {};
   if (firstName !== undefined) userData.firstName = firstName;
   if (lastName !== undefined) userData.lastName = lastName;
   if (email !== undefined && email.trim()) userData.email = email.trim();
+  if (reactivate) userData.isActive = true;
   if (Object.keys(userData).length > 0) {
     ops.push(prisma.user.update({ where: { id: member.userId }, data: userData }));
   }
@@ -816,6 +829,7 @@ export async function adminUpdateMemberProfile(
   if (memberType !== undefined) memberData.memberType = memberType;
   if (joinedAt !== undefined) memberData.joinedAt = joinedAt;
   if (expiresAt !== undefined) memberData.expiresAt = expiresAt;
+  if (reactivate) memberData.status = 'ACTIVE';
   if (data.personalAddress !== undefined) memberData.personalAddress = emptyToNull(data.personalAddress);
   if (data.personalZip !== undefined) memberData.personalZip = emptyToNull(data.personalZip);
   if (data.personalCity !== undefined) memberData.personalCity = emptyToNull(data.personalCity);
