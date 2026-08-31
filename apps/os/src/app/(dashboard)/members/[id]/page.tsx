@@ -54,6 +54,7 @@ interface MemberRaw {
   personalCity: string | null;
   personalCountry: string | null;
   personalPhone: string | null;
+  personalNote: string | null;
   user: { id: string; firstName: string; lastName: string; email: string; role: string };
   companyId: string;
   website: string | null;
@@ -185,9 +186,9 @@ export default function MemberDetailPage() {
   const [editForm, setEditForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', companyName: '', oib: '', address: '', city: '', mainWebsite: '', memberType: '', joinedAt: '', expiresAt: '',
     // Osobni podaci kontakt osobe
-    dateOfBirth: '', personalOib: '', personalAddress: '', personalZip: '', personalCity: '', personalPhone: '',
+    dateOfBirth: '', personalOib: '', personalAddress: '', personalZip: '', personalCity: '', personalPhone: '', personalNote: '',
     // Druga kontakt osoba
-    secFirstName: '', secLastName: '', secEmail: '', secPhone: '', secDateOfBirth: '', secOib: '', secAddress: '', secZip: '', secCity: '',
+    secFirstName: '', secLastName: '', secEmail: '', secPhone: '', secDateOfBirth: '', secOib: '', secAddress: '', secZip: '', secCity: '', secNote: '',
   });
   const [hasSecond, setHasSecond] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -593,6 +594,7 @@ export default function MemberDetailPage() {
       personalZip: member.personalZip || '',
       personalCity: member.personalCity || '',
       personalPhone: member.personalPhone || '',
+      personalNote: member.personalNote || '',
       // Druga kontakt osoba
       secFirstName: sc?.firstName || '',
       secLastName: sc?.lastName || '',
@@ -603,6 +605,7 @@ export default function MemberDetailPage() {
       secAddress: sc?.address || '',
       secZip: sc?.zip || '',
       secCity: sc?.city || '',
+      secNote: sc?.note || '',
     });
     setHasSecond(!!sc);
     setEditError('');
@@ -634,6 +637,7 @@ export default function MemberDetailPage() {
       personalZip: editForm.personalZip,
       personalCity: editForm.personalCity,
       personalPhone: editForm.personalPhone,
+      personalNote: editForm.personalNote,
       // Druga kontakt osoba: objekt = upsert, null = ukloni
       secondaryContact: hasSecond
         ? {
@@ -646,6 +650,7 @@ export default function MemberDetailPage() {
             address: editForm.secAddress,
             zip: editForm.secZip,
             city: editForm.secCity,
+            note: editForm.secNote,
           }
         : null,
     });
@@ -855,6 +860,10 @@ export default function MemberDetailPage() {
                     <input value={editForm.personalCity} onChange={e => setEditForm(f => ({ ...f, personalCity: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                   </div>
                 </div>
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-500 mb-1">Napomena</label>
+                  <textarea value={editForm.personalNote} onChange={e => setEditForm(f => ({ ...f, personalNote: e.target.value }))} rows={2} placeholder="Interna napomena o ovoj kontakt osobi" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Podaci o firmi</p>
@@ -994,6 +1003,10 @@ export default function MemberDetailPage() {
                         <label className="block text-xs text-gray-500 mb-1">Grad</label>
                         <input value={editForm.secCity} onChange={e => setEditForm(f => ({ ...f, secCity: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-sm" />
                       </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Napomena</label>
+                      <textarea value={editForm.secNote} onChange={e => setEditForm(f => ({ ...f, secNote: e.target.value }))} rows={2} placeholder="Interna napomena o ovoj kontakt osobi" className="w-full rounded-lg border px-3 py-2 text-sm" />
                     </div>
                   </div>
                 )}
@@ -1255,6 +1268,12 @@ export default function MemberDetailPage() {
                 {[member.personalAddress, [member.personalZip, member.personalCity].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—'}
               </dd>
             </div>
+            {member.personalNote && (
+              <div>
+                <dt className="text-gray-500 mb-1">Napomena</dt>
+                <dd className="rounded-lg bg-amber-50 px-3 py-2 text-gray-800 whitespace-pre-line">{member.personalNote}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-gray-500">Tip članstva</dt>
               <dd className="font-medium text-gray-900">{TYPE_LABELS[member.memberType] || member.memberType}</dd>
@@ -1442,6 +1461,12 @@ export default function MemberDetailPage() {
                 <dt className="text-gray-500">Adresa</dt>
                 <dd className="text-right font-medium text-gray-900">{addr || '—'}</dd>
               </div>
+              {sc.note && (
+                <div className="sm:col-span-2">
+                  <dt className="text-gray-500 mb-1">Napomena</dt>
+                  <dd className="rounded-lg bg-amber-50 px-3 py-2 font-medium text-gray-800 whitespace-pre-line">{sc.note}</dd>
+                </div>
+              )}
             </dl>
           </div>
         );
