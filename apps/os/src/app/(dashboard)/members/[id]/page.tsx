@@ -162,6 +162,8 @@ export default function MemberDetailPage() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState('');
   const [toast, setToast] = useState('');
+  // Inline potvrda ispod per-kontakt gumba "Pošalji pristup ovoj osobi" (toast je gore desno pa se lako promaši)
+  const [inviteInline, setInviteInline] = useState<{ target: 'primary' | 'secondary'; ok: boolean; msg: string } | null>(null);
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [renewAmount, setRenewAmount] = useState('');
   const [showTierModal, setShowTierModal] = useState(false);
@@ -399,15 +401,20 @@ export default function MemberDetailPage() {
   async function sendInvite(target: 'all' | 'primary' | 'secondary' = 'all') {
     if (!member) return;
     setActionLoading(target === 'all' ? 'invite' : `invite-${target}`);
+    if (target !== 'all') setInviteInline(null);
     const res = await api.post<{ email: string | null; secondaryEmail?: string | null }>(`/api/os/members/${id}/send-invite`, { target });
     if (res.success && res.data) {
       const recipients = [res.data.email, res.data.secondaryEmail].filter(Boolean).join(' i ');
-      showToast(recipients ? `Pristupni podaci poslani na ${recipients}` : 'Pristupni podaci poslani');
+      const msg = recipients ? `Pristupni podaci poslani na ${recipients}` : 'Pristupni podaci poslani';
+      showToast(msg);
+      if (target !== 'all') setInviteInline({ target, ok: true, msg });
       api.get<typeof emails>(`/api/os/members/${id}/emails`).then((r) => {
         if (r.success && r.data) setEmails(r.data);
       });
     } else {
-      showToast(`Greška: ${res.error?.message || 'Neuspjelo'}`);
+      const err = `Greška: ${res.error?.message || 'Neuspjelo'}`;
+      showToast(err);
+      if (target !== 'all') setInviteInline({ target, ok: false, msg: err });
     }
     setActionLoading('');
   }
@@ -1327,6 +1334,11 @@ export default function MemberDetailPage() {
               >
                 {actionLoading === 'invite-primary' ? 'Slanje...' : 'Pošalji pristup ovoj osobi'}
               </button>
+              {inviteInline?.target === 'primary' && (
+                <p className={`mt-2 text-xs font-medium ${inviteInline.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {inviteInline.ok ? '✓ ' : ''}{inviteInline.msg}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -1490,6 +1502,11 @@ export default function MemberDetailPage() {
                 >
                   {actionLoading === 'invite-secondary' ? 'Slanje...' : 'Pošalji pristup ovoj osobi'}
                 </button>
+                {inviteInline?.target === 'secondary' && (
+                  <p className={`mt-2 text-xs font-medium ${inviteInline.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {inviteInline.ok ? '✓ ' : ''}{inviteInline.msg}
+                  </p>
+                )}
               </div>
             )}
           </div>
