@@ -824,6 +824,17 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
 
   const user = member.user;
 
+  // Optional target: 'all' (default — glavni + druga kontakt osoba), 'primary' (samo glavni), 'secondary' (samo druga)
+  const target = ['all', 'primary', 'secondary'].includes(req.body?.target) ? req.body.target : 'all';
+  const sendToPrimary = target === 'all' || target === 'primary';
+  const sendToSecondary = target === 'all' || target === 'secondary';
+
+  const secondaryEmailRaw = member.secondaryContact?.email?.trim();
+  if (target === 'secondary' && !secondaryEmailRaw) {
+    errorResponse(res, 'VALIDATION_ERROR', 'Druga kontakt osoba nema email adresu', 400);
+    return;
+  }
+
   // Ensure the login is enabled
   if (!user.isActive) {
     await prisma.user.update({ where: { id: user.id }, data: { isActive: true } });
@@ -855,21 +866,25 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
     <p>Srdačan pozdrav,<br>Udruga eCommerce Hrvatska</p>
   </body></html>`;
 
-  try {
-    const link = await createInviteLink();
-    await sendEmail(user.email, 'Pristup članskom portalu — eCommerce Hrvatska', buildHtml(user.firstName, link, ''), {
-      templateName: 'member-invite',
-      memberId: member.id,
-    });
-  } catch {
-    errorResponse(res, 'EMAIL_FAILED', 'Slanje emaila nije uspjelo', 500);
-    return;
+  let primarySent: string | null = null;
+  if (sendToPrimary) {
+    try {
+      const link = await createInviteLink();
+      await sendEmail(user.email, 'Pristup članskom portalu — eCommerce Hrvatska', buildHtml(user.firstName, link, ''), {
+        templateName: 'member-invite',
+        memberId: member.id,
+      });
+      primarySent = user.email;
+    } catch {
+      errorResponse(res, 'EMAIL_FAILED', 'Slanje emaila nije uspjelo', 500);
+      return;
+    }
   }
 
-  // Also invite the secondary contact (if one exists with a distinct email) — they share the member's account
-  const secondaryEmail = member.secondaryContact?.email?.trim();
+  // Invite the secondary contact (if one exists with a distinct email) — they share the member's account
+  const secondaryEmail = secondaryEmailRaw;
   let secondarySent: string | null = null;
-  if (secondaryEmail && secondaryEmail.toLowerCase() !== user.email.toLowerCase()) {
+  if (sendToSecondary && secondaryEmail && secondaryEmail.toLowerCase() !== user.email.toLowerCase()) {
     try {
       const link = await createInviteLink();
       const loginNote = `<br>Za prijavu koristite email adresu: <strong>${user.email}</strong>`;
@@ -881,24 +896,31 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
       );
       secondarySent = secondaryEmail;
     } catch {
-      // Primary invite already went out — don't fail the request over the secondary contact
+      // Ako je i primarni otišao, ne rušimo zahtjev; ako je target bio samo secondary, javi grešku
+      if (target === 'secondary') {
+        errorResponse(res, 'EMAIL_FAILED', 'Slanje emaila nije uspjelo', 500);
+        return;
+      }
     }
   }
 
   // Audit trag — vidi se je li/kada je invite (postavi-lozinku link) poslan i kome.
-  try {
-    await prisma.memberNote.create({
-      data: {
-        memberId: member.id,
-        authorId: req.user!.userId,
-        content: `✉️ Poslan pristupni link (postavi lozinku) na ${user.email}${secondarySent ? ` i ${secondarySent}` : ''}.`,
-      },
-    });
-  } catch {
-    // audit ne smije srušiti glavnu operaciju
+  const recipients = [primarySent, secondarySent].filter(Boolean).join(' i ');
+  if (recipients) {
+    try {
+      await prisma.memberNote.create({
+        data: {
+          memberId: member.id,
+          authorId: req.user!.userId,
+          content: `✉️ Poslan pristupni link (postavi lozinku) na ${recipients}.`,
+        },
+      });
+    } catch {
+      // audit ne smije srušiti glavnu operaciju
+    }
   }
 
-  successResponse(res, { message: 'Pristupni podaci poslani', email: user.email, secondaryEmail: secondarySent });
+  successResponse(res, { message: 'Pristupni podaci poslani', email: primarySent, secondaryEmail: secondarySent });
 });
 
 // POST /members/:id/set-password — Admin ručno postavlja lozinku članskog portala (OWNER)

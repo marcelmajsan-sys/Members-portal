@@ -396,13 +396,13 @@ export default function MemberDetailPage() {
     setActionLoading('');
   }
 
-  async function sendInvite() {
+  async function sendInvite(target: 'all' | 'primary' | 'secondary' = 'all') {
     if (!member) return;
-    setActionLoading('invite');
-    const res = await api.post<{ email: string; secondaryEmail?: string | null }>(`/api/os/members/${id}/send-invite`, {});
+    setActionLoading(target === 'all' ? 'invite' : `invite-${target}`);
+    const res = await api.post<{ email: string | null; secondaryEmail?: string | null }>(`/api/os/members/${id}/send-invite`, { target });
     if (res.success && res.data) {
-      const recipients = res.data.secondaryEmail ? `${res.data.email} i ${res.data.secondaryEmail}` : res.data.email;
-      showToast(`Pristupni podaci poslani na ${recipients}`);
+      const recipients = [res.data.email, res.data.secondaryEmail].filter(Boolean).join(' i ');
+      showToast(recipients ? `Pristupni podaci poslani na ${recipients}` : 'Pristupni podaci poslani');
       api.get<typeof emails>(`/api/os/members/${id}/emails`).then((r) => {
         if (r.success && r.data) setEmails(r.data);
       });
@@ -1109,9 +1109,9 @@ export default function MemberDetailPage() {
         <div className="flex items-center gap-2">
           {isOwner && (
             <button
-              onClick={sendInvite}
+              onClick={() => sendInvite('all')}
               disabled={actionLoading === 'invite'}
-              title="Aktivira pristup i šalje članu email s linkom za postavljanje lozinke (members.ecommerce.hr)"
+              title="Aktivira pristup i šalje svim kontakt osobama (glavnoj i drugoj) email s linkom za postavljanje lozinke (members.ecommerce.hr)"
               className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-sm font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
             >
               {actionLoading === 'invite' ? 'Slanje...' : 'Pošalji pristup članu'}
@@ -1317,6 +1317,18 @@ export default function MemberDetailPage() {
               </dd>
             </div>
           </dl>
+          {isOwner && (
+            <div className="mt-4 border-t border-gray-100 pt-3">
+              <button
+                onClick={() => sendInvite('primary')}
+                disabled={actionLoading === 'invite-primary'}
+                title="Šalje pristupni link (postavi lozinku) samo glavnoj kontakt osobi"
+                className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-xs font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
+              >
+                {actionLoading === 'invite-primary' ? 'Slanje...' : 'Pošalji pristup ovoj osobi'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Company info */}
@@ -1468,6 +1480,18 @@ export default function MemberDetailPage() {
                 </div>
               )}
             </dl>
+            {isOwner && sc.email && (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <button
+                  onClick={() => sendInvite('secondary')}
+                  disabled={actionLoading === 'invite-secondary'}
+                  title="Šalje pristupni link (postavi lozinku) samo drugoj kontakt osobi (dijele isti račun člana)"
+                  className="rounded-lg border border-[#1B365D] bg-white px-3 py-1.5 text-xs font-medium text-[#1B365D] transition hover:bg-[#1B365D] hover:text-white disabled:opacity-50"
+                >
+                  {actionLoading === 'invite-secondary' ? 'Slanje...' : 'Pošalji pristup ovoj osobi'}
+                </button>
+              </div>
+            )}
           </div>
         );
       })()}
