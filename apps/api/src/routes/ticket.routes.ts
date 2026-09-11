@@ -4,7 +4,7 @@ import { prisma } from '@ecommerce-hr/db';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { successResponse, errorResponse } from '../utils/api-response.js';
-import { generateTicketQr, generateTicketPdf, ticketUrl } from '../services/ticket.service.js';
+import { generateTicketQr, generateTicketPdf, ticketUrl, slugify } from '../services/ticket.service.js';
 
 // ─── Javna ulaznica (bez autha, rate-limited) ────────────────────────────────
 
@@ -35,11 +35,9 @@ publicRouter.get('/:token/pdf', publicTicketLimiter, async (req, res) => {
     return;
   }
   const pdf = await generateTicketPdf(ticket, ticket.conference, ticket.member.company?.name ?? null);
-  const slug = ticket.conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
-  const nameSlug = ticket.fullName.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
   res.set({
     'Content-Type': 'application/pdf',
-    'Content-Disposition': `attachment; filename="ulaznica-${slug}-${nameSlug}.pdf"`,
+    'Content-Disposition': `attachment; filename="ulaznica-${slugify(ticket.conference.name)}-${slugify(ticket.fullName)}.pdf"`,
   });
   res.send(pdf);
 });

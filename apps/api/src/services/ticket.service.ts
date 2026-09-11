@@ -14,6 +14,17 @@ const API_BASE = process.env.API_BASE_URL ?? 'https://api.ecommerce.hr';
 
 export const TICKET_TYPES: TicketType[] = ['VIP', 'STANDARD'];
 
+// Transliterira hrvatske dijakritike prije stripanja ne-alfanumeričkih znakova
+// (bez ovoga "Ribić" postane "ribi" umjesto "ribic" — dijakritik se samo obriše).
+export function slugify(text: string): string {
+  const transliterated = text
+    .replace(/[čć]/gi, (c) => (c === c.toUpperCase() ? 'C' : 'c'))
+    .replace(/š/gi, (c) => (c === c.toUpperCase() ? 'S' : 's'))
+    .replace(/ž/gi, (c) => (c === c.toUpperCase() ? 'Z' : 'z'))
+    .replace(/đ/gi, (c) => (c === c.toUpperCase() ? 'D' : 'd'));
+  return transliterated.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
+}
+
 type MemberWithUser = Member & { user: User; company: Company | null };
 
 // ─── Kvota ────────────────────────────────────────────────────────────────────
@@ -423,9 +434,7 @@ export async function sendTicketConfirmedEmail(
   ticket: ConferenceTicket,
   member: MemberWithUser,
 ): Promise<void> {
-  const confSlug = conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
-  const nameSlug = ticket.fullName.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
-  const pdfFilename = `ulaznica-${confSlug}-${nameSlug}.pdf`;
+  const pdfFilename = `ulaznica-${slugify(conference.name)}-${slugify(ticket.fullName)}.pdf`;
   let pdfBase64: string | null = null;
   try {
     const pdf = await generateTicketPdf(ticket, conference, member.company?.name ?? null);
