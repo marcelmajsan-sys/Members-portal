@@ -36,9 +36,10 @@ publicRouter.get('/:token/pdf', publicTicketLimiter, async (req, res) => {
   }
   const pdf = await generateTicketPdf(ticket, ticket.conference, ticket.member.company?.name ?? null);
   const slug = ticket.conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
+  const nameSlug = ticket.fullName.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
   res.set({
     'Content-Type': 'application/pdf',
-    'Content-Disposition': `attachment; filename="ulaznica-${slug}.pdf"`,
+    'Content-Disposition': `attachment; filename="ulaznica-${slug}-${nameSlug}.pdf"`,
   });
   res.send(pdf);
 });
