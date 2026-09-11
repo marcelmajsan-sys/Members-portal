@@ -423,7 +423,9 @@ export async function sendTicketConfirmedEmail(
   ticket: ConferenceTicket,
   member: MemberWithUser,
 ): Promise<void> {
-  const pdfFilename = `ulaznica-${conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')}.pdf`;
+  const confSlug = conference.name.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
+  const nameSlug = ticket.fullName.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
+  const pdfFilename = `ulaznica-${confSlug}-${nameSlug}.pdf`;
   let pdfBase64: string | null = null;
   try {
     const pdf = await generateTicketPdf(ticket, conference, member.company?.name ?? null);
