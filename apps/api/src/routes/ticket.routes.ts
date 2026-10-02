@@ -13,6 +13,10 @@ const publicTicketLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
+  // Key po tokenu ulaznice (ne po IP-u): svaki gost ima svoj budžet, pa dijeljeni venue
+  // WiFi (NAT, isti javni IP za sve) ne spaja različite ljude u isti rate-limit bucket.
+  // Token bez route-matcha (nedostaje) pada natrag na IP.
+  keyGenerator: (req) => (req.params.token as string) || req.ip || 'unknown',
   message: {
     success: false,
     error: { code: 'RATE_LIMIT', message: 'Previše zahtjeva, pokušajte ponovno kasnije' },

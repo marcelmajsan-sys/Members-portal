@@ -28,8 +28,13 @@ import conferenceRoutes from './conference.routes.js';
 import { publicTicketRoutes, osTicketRoutes } from './ticket.routes.js';
 
 export function registerRoutes(app: Express): void {
-  // Apply default rate limiter to all routes
-  app.use(defaultLimiter);
+  // Apply default rate limiter to all routes — osim javnih ruta ulaznica, koje imaju
+  // vlastiti limiter (keyan po tokenu). Globalni limiter zbraja SVE pozive s jednog IP-a,
+  // pa bi na dijeljenom venue WiFi-ju (NAT) blokirao goste koji otvaraju svoje ulaznice.
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/tickets')) return next();
+    return defaultLimiter(req, res, next);
+  });
 
   // Mount route modules
   app.use('/api/auth', authRoutes);
