@@ -361,6 +361,14 @@ function ticketErrorResponse(res: Parameters<typeof errorResponse>[0], error: st
     case 'INACTIVE':
       errorResponse(res, 'FORBIDDEN', 'Produžite članstvo da biste dodavali osobe za ulaznice', 403);
       return;
+    case 'QUOTA_FULL':
+      errorResponse(
+        res,
+        'QUOTA_FULL',
+        'Iskoristili ste sve ulaznice iz paketa. Za dodatne ulaznice javite se na udruga@ecommerce.hr.',
+        409,
+      );
+      return;
     case 'CHECKED_IN':
       errorResponse(res, 'CONFLICT', 'Ulaznica je već iskorištena na ulazu i ne može se ukloniti', 409);
       return;

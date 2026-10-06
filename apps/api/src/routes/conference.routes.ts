@@ -8,7 +8,7 @@ import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { validate } from '../middleware/validate.js';
 import { successResponse, errorResponse } from '../utils/api-response.js';
-import { sendTicketConfirmedEmail, sendMemberAddedEmail, ticketUrl } from '../services/ticket.service.js';
+import { sendTicketConfirmedEmail, sendMemberAddedEmail, ticketUrl, getApprovalQuotaExcess } from '../services/ticket.service.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -256,6 +256,8 @@ const adminTicketSchema = z.object({
   phone: z.string().trim().optional(),
   type: z.enum(['VIP', 'STANDARD']).optional(),
   status: z.enum(['CONFIRMED', 'PENDING', 'CANCELLED']).optional(),
+  // Eksplicitna potvrda admina da se ulaznica odobrava PREKO kvote člana
+  confirmOverQuota: z.boolean().optional(),
 });
 
 router.put('/:id/tickets/:tid', validate(adminTicketSchema), async (req: AuthRequest, res) => {
@@ -267,7 +269,22 @@ router.put('/:id/tickets/:tid', validate(adminTicketSchema), async (req: AuthReq
     return;
   }
 
-  const data = { ...req.body } as Record<string, unknown>;
+  const { confirmOverQuota, ...data } = { ...req.body } as Record<string, unknown>;
+
+  // Potvrda (PENDING/CANCELLED → CONFIRMED) preko kvote traži confirmOverQuota:true —
+  // jedan nehotičan klik na "Odobri" više ne može tiho dati besplatnu dodatnu ulaznicu.
+  if (data.status === 'CONFIRMED' && ticket.status !== 'CONFIRMED' && confirmOverQuota !== true) {
+    const excess = await getApprovalQuotaExcess({ ...ticket, type: (data.type as TicketType) ?? ticket.type });
+    if (excess) {
+      errorResponse(
+        res,
+        'OVER_QUOTA',
+        `Član je već iskoristio kvotu za ${excess.type} ulaznice (${excess.used}/${excess.quota}). Ova ulaznica je DODATNA — odobrite je samo ako je dogovorena/plaćena.`,
+        409,
+      );
+      return;
+    }
+  }
   if (typeof data.email === 'string') {
     const email = data.email.toLowerCase();
     if (email !== ticket.email) {

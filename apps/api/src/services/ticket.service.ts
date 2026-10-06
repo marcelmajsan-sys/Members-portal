@@ -6,7 +6,6 @@ import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { sendEmail } from '@ecommerce-hr/email';
 import { robotoRegularBase64, robotoBoldBase64 } from '../assets/embedded-assets.js';
-import { notifyStaff } from './notification.service.js';
 import { logger } from '../utils/logger.js';
 
 const PORTAL_URL = process.env.MEMBER_APP_URL ?? 'https://members.ecommerce.hr';
@@ -78,6 +77,32 @@ export async function getTicketUsage(
   return usage;
 }
 
+// Bi li potvrda ove ulaznice (PENDING/CANCELLED → CONFIRMED) prešla kvotu člana?
+// Ulaznica sama sebe ne broji. Ručno dodane (addedByStaff) ne podliježu kvoti → null.
+// Admin odobrenje preko kvote mora biti eksplicitno (incident: OTOS, 1 klik na "Odobri"
+// potvrdio je drugu STANDARD ulaznicu bez ponude).
+export async function getApprovalQuotaExcess(
+  ticket: ConferenceTicket,
+): Promise<{ type: TicketType; used: number; quota: number } | null> {
+  if (ticket.addedByStaff) return null;
+  const [conference, member] = await Promise.all([
+    prisma.conference.findUnique({ where: { id: ticket.conferenceId } }),
+    prisma.member.findUnique({ where: { id: ticket.memberId } }),
+  ]);
+  if (!conference || !member) return null;
+  const quota = getTicketQuota(conference, member)[ticket.type];
+  const used = await prisma.conferenceTicket.count({
+    where: {
+      conferenceId: ticket.conferenceId,
+      memberId: ticket.memberId,
+      type: ticket.type,
+      status: { not: 'CANCELLED' },
+      id: { not: ticket.id },
+    },
+  });
+  return used >= quota ? { type: ticket.type, used, quota } : null;
+}
+
 // ─── Dohvat ───────────────────────────────────────────────────────────────────
 
 export async function getActiveConference(): Promise<Conference | null> {
@@ -118,9 +143,12 @@ export type TicketError =
   | { error: 'DUPLICATE_EMAIL' }
   | { error: 'TICKET_NOT_FOUND' }
   | { error: 'CHECKED_IN' }
-  | { error: 'INACTIVE' };
+  | { error: 'INACTIVE' }
+  | { error: 'QUOTA_FULL' };
 
-// Dodavanje osobe: unutar kvote → CONFIRMED, preko kvote → PENDING.
+// Dodavanje osobe: samo unutar kvote (→ CONFIRMED). Preko kvote član NE može dodati
+// ni zatražiti ulaznicu (→ QUOTA_FULL) — dodatne ulaznice dodaje ISKLJUČIVO admin
+// (POST /api/os/conferences/:id/tickets). Prije je preko kvote nastajao PENDING zahtjev.
 // Vlasništvo (memberId) dolazi iz JWT-a u ruti, nikad iz bodyja.
 export async function createTicket(
   conferenceId: string,
@@ -146,13 +174,12 @@ export async function createTicket(
   const quota = getTicketQuota(conference, member);
 
   // Provjera kvote i upis u ISTOJ serializable transakciji — dva paralelna zahtjeva
-  // (dupli klik, skripta) inače oba prođu ispod kvote i preskoče PENDING/ponuda flow.
+  // (dupli klik, skripta) inače oba prođu ispod kvote.
   const runCreate = () =>
     prisma.$transaction(
       async (tx) => {
         const usage = await getTicketUsage(conferenceId, member.id, tx);
-        const overQuota = usage[input.type] >= quota[input.type];
-        const status = overQuota ? 'PENDING' : 'CONFIRMED';
+        if (usage[input.type] >= quota[input.type]) return null;
 
         const data = {
           fullName: input.fullName.trim(),
@@ -160,48 +187,35 @@ export async function createTicket(
           email,
           phone: input.phone.trim(),
           type: input.type,
-          status,
+          status: 'CONFIRMED',
         } as const;
 
         // Token generiramo kriptografski (cuid default je djelomično predvidljiv, a token je javni URL)
-        const ticket = existing
+        return existing
           ? await tx.conferenceTicket.update({ where: { id: existing.id }, data })
           : await tx.conferenceTicket.create({ data: { ...data, conferenceId, memberId: member.id, token: crypto.randomUUID() } });
-        return { ticket, overQuota, status };
       },
       { isolationLevel: 'Serializable' },
     );
 
-  let created: Awaited<ReturnType<typeof runCreate>>;
+  let ticket: Awaited<ReturnType<typeof runCreate>>;
   try {
-    created = await runCreate();
+    ticket = await runCreate();
   } catch {
     // Serializacijski konflikt (paralelni upis) — jedan retry
-    created = await runCreate();
+    ticket = await runCreate();
   }
-  const { ticket, overQuota, status } = created;
+  if (!ticket) return { error: 'QUOTA_FULL' };
 
-  // Emailovi + obavijest osoblju — await prije odgovora (serverless), ali ne ruše operaciju
+  // Emailovi — await prije odgovora (serverless), ali ne ruše operaciju
   try {
-    if (status === 'CONFIRMED') {
-      await sendTicketConfirmedEmail(conference, ticket, member);
-      await sendMemberAddedEmail(conference, ticket, member, false);
-    } else {
-      await sendMemberAddedEmail(conference, ticket, member, true);
-      const memberName = `${member.user.firstName} ${member.user.lastName}`.trim();
-      const company = member.company?.name ? ` (${member.company.name})` : '';
-      await notifyStaff({
-        type: 'ACTION',
-        title: 'Zatražena dodatna ulaznica',
-        message: `${memberName}${company} je dodao/la osobu ${ticket.fullName} preko kvote za ${conference.name} — poslati ponudu s ${conference.extraDiscount}% popusta.`,
-        actionUrl: `/tickets`,
-      });
-    }
+    await sendTicketConfirmedEmail(conference, ticket, member);
+    await sendMemberAddedEmail(conference, ticket, member, false);
   } catch (err) {
     logger.error(err, 'Ticket notification/email failed');
   }
 
-  return { ticket, overQuota };
+  return { ticket, overQuota: false };
 }
 
 export async function updateTicket(
@@ -236,13 +250,15 @@ export async function updateTicket(
     if (clash && clash.id !== ticket.id) return { error: 'DUPLICATE_EMAIL' };
   }
 
-  // Promjena tipa ulaznice ponovno prolazi kroz kvotu (ostale izmjene ne diraju status)
+  // Promjena tipa ulaznice ponovno prolazi kroz kvotu (ostale izmjene ne diraju status).
+  // Preko kvote član ne može prijeći — dodatne ulaznice dodaje samo admin.
   let status = ticket.status;
   if (input.type !== ticket.type) {
     const quota = getTicketQuota(conference, member);
     const usage = await getTicketUsage(conferenceId, memberId);
     // usage ne uključuje ovu ulaznicu u novom tipu; u starom tipu ju isključujemo
-    status = usage[input.type] >= quota[input.type] ? 'PENDING' : 'CONFIRMED';
+    if (usage[input.type] >= quota[input.type]) return { error: 'QUOTA_FULL' };
+    status = 'CONFIRMED';
   }
 
   const updated = await prisma.conferenceTicket.update({
@@ -260,21 +276,9 @@ export async function updateTicket(
   // Iste posljedice kao kod kreiranja: prijelaz statusa šalje emailove / obavještava staff,
   // a promjena email adrese na CONFIRMED ulaznici šalje QR novoj osobi. Await, ne ruši operaciju.
   try {
-    if (updated.status !== ticket.status) {
-      if (updated.status === 'CONFIRMED') {
-        await sendTicketConfirmedEmail(conference, updated, member);
-        await sendMemberAddedEmail(conference, updated, member, false);
-      } else {
-        await sendMemberAddedEmail(conference, updated, member, true);
-        const memberName = `${member.user.firstName} ${member.user.lastName}`.trim();
-        const company = member.company?.name ? ` (${member.company.name})` : '';
-        await notifyStaff({
-          type: 'ACTION',
-          title: 'Zatražena dodatna ulaznica',
-          message: `${memberName}${company} je promjenom tipa ulaznice (${updated.fullName}) prešao/la kvotu za ${conference.name} — poslati ponudu s ${conference.extraDiscount}% popusta.`,
-          actionUrl: `/tickets`,
-        });
-      }
+    if (updated.status !== ticket.status && updated.status === 'CONFIRMED') {
+      await sendTicketConfirmedEmail(conference, updated, member);
+      await sendMemberAddedEmail(conference, updated, member, false);
     } else if (updated.status === 'CONFIRMED' && updated.email !== ticket.email) {
       await sendTicketConfirmedEmail(conference, updated, member);
     }

@@ -140,7 +140,15 @@ export default function TicketsPage() {
   async function updateTicket(t: Ticket, data: Partial<Pick<Ticket, 'status' | 'type'>>) {
     if (busyId) return;
     setBusyId(t.id);
-    const res = await api.put(`/api/os/conferences/${selectedId}/tickets/${t.id}`, data);
+    let res = await api.put(`/api/os/conferences/${selectedId}/tickets/${t.id}`, data);
+    // Odobrenje preko kvote člana traži eksplicitnu potvrdu (API vraća OVER_QUOTA)
+    if (!res.success && res.error?.code === 'OVER_QUOTA') {
+      if (!confirm(`${res.error.message}\n\nOdobriti dodatnu ulaznicu za ${t.fullName} ipak? Osobi će biti poslan email s ulaznicom.`)) {
+        setBusyId('');
+        return;
+      }
+      res = await api.put(`/api/os/conferences/${selectedId}/tickets/${t.id}`, { ...data, confirmOverQuota: true });
+    }
     if (res.success) {
       // Email se šalje samo kod odobrenja PENDING → CONFIRMED; otkaz i vraćanje otkazane su tihi
       showToast(

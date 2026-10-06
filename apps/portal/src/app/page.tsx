@@ -1001,6 +1001,8 @@ function TicketsSection({
     STANDARD: Math.max(0, quota.STANDARD - used.STANDARD),
   };
   const canEdit = isActiveMember && editable;
+  // Kvota puna → član više ne dodaje sam; dodatne ulaznice dodaje isključivo udruga (admin)
+  const quotaFull = remaining.VIP + remaining.STANDARD === 0;
 
   async function removeTicket(t: Ticket) {
     if (!confirm(`Ukloniti osobu ${t.fullName}?`)) return;
@@ -1049,11 +1051,11 @@ function TicketsSection({
             {conference.editDeadline && (
               <>Možete dodavati i mijenjati osobe za ulaznice najkasnije do <strong>{fmtDate(conference.editDeadline)}</strong>. </>
             )}
-            Ako dodate više osoba nego što imate u paketu, poslat ćemo vam ponudu za dodatne ulaznice
-            uz <strong>{conference.extraDiscount}% popusta</strong>.
+            Za dodatne ulaznice (uz <strong>{conference.extraDiscount}% popusta</strong>) javite se na{' '}
+            <a href="mailto:udruga@ecommerce.hr" className="font-semibold text-primary underline hover:no-underline">udruga@ecommerce.hr</a>.
           </p>
         </div>
-        {canEdit && (
+        {canEdit && !quotaFull && (
           <button
             onClick={() => setModal({ ticket: null })}
             className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-gray-100"
@@ -1072,6 +1074,12 @@ function TicketsSection({
       {isActiveMember && !editable && (
         <p className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
           Rok za izmjene ({fmtDate(conference.editDeadline)}) je prošao — izmjene više nisu moguće, a ulaznice ostaju dostupne.
+        </p>
+      )}
+      {canEdit && quotaFull && (data.quota.VIP > 0 || data.quota.STANDARD > 0) && (
+        <p className="mb-4 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          Iskoristili ste sve ulaznice iz paketa. Za dodatne ulaznice javite se na{' '}
+          <a href="mailto:udruga@ecommerce.hr" className="font-semibold text-primary underline hover:no-underline">udruga@ecommerce.hr</a>.
         </p>
       )}
       {error && <p className="mb-4 rounded-md bg-danger-light px-4 py-3 text-sm font-medium text-danger">{error}</p>}
@@ -1166,7 +1174,6 @@ function TicketModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [overQuotaNote, setOverQuotaNote] = useState(false);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1223,17 +1230,21 @@ function TicketModal({
             <span className="text-sm font-medium text-gray-700">Tip ulaznice</span>
             <select
               value={form.type}
-              onChange={(e) => { set('type', e.target.value); setOverQuotaNote(remainingForType(e.target.value as 'VIP' | 'STANDARD') <= 0); }}
+              onChange={(e) => set('type', e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
             >
-              <option value="STANDARD">STANDARD (preostalo u paketu: {remainingForType('STANDARD')})</option>
-              <option value="VIP">VIP (preostalo u paketu: {remainingForType('VIP')})</option>
+              {(['STANDARD', 'VIP'] as const).map((type) => (
+                // Tip bez slobodnih mjesta se ne može odabrati (osim trenutnog tipa ulaznice koja se uređuje)
+                <option key={type} value={type} disabled={remainingForType(type) <= 0 && ticket?.type !== type}>
+                  {type} (preostalo u paketu: {remainingForType(type)})
+                </option>
+              ))}
             </select>
           </label>
-          {(overQuotaNote || remainingForType(form.type as 'VIP' | 'STANDARD') <= 0) && (
+          {!ticket && remainingForType(form.type as 'VIP' | 'STANDARD') <= 0 && (
             <p className="rounded-md bg-orange-50 px-3 py-2 text-xs leading-relaxed text-orange-700">
-              Ova osoba je preko vaše kvote — ulaznica će biti <strong>na čekanju</strong>, a mi ćemo vam
-              poslati ponudu za dodatnu ulaznicu s popustom.
+              Nemate više slobodnih ulaznica ovog tipa. Za dodatne ulaznice javite se na{' '}
+              <a href="mailto:udruga@ecommerce.hr" className="font-semibold underline">udruga@ecommerce.hr</a>.
             </p>
           )}
           {error && <p className="rounded-md bg-danger-light px-3 py-2 text-sm font-medium text-danger">{error}</p>}

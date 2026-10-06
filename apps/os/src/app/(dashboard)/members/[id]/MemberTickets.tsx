@@ -211,7 +211,15 @@ export default function MemberTickets({ memberId, showQuota = true }: { memberId
     if (isApprove && !confirm(`Potvrditi ulaznicu za ${t.fullName}? Osobi će biti poslan email s ulaznicom.`)) return;
     if (isRevive && !confirm(`Vratiti ulaznicu za ${t.fullName}? (ne šalje se email)`)) return;
     setBusyId(t.id);
-    const res = await api.put(`/api/os/conferences/${conference.id}/tickets/${t.id}`, { status });
+    let res = await api.put(`/api/os/conferences/${conference.id}/tickets/${t.id}`, { status });
+    // Potvrda preko kvote člana traži eksplicitnu potvrdu (API vraća OVER_QUOTA)
+    if (!res.success && res.error?.code === 'OVER_QUOTA') {
+      if (!confirm(`${res.error.message}\n\nPotvrditi dodatnu ulaznicu za ${t.fullName} ipak?`)) {
+        setBusyId('');
+        return;
+      }
+      res = await api.put(`/api/os/conferences/${conference.id}/tickets/${t.id}`, { status, confirmOverQuota: true });
+    }
     if (res.success) {
       showToast(isApprove ? 'Ulaznica potvrđena (email poslan)' : isRevive ? 'Ulaznica vraćena (bez slanja emaila)' : 'Ulaznica ažurirana');
       await Promise.all([fetchTickets(conference.id), fetchQuota()]);
