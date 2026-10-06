@@ -15,7 +15,7 @@ interface Conference {
   editDeadline: string | null;
   extraDiscount: number;
   ticketQuotas: Record<string, Record<string, number>> | null;
-  ticketCounts: { total: number; confirmed: number; pending: number; checkedIn: number };
+  ticketCounts: { total: number; confirmed: number; pending: number; checkedIn: number; vip?: number };
 }
 
 interface Ticket {
@@ -248,7 +248,7 @@ export default function TicketsPage() {
             <StatCard label="Ukupno prijava" value={selected.ticketCounts.total} />
             <StatCard label="Potvrđenih" value={selected.ticketCounts.confirmed} />
             <StatCard label="Na čekanju" value={selected.ticketCounts.pending} accent={selected.ticketCounts.pending > 0} />
-            <StatCard label="Check-in" value={selected.ticketCounts.checkedIn} />
+            <StatCard label="VIP ulaznica" value={selected.ticketCounts.vip ?? 0} />
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">

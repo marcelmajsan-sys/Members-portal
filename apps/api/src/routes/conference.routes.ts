@@ -48,12 +48,14 @@ router.get('/', async (_req: AuthRequest, res) => {
   });
   const withCounts = await Promise.all(
     conferences.map(async (c) => {
-      const [confirmed, pending, checkedIn] = await Promise.all([
+      const [confirmed, pending, checkedIn, vip] = await Promise.all([
         prisma.conferenceTicket.count({ where: { conferenceId: c.id, status: 'CONFIRMED' } }),
         prisma.conferenceTicket.count({ where: { conferenceId: c.id, status: 'PENDING' } }),
         prisma.conferenceTicket.count({ where: { conferenceId: c.id, checkedInAt: { not: null } } }),
+        // VIP ulaznice (bez otkazanih)
+        prisma.conferenceTicket.count({ where: { conferenceId: c.id, type: 'VIP', status: { not: 'CANCELLED' } } }),
       ]);
-      return { ...c, ticketCounts: { total: c._count.tickets, confirmed, pending, checkedIn } };
+      return { ...c, ticketCounts: { total: c._count.tickets, confirmed, pending, checkedIn, vip } };
     }),
   );
   successResponse(res, withCounts);
