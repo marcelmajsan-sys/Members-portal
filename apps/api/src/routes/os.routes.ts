@@ -337,8 +337,12 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
       where: { email },
       include: { members: { select: { companyId: true, website: true } } },
     });
-    if (existing && existing.role !== 'MEMBER') {
-      errorResponse(res, 'CONFLICT', 'Taj email pripada administratorskom računu', 409);
+    // Admin (OWNER/OPERATOR) smije biti dodan samo kao LEAD (npr. da dobije ulaznicu za konferenciju).
+    // Lead se veže na postojeći staff User bez diranja imena/role/lozinke; invite/set-password/
+    // impersonacija i brisanje User-a su za staff račune blokirani.
+    const isStaffUser = !!existing && existing.role !== 'MEMBER';
+    if (isStaffUser && !isLead) {
+      errorResponse(res, 'CONFLICT', 'Taj email pripada administratorskom računu — možete ga dodati samo kao kontakt (lead)', 409);
       return;
     }
 
@@ -376,7 +380,9 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
     const member = await prisma.$transaction(async (tx) => {
       // Reuse existing user (isti email = isti korisnik, i kad već ima članstvo) or create new
       const user = existing
-        ? await tx.user.update({ where: { id: existing.id }, data: { firstName, lastName: lastName || '' } })
+        ? isStaffUser
+          ? existing
+          : await tx.user.update({ where: { id: existing.id }, data: { firstName, lastName: lastName || '' } })
         : await tx.user.create({ data: { email, passwordHash, firstName, lastName: lastName || '', role: 'MEMBER' } });
 
       let company;
@@ -824,6 +830,11 @@ router.post('/members/:id/send-invite', requireRole('OWNER'), validateParams(idP
 
   const user = member.user;
 
+  if (user.role !== 'MEMBER') {
+    errorResponse(res, 'FORBIDDEN', 'Kontakt je vezan uz administratorski račun — pristup portalu se ne šalje', 403);
+    return;
+  }
+
   // Optional target: 'all' (default — glavni + druga kontakt osoba), 'primary' (samo glavni), 'secondary' (samo druga)
   const target = ['all', 'primary', 'secondary'].includes(req.body?.target) ? req.body.target : 'all';
   const sendToPrimary = target === 'all' || target === 'primary';
@@ -937,6 +948,10 @@ router.post('/members/:id/set-password', requireRole('OWNER'), validateParams(id
   });
   if (!member) {
     errorResponse(res, 'NOT_FOUND', 'Član nije pronađen', 404);
+    return;
+  }
+  if (member.user.role !== 'MEMBER') {
+    errorResponse(res, 'FORBIDDEN', 'Kontakt je vezan uz administratorski račun — lozinka se ovdje ne mijenja', 403);
     return;
   }
 
@@ -1090,7 +1105,11 @@ router.patch('/members/:id/profile', validateParams(idParamSchema), async (req: 
     }
     successResponse(res, member);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Greška pri ažuriranju profila';
+    const raw = err instanceof Error ? err.message : 'Greška pri ažuriranju profila';
+    const message =
+      raw === 'STAFF_EMAIL_LOCKED' ? 'Kontakt je vezan uz administratorski račun — email se ne može mijenjati'
+      : raw === 'EMAIL_TAKEN' ? 'Taj email već koristi drugi korisnik'
+      : raw;
     errorResponse(res, 'ERROR', message, 400);
   }
 });

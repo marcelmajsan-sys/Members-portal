@@ -643,14 +643,17 @@ export async function getMemberBenefits(userId: string, memberId?: string) {
 export async function deleteMember(memberId: string) {
   const member = await prisma.member.findUnique({
     where: { id: memberId },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, user: { select: { role: true } } },
   });
   if (!member) throw new Error('Member not found');
 
   // Isti korisnik (email) može imati više članstava — User se briše samo s posljednjim.
-  const otherMemberships = await prisma.member.count({
-    where: { userId: member.userId, id: { not: memberId } },
-  });
+  // Staff račun (admin dodan kao lead) se NIKAD ne briše.
+  const otherMemberships = member.user.role !== 'MEMBER'
+    ? 1
+    : await prisma.member.count({
+        where: { userId: member.userId, id: { not: memberId } },
+      });
 
   await prisma.$transaction([
     prisma.memberProduct.deleteMany({ where: { memberId } }),
@@ -772,7 +775,7 @@ export async function adminUpdateMemberProfile(
 ) {
   const member = await prisma.member.findUnique({
     where: { id: memberId },
-    include: { user: { select: { id: true } }, company: { select: { id: true } } },
+    include: { user: { select: { id: true, email: true, role: true } }, company: { select: { id: true } } },
   });
 
   if (!member) throw new Error('Member not found');
@@ -783,6 +786,10 @@ export async function adminUpdateMemberProfile(
   if (email !== undefined && email.trim()) {
     const existing = await prisma.user.findUnique({ where: { email: email.trim() }, select: { id: true } });
     if (existing && existing.id !== member.userId) throw new Error('EMAIL_TAKEN');
+    // Lead vezan uz admin račun: email je login admina — ne mijenja se kroz profil leada
+    if (member.user.role !== 'MEMBER' && email.trim().toLowerCase() !== member.user.email.toLowerCase()) {
+      throw new Error('STAFF_EMAIL_LOCKED');
+    }
   }
 
   // Produženje članstva (expiresAt gurnut u budućnost) automatski vraća EXPIRED člana u ACTIVE
