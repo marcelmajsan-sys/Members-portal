@@ -1796,15 +1796,23 @@ export default function MemberDetailPage() {
               {actionLoading === 'ACTIVE' ? 'Aktiviranje...' : 'Aktiviraj članstvo'}
             </button>
           )}
-          {member.status !== 'SUSPENDED' && (
+          {/* Pauziranje — toggle Uključeno/Isključeno (isključenje vraća članstvo u ACTIVE) */}
+          <div className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5">
+            <span className="text-sm font-medium text-gray-700">Pauzirano članstvo</span>
             <button
-              onClick={() => changeStatus('SUSPENDED')}
+              type="button"
               disabled={!!actionLoading}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+              aria-pressed={member.status === 'SUSPENDED'}
+              title={member.status === 'SUSPENDED' ? 'Isključi pauzu (aktiviraj članstvo)' : 'Uključi pauzu'}
+              onClick={() => changeStatus(member.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED')}
+              className={`relative h-6 w-11 rounded-full transition disabled:opacity-50 ${member.status === 'SUSPENDED' ? 'bg-red-500' : 'bg-gray-300'}`}
             >
-              {actionLoading === 'SUSPENDED' ? 'Pauziranje...' : 'Pauziraj'}
+              <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition ${member.status === 'SUSPENDED' ? 'translate-x-5' : ''}`} />
             </button>
-          )}
+            <span className={`text-xs font-medium ${member.status === 'SUSPENDED' ? 'text-red-600' : 'text-gray-500'}`}>
+              {actionLoading === 'SUSPENDED' ? 'Pauziranje...' : actionLoading === 'ACTIVE' ? 'Uključivanje...' : member.status === 'SUSPENDED' ? 'Uključeno' : 'Isključeno'}
+            </span>
+          </div>
           {member.status !== 'EXPIRED' && (
             <button
               onClick={() => changeStatus('EXPIRED')}
