@@ -64,6 +64,17 @@ export async function updateCertificationStatus(
     include: { member: true },
   });
 
+  // Status certifikacije automatski upravlja ručnom zastavicom hasCertificate na članu:
+  // APPROVED → certificiran; REJECTED/EXPIRED → nije. PENDING ne dira zastavicu
+  // (prijava je još u obradi). Ovime status iz SafeShopCertification postaje izvor
+  // istine za "Safe Shop certifikat" koji je admin dosad postavljao ručno.
+  if (status === 'APPROVED' || status === 'REJECTED' || status === 'EXPIRED') {
+    await prisma.member.update({
+      where: { id: certification.memberId },
+      data: { hasCertificate: status === 'APPROVED' },
+    });
+  }
+
   const event = status === 'APPROVED'
     ? DomainEvents.CERTIFICATION_APPROVED
     : status === 'REJECTED'

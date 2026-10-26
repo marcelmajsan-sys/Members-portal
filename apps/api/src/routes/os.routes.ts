@@ -468,6 +468,8 @@ router.get('/members/export', async (req: AuthRequest, res) => {
       payments: { select: { amount: true, status: true, paidAt: true }, orderBy: { paidAt: 'desc' } },
       memberNotes: { select: { id: true } },
       emailLogs: { select: { id: true } },
+      // Najnovija Safe Shop certifikacija (izvor statusa + roka valjanosti)
+      certifications: { select: { status: true, certifiedAt: true, expiresAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
     },
     orderBy,
   });
@@ -482,6 +484,10 @@ router.get('/members/export', async (req: AuthRequest, res) => {
     'IMAJU LOGO I WIDGET': 'Logo i widget',
     'TRUSTED SHOP LOGO': 'Trusted Shop logo',
   };
+  const certStatusLabels: Record<string, string> = {
+    PENDING: 'Na čekanju', APPROVED: 'Odobreno', REJECTED: 'Odbijeno', EXPIRED: 'Isteklo',
+  };
+  const now = new Date();
 
   function fmtDate(d: Date | string | null) {
     if (!d) return '';
@@ -492,6 +498,16 @@ router.get('/members/export', async (req: AuthRequest, res) => {
     const completedPayments = m.payments.filter((p) => p.status === 'COMPLETED');
     const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const lastPayment = completedPayments[0]?.paidAt;
+
+    // Aktivna certifikacija: iz najnovije SafeShopCertification (APPROVED i nije istekla).
+    // Ako član nema nijednu certifikaciju, padni na ručnu zastavicu hasCertificate.
+    const latestCert = m.certifications[0];
+    const certActive = latestCert
+      ? latestCert.status === 'APPROVED' && (!latestCert.expiresAt || latestCert.expiresAt > now)
+      : m.hasCertificate;
+    const certStatusText = latestCert
+      ? certStatusLabels[latestCert.status] ?? latestCert.status
+      : (m.hasCertificate ? 'Odobreno (ručno)' : '—');
 
     return {
       'Članski broj': m.memberNumber ?? '',
@@ -509,7 +525,9 @@ router.get('/members/export', async (req: AuthRequest, res) => {
       'Tip članstva': typeLabels[m.memberType] || m.memberType,
       'Razina': tierLabels[m.memberTier] || m.memberTier,
       'Status': statusLabels[m.status] || m.status,
-      'Safe Shop certifikat': m.hasCertificate ? 'DA' : 'NE',
+      'Safe Shop certifikat': certActive ? 'DA' : 'NE',
+      'Safe Shop status': certStatusText,
+      'Certifikat vrijedi do': fmtDate(latestCert?.expiresAt ?? null),
       'Safe Shop branding': m.safeShopStatus ? (safeShopBrandingLabels[m.safeShopStatus] ?? m.safeShopStatus) : '',
       'Datum učlanjenja': fmtDate(m.joinedAt),
       'Datum isteka': fmtDate(m.expiresAt),
@@ -526,7 +544,7 @@ router.get('/members/export', async (req: AuthRequest, res) => {
     { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 30 },
     { wch: 26 }, { wch: 14 }, { wch: 26 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 16 },
     { wch: 16 }, { wch: 12 }, { wch: 12 },
-    { wch: 18 }, { wch: 18 },
+    { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 18 },
     { wch: 16 }, { wch: 14 },
     { wch: 18 }, { wch: 12 }, { wch: 16 },
     { wch: 14 }, { wch: 14 },
