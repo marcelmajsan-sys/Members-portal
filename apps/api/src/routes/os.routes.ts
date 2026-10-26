@@ -6,7 +6,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { validateQuery, validateParams } from '../middleware/validate.js';
 import { successResponse, paginatedResponse, errorResponse } from '../utils/api-response.js';
-import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile, getMemberPerksById, setMemberBenefitUsage } from '../services/member.service.js';
+import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile, getMemberPerksById, setMemberBenefitUsage, buildMemberWhere, buildMemberOrderBy, type MemberFilters } from '../services/member.service.js';
 import { getDashboardStats, getDashboardAnalytics, getRecentActivity } from '../services/dashboard.service.js';
 import { createNotification, notifyStaff } from '../services/notification.service.js';
 import { emitEvent } from '../lib/event-bus.js';
@@ -27,6 +27,80 @@ import { env } from '../config/env.js';
 
 
 const router = Router();
+
+// Parsiranje filtera članova iz query stringa — dijele ga lista (GET /members) i CSV
+// izvoz (GET /members/export) da izvoz vrati točno iste članove koje admin vidi na listi.
+function parseMemberFilters(query: Record<string, unknown>): MemberFilters {
+  const validStatuses = ['PENDING', 'ACTIVE', 'SUSPENDED', 'EXPIRED'];
+  const validCerts = ['HAS_CERT', 'NO_CERT', 'HAS_ACADEMY'];
+  const validTypes = ['WEB_TRADER', 'SERVICE_PROVIDER', 'PHYSICAL'];
+
+  const tier = query.tier as MemberTier | undefined;
+  const statusParam = query.status as string | undefined;
+  const certificateParam = query.certificate as string | undefined;
+  const typeParam = query.type as string | undefined;
+  const expiringParam = query.expiring as string | undefined;
+  const expiryMonthParam = query.expiryMonth as string | undefined;
+  const companyIdParam = query.companyId as string | undefined;
+
+  const filters: MemberFilters = {};
+  if (companyIdParam) filters.companyId = companyIdParam;
+  // ?isLead=true → lista leadova (stranica /admin/leads); bez toga samo članovi
+  if (query.isLead === 'true') filters.isLead = true;
+  if (tier && ['FREE', 'STANDARD', 'PREMIUM'].includes(tier)) filters.tier = tier;
+
+  // Expiring soon filter: ?expiring=30 (days)
+  if (expiringParam) {
+    const days = parseInt(expiringParam, 10);
+    if (!isNaN(days) && days > 0) filters.expiringDays = days;
+  }
+
+  // Expiry month filter: ?expiryMonth=2026-06 (members whose membership expires that month)
+  if (expiryMonthParam && /^\d{4}-\d{2}$/.test(expiryMonthParam)) {
+    filters.expiryMonth = expiryMonthParam;
+  }
+
+  // Support comma-separated type values: ?type=WEB_TRADER,PHYSICAL
+  if (typeParam) {
+    const types = typeParam.split(',').filter(t => validTypes.includes(t)) as MemberType[];
+    if (types.length === 1) filters.type = types[0];
+    else if (types.length > 1) filters.type = types;
+  }
+
+  // Support comma-separated status values: ?status=ACTIVE,EXPIRED
+  if (statusParam) {
+    const statuses = statusParam.split(',').filter(s => validStatuses.includes(s)) as MemberStatus[];
+    if (statuses.length === 1) filters.status = statuses[0];
+    else if (statuses.length > 1) filters.status = statuses;
+  }
+
+  // Support comma-separated certificate values: ?certificate=HAS_CERT,HAS_ACADEMY
+  if (certificateParam) {
+    const certs = certificateParam.split(',').filter(c => validCerts.includes(c));
+    if (certs.length === 1) filters.certificate = certs[0];
+    else if (certs.length > 1) filters.certificate = certs;
+  }
+
+  // Boolean promo/cert filters
+  if (query.promoKonferencija === 'true') filters.promoKonferencija = true;
+  if (query.promoMeetup === 'true') filters.promoMeetup = true;
+  if (query.promoMagazin === 'true') filters.promoMagazin = true;
+  if (query.promoWeb === 'true') filters.promoWeb = true;
+  if (query.promoOstalo === 'true') filters.promoOstalo = true;
+  if (query.hasCertificate === 'true') filters.hasCertificate = true;
+  if (query.hasCertificate === 'false') filters.hasCertificate = false;
+  if (query.magazinDobrePrice === 'true') filters.magazinDobrePrice = true;
+  if (query.magazinDobrePrice === 'false') filters.magazinDobrePrice = false;
+  if (query.automationsPaused === 'true') filters.automationsPaused = true;
+  if (query.automationsPaused === 'false') filters.automationsPaused = false;
+
+  // Sortiranje liste (npr. najnovija članstva po datumu učlanjenja)
+  if (query.sort === 'joined_desc' || query.sort === 'joined_asc') {
+    filters.sort = query.sort;
+  }
+
+  return filters;
+}
 
 router.use(authenticate);
 router.use(requireRole('OWNER', 'OPERATOR'));
@@ -146,72 +220,7 @@ router.get('/visits', async (req: AuthRequest, res) => {
 router.get('/members', validateQuery(paginationSchema), async (req, res) => {
   const { page, limit } = res.locals.query as { page: number; limit: number };
 
-  const tier = req.query.tier as MemberTier | undefined;
-  const statusParam = req.query.status as string | undefined;
-  const certificateParam = req.query.certificate as string | undefined;
-
-  const validStatuses = ['PENDING', 'ACTIVE', 'SUSPENDED', 'EXPIRED'];
-  const validCerts = ['HAS_CERT', 'NO_CERT', 'HAS_ACADEMY'];
-
-  const typeParam = req.query.type as string | undefined;
-  const validTypes = ['WEB_TRADER', 'SERVICE_PROVIDER', 'PHYSICAL'];
-
-  const expiringParam = req.query.expiring as string | undefined;
-  const expiryMonthParam = req.query.expiryMonth as string | undefined;
-
-  const companyIdParam = req.query.companyId as string | undefined;
-
-  const filters: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean; isLead?: boolean; automationsPaused?: boolean } = {};
-  if (companyIdParam) filters.companyId = companyIdParam;
-  // ?isLead=true → lista leadova (stranica /admin/leads); bez toga samo članovi
-  if (req.query.isLead === 'true') filters.isLead = true;
-  if (tier && ['FREE', 'STANDARD', 'PREMIUM'].includes(tier)) filters.tier = tier;
-
-  // Expiring soon filter: ?expiring=30 (days)
-  if (expiringParam) {
-    const days = parseInt(expiringParam, 10);
-    if (!isNaN(days) && days > 0) filters.expiringDays = days;
-  }
-
-  // Expiry month filter: ?expiryMonth=2026-06 (members whose membership expires that month)
-  if (expiryMonthParam && /^\d{4}-\d{2}$/.test(expiryMonthParam)) {
-    filters.expiryMonth = expiryMonthParam;
-  }
-
-  // Support comma-separated type values: ?type=WEB_TRADER,PHYSICAL
-  if (typeParam) {
-    const types = typeParam.split(',').filter(t => validTypes.includes(t)) as MemberType[];
-    if (types.length === 1) filters.type = types[0];
-    else if (types.length > 1) filters.type = types;
-  }
-
-  // Support comma-separated status values: ?status=ACTIVE,EXPIRED
-  if (statusParam) {
-    const statuses = statusParam.split(',').filter(s => validStatuses.includes(s)) as MemberStatus[];
-    if (statuses.length === 1) filters.status = statuses[0];
-    else if (statuses.length > 1) filters.status = statuses;
-  }
-
-  // Support comma-separated certificate values: ?certificate=HAS_CERT,HAS_ACADEMY
-  if (certificateParam) {
-    const certs = certificateParam.split(',').filter(c => validCerts.includes(c));
-    if (certs.length === 1) filters.certificate = certs[0];
-    else if (certs.length > 1) filters.certificate = certs;
-  }
-
-  // Boolean promo/cert filters
-  if (req.query.promoKonferencija === 'true') filters.promoKonferencija = true;
-  if (req.query.promoMeetup === 'true') filters.promoMeetup = true;
-  if (req.query.promoMagazin === 'true') filters.promoMagazin = true;
-  if (req.query.promoWeb === 'true') filters.promoWeb = true;
-  if (req.query.promoOstalo === 'true') filters.promoOstalo = true;
-  if (req.query.hasCertificate === 'true') filters.hasCertificate = true;
-  if (req.query.hasCertificate === 'false') filters.hasCertificate = false;
-  if (req.query.magazinDobrePrice === 'true') filters.magazinDobrePrice = true;
-  if (req.query.magazinDobrePrice === 'false') filters.magazinDobrePrice = false;
-  if (req.query.automationsPaused === 'true') filters.automationsPaused = true;
-  if (req.query.automationsPaused === 'false') filters.automationsPaused = false;
-
+  const filters = parseMemberFilters(req.query);
   const { members, total } = await getAllMembers(page, limit, filters);
 
   paginatedResponse(res, members, { page, limit, total });
@@ -442,10 +451,16 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   }
 });
 
-// GET /members/export — Download all members as CSV
-router.get('/members/export', async (_req: AuthRequest, res) => {
+// GET /members/export — CSV izvoz članova; poštuje iste filtere i sort kao lista
+// (type/status/tier/certifikat/promo/istek/tvrtka/automatizacije + ?sort=joined_*).
+router.get('/members/export', async (req: AuthRequest, res) => {
+  const filters = parseMemberFilters(req.query);
+  const where = buildMemberWhere(filters); // isLead:false po defaultu (izvoz članova, ne leadova)
+  // Bez eksplicitnog sorta izvoz ostaje kronološki (najnoviji prvi), kao i dosad.
+  const orderBy = filters.sort ? buildMemberOrderBy(filters.sort) : [{ createdAt: 'desc' as const }];
+
   const members = await prisma.member.findMany({
-    where: { isLead: false },
+    where,
     include: {
       user: { select: { firstName: true, lastName: true, email: true } },
       company: true,
@@ -453,7 +468,7 @@ router.get('/members/export', async (_req: AuthRequest, res) => {
       memberNotes: { select: { id: true } },
       emailLogs: { select: { id: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy,
   });
 
   const headers = [

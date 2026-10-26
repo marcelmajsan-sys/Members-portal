@@ -33,13 +33,29 @@ export async function recordMemberVisit(memberId: string, windowMinutes = 30): P
   await prisma.memberVisit.create({ data: { memberId } });
 }
 
-export async function getAllMembers(
-  page: number,
-  limit: number,
-  filters?: { tier?: MemberTier; type?: MemberType | MemberType[]; status?: MemberStatus | MemberStatus[]; certificate?: string | string[]; expiringDays?: number; expiryMonth?: string; companyId?: string; promoKonferencija?: boolean; promoMeetup?: boolean; promoMagazin?: boolean; promoWeb?: boolean; promoOstalo?: boolean; hasCertificate?: boolean; magazinDobrePrice?: boolean; isLead?: boolean; automationsPaused?: boolean },
-): Promise<{ members: Member[]; total: number }> {
-  const skip = (page - 1) * limit;
+export type MemberFilters = {
+  tier?: MemberTier;
+  type?: MemberType | MemberType[];
+  status?: MemberStatus | MemberStatus[];
+  certificate?: string | string[];
+  expiringDays?: number;
+  expiryMonth?: string;
+  companyId?: string;
+  promoKonferencija?: boolean;
+  promoMeetup?: boolean;
+  promoMagazin?: boolean;
+  promoWeb?: boolean;
+  promoOstalo?: boolean;
+  hasCertificate?: boolean;
+  magazinDobrePrice?: boolean;
+  isLead?: boolean;
+  automationsPaused?: boolean;
+  sort?: string;
+};
 
+// Prisma WHERE iz filtera članova — dijele ga lista (getAllMembers) i CSV izvoz,
+// pa izvoz vraća točno iste članove koje admin vidi na listi s aktivnim filterima.
+export function buildMemberWhere(filters?: MemberFilters): Record<string, unknown> {
   // Leadovi su odvojeni od članova — bez eksplicitnog isLead=true lista vraća samo članove
   const where: Record<string, unknown> = { isLead: filters?.isLead ?? false };
   if (filters?.companyId) where.companyId = filters.companyId;
@@ -104,6 +120,31 @@ export async function getAllMembers(
     }
   }
 
+  return where;
+}
+
+// Prisma orderBy iz sort filtera — dijele ga lista i izvoz.
+export function buildMemberOrderBy(sort?: string) {
+  if (sort === 'joined_desc')
+    return [{ joinedAt: { sort: 'desc' as const, nulls: 'last' as const } }, { createdAt: 'desc' as const }];
+  if (sort === 'joined_asc')
+    return [{ joinedAt: { sort: 'asc' as const, nulls: 'last' as const } }, { createdAt: 'asc' as const }];
+  return [{ expiresAt: 'asc' as const }, { createdAt: 'desc' as const }];
+}
+
+export async function getAllMembers(
+  page: number,
+  limit: number,
+  filters?: MemberFilters,
+): Promise<{ members: Member[]; total: number }> {
+  const skip = (page - 1) * limit;
+
+  const where = buildMemberWhere(filters);
+
+  // Sortiranje: zadano po isteku; "joined_desc"/"joined_asc" za pregled novih članstava
+  // po datumu učlanjenja (null joinedAt — iz uvoza — uvijek na kraju).
+  const orderBy = buildMemberOrderBy(filters?.sort);
+
   const [members, total] = await Promise.all([
     prisma.member.findMany({
       where,
@@ -126,7 +167,7 @@ export async function getAllMembers(
           take: 1,
         },
       },
-      orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
+      orderBy,
     }),
     prisma.member.count({ where }),
   ]);

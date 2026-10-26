@@ -114,6 +114,8 @@ export default function MembersPage() {
   const [companyMembers, setCompanyMembers] = useState<MemberRaw[]>([]);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Sortiranje liste: '' = zadano (po isteku), 'joined_desc' = najnovija članstva, 'joined_asc' = najstarija
+  const [sort, setSort] = useState<string>('');
   // Multi-select za skupno uključivanje/isključivanje automatizacija
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -195,7 +197,7 @@ export default function MembersPage() {
 
   const fetchMembers = useCallback(async (
     p: number, t: string, st: string, ex: string, exp: boolean, em: string, filterCompanyId?: string | null,
-    tr?: string, ap?: boolean,
+    tr?: string, ap?: boolean, so?: string,
   ) => {
     const reqId = ++fetchRequestId.current;
     setLoading(true);
@@ -207,6 +209,7 @@ export default function MembersPage() {
     if (st) params.set('status', st);
     if (tr) params.set('tier', tr);
     if (ap) params.set('automationsPaused', 'true');
+    if (so) params.set('sort', so);
     if (exp) params.set('expiring', '30');
     if (em) params.set('expiryMonth', em);
     if (ex === 'cert') params.set('hasCertificate', 'true');
@@ -236,12 +239,12 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId, tier, autoPaused);
+    fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId, tier, autoPaused, sort);
     // Osvježi i brojke uz svako učitavanje liste (npr. nakon promjene zastavica na profilu).
     refreshCounts();
     // Odabir vrijedi za trenutni prikaz — očisti ga pri promjeni stranice/filtera
     setSelected(new Set());
-  }, [page, type, status, extra, tier, autoPaused, expiring, expiryMonth, companyId, fetchMembers, refreshCounts]);
+  }, [page, type, status, extra, tier, autoPaused, expiring, expiryMonth, companyId, sort, fetchMembers, refreshCounts]);
 
   // Osvježi brojke kad se korisnik vrati na karticu (npr. back nakon uređivanja profila).
   useEffect(() => {
@@ -312,7 +315,7 @@ export default function MembersPage() {
     if (res.success) {
       setShowAddModal(false);
       setAddForm(emptyAddForm);
-      fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId, tier, autoPaused);
+      fetchMembers(page, type, status, extra, expiring, expiryMonth, companyId, tier, autoPaused, sort);
       refreshCounts();
     } else {
       setAddError(res.error?.message || 'Greška pri dodavanju');
@@ -359,6 +362,17 @@ export default function MembersPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Članovi</h1>
         <div className="flex gap-2">
+        <select
+          value={sort}
+          onChange={(e) => { setSort(e.target.value); setPage(1); }}
+          aria-label="Sortiranje"
+          title="Sortiranje liste"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+        >
+          <option value="">Sortiraj: zadano (istek)</option>
+          <option value="joined_desc">Najnovija članstva</option>
+          <option value="joined_asc">Najstarija članstva</option>
+        </select>
         <button
           onClick={() => setShowAddModal(true)}
           className="rounded-lg bg-[#1B365D] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#152a4a]"
@@ -372,7 +386,24 @@ export default function MembersPage() {
             try {
               const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
               const token = localStorage.getItem('accessToken');
-              const res = await fetch(`${baseUrl}/api/os/members/export`, {
+              // Izvoz prati iste filtere i sort kao lista (isti mapping kao fetchMembers)
+              const p = new URLSearchParams();
+              if (companyId) p.set('companyId', companyId);
+              if (type && type !== 'all') p.set('type', type);
+              if (status) p.set('status', status);
+              if (tier) p.set('tier', tier);
+              if (autoPaused) p.set('automationsPaused', 'true');
+              if (sort) p.set('sort', sort);
+              if (expiring) p.set('expiring', '30');
+              if (expiryMonth) p.set('expiryMonth', expiryMonth);
+              if (extra === 'cert') p.set('hasCertificate', 'true');
+              else if (extra === 'no_cert') p.set('hasCertificate', 'false');
+              else if (extra === 'academy') p.set('certificate', 'HAS_ACADEMY');
+              else if (extra === 'magazin_yes') p.set('magazinDobrePrice', 'true');
+              else if (extra === 'magazin_no') p.set('magazinDobrePrice', 'false');
+              else if (extra) p.set(extra, 'true'); // promo* zastavice
+              const exportQs = p.toString() ? `?${p}` : '';
+              const res = await fetch(`${baseUrl}/api/os/members/export${exportQs}`, {
                 headers: { Authorization: `Bearer ${token}` },
               });
               if (!res.ok) { alert('Preuzimanje nije uspjelo'); return; }
@@ -593,6 +624,7 @@ export default function MembersPage() {
                 <th className="px-4 py-3 font-medium text-gray-500">Razina</th>
                 <th className="px-4 py-3 font-medium text-gray-500">Status</th>
                 <th className="hidden px-4 py-3 font-medium text-gray-500 lg:table-cell">Certifikati</th>
+                <th className="px-4 py-3 font-medium text-gray-500">Učlanjen</th>
                 <th className="px-4 py-3 font-medium text-gray-500">Do isteka</th>
                 <th className="px-4 py-3 font-medium text-gray-500 text-right">Zadnji email</th>
               </tr>
@@ -600,13 +632,13 @@ export default function MembersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                     Učitavanje...
                   </td>
                 </tr>
               ) : members.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                     Nema članova
                   </td>
                 </tr>
@@ -684,6 +716,13 @@ export default function MembersPage() {
                             <span className="text-xs text-gray-300">&mdash;</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {m.joinedAt ? (
+                          <span className="text-xs text-gray-600">{new Date(m.joinedAt).toLocaleDateString('hr-HR')}</span>
+                        ) : (
+                          <span className="text-xs text-gray-300">&mdash;</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {expiry ? (
