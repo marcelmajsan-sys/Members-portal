@@ -475,6 +475,13 @@ router.get('/members/export', async (req: AuthRequest, res) => {
   const typeLabels: Record<string, string> = { WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član' };
   const tierLabels: Record<string, string> = { FREE: 'Besplatno', STANDARD: 'Standard', PREMIUM: 'Premium' };
   const statusLabels: Record<string, string> = { ACTIVE: 'Aktivan', PENDING: 'Izbrisani', EXPIRED: 'Istekao', SUSPENDED: 'Pauziran' };
+  const safeShopBrandingLabels: Record<string, string> = {
+    'NEMAJU NISTA': 'Nemaju ništa',
+    'IMAJU LOGO': 'Logo',
+    'IMAJU WIDGET': 'Widget',
+    'IMAJU LOGO I WIDGET': 'Logo i widget',
+    'TRUSTED SHOP LOGO': 'Trusted Shop logo',
+  };
 
   function fmtDate(d: Date | string | null) {
     if (!d) return '';
@@ -502,6 +509,8 @@ router.get('/members/export', async (req: AuthRequest, res) => {
       'Tip članstva': typeLabels[m.memberType] || m.memberType,
       'Razina': tierLabels[m.memberTier] || m.memberTier,
       'Status': statusLabels[m.status] || m.status,
+      'Safe Shop certifikat': m.hasCertificate ? 'DA' : 'NE',
+      'Safe Shop branding': m.safeShopStatus ? (safeShopBrandingLabels[m.safeShopStatus] ?? m.safeShopStatus) : '',
       'Datum učlanjenja': fmtDate(m.joinedAt),
       'Datum isteka': fmtDate(m.expiresAt),
       'Ukupno plaćeno (EUR)': Number(totalPaid.toFixed(2)),
@@ -517,6 +526,7 @@ router.get('/members/export', async (req: AuthRequest, res) => {
     { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 30 },
     { wch: 26 }, { wch: 14 }, { wch: 26 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 16 },
     { wch: 16 }, { wch: 12 }, { wch: 12 },
+    { wch: 18 }, { wch: 18 },
     { wch: 16 }, { wch: 14 },
     { wch: 18 }, { wch: 12 }, { wch: 16 },
     { wch: 14 }, { wch: 14 },
