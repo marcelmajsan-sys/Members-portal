@@ -13,6 +13,7 @@ import { emitEvent } from '../lib/event-bus.js';
 import { sendEmail } from '@ecommerce-hr/email';
 import { ask } from '@ecommerce-hr/ai';
 import { prisma, Prisma } from '@ecommerce-hr/db';
+import * as XLSX from 'xlsx';
 import type { MemberTier, MemberType, MemberStatus } from '@ecommerce-hr/db';
 import type { AuthRequest } from '../middleware/auth.js';
 import { getMembershipPrice, getMembershipBenefits, isTierAvailable } from '../config/membership.js';
@@ -451,7 +452,7 @@ router.post('/members', requireRole('OWNER'), async (req: AuthRequest, res) => {
   }
 });
 
-// GET /members/export — CSV izvoz članova; poštuje iste filtere i sort kao lista
+// GET /members/export — XLSX izvoz članova; poštuje iste filtere i sort kao lista
 // (type/status/tier/certifikat/promo/istek/tvrtka/automatizacije + ?sort=joined_*).
 router.get('/members/export', async (req: AuthRequest, res) => {
   const filters = parseMemberFilters(req.query);
@@ -471,24 +472,9 @@ router.get('/members/export', async (req: AuthRequest, res) => {
     orderBy,
   });
 
-  const headers = [
-    'Članski broj', 'Ime', 'Prezime', 'Email',
-    'Firma', 'OIB', 'Adresa', 'Grad', 'Poštanski broj', 'Država', 'Web', 'Telefon',
-    'Tip članstva', 'Razina', 'Status',
-    'Datum učlanjenja', 'Datum isteka',
-    'Ukupno plaćeno (EUR)', 'Broj plaćanja', 'Zadnje plaćanje',
-    'Broj emailova', 'Broj bilješki',
-  ];
-
   const typeLabels: Record<string, string> = { WEB_TRADER: 'Web trgovac', SERVICE_PROVIDER: 'Nuditelj usluga', PHYSICAL: 'Fizički član' };
   const tierLabels: Record<string, string> = { FREE: 'Besplatno', STANDARD: 'Standard', PREMIUM: 'Premium' };
   const statusLabels: Record<string, string> = { ACTIVE: 'Aktivan', PENDING: 'Izbrisani', EXPIRED: 'Istekao', SUSPENDED: 'Pauziran' };
-
-  function esc(val: string | null | undefined) {
-    if (!val) return '';
-    const s = String(val).replace(/"/g, '""');
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-  }
 
   function fmtDate(d: Date | string | null) {
     if (!d) return '';
@@ -500,37 +486,48 @@ router.get('/members/export', async (req: AuthRequest, res) => {
     const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const lastPayment = completedPayments[0]?.paidAt;
 
-    return [
-      esc(m.memberNumber),
-      esc(m.user.firstName),
-      esc(m.user.lastName),
-      esc(m.user.email),
-      esc(m.company.name),
-      esc(m.company.oib),
-      esc(m.company.address),
-      esc(m.company.city),
-      esc(m.company.zip),
-      esc(m.company.country),
-      esc(m.company.website),
-      esc(m.company.phone),
-      esc(typeLabels[m.memberType] || m.memberType),
-      esc(tierLabels[m.memberTier] || m.memberTier),
-      esc(statusLabels[m.status] || m.status),
-      fmtDate(m.joinedAt),
-      fmtDate(m.expiresAt),
-      totalPaid.toFixed(2),
-      String(completedPayments.length),
-      fmtDate(lastPayment),
-      String(m.emailLogs.length),
-      String(m.memberNotes.length),
-    ].join(',');
+    return {
+      'Članski broj': m.memberNumber ?? '',
+      'Ime': m.user.firstName ?? '',
+      'Prezime': m.user.lastName ?? '',
+      'Email': m.user.email ?? '',
+      'Firma': m.company.name ?? '',
+      'OIB': m.company.oib ?? '',
+      'Adresa': m.company.address ?? '',
+      'Grad': m.company.city ?? '',
+      'Poštanski broj': m.company.zip ?? '',
+      'Država': m.company.country ?? '',
+      'Web': m.company.website ?? '',
+      'Telefon': m.company.phone ?? '',
+      'Tip članstva': typeLabels[m.memberType] || m.memberType,
+      'Razina': tierLabels[m.memberTier] || m.memberTier,
+      'Status': statusLabels[m.status] || m.status,
+      'Datum učlanjenja': fmtDate(m.joinedAt),
+      'Datum isteka': fmtDate(m.expiresAt),
+      'Ukupno plaćeno (EUR)': Number(totalPaid.toFixed(2)),
+      'Broj plaćanja': completedPayments.length,
+      'Zadnje plaćanje': fmtDate(lastPayment),
+      'Broj emailova': m.emailLogs.length,
+      'Broj bilješki': m.memberNotes.length,
+    };
   });
 
-  const csv = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 30 },
+    { wch: 26 }, { wch: 14 }, { wch: 26 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 16 },
+    { wch: 16 }, { wch: 12 }, { wch: 12 },
+    { wch: 16 }, { wch: 14 },
+    { wch: 18 }, { wch: 12 }, { wch: 16 },
+    { wch: 14 }, { wch: 14 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '\u010Clanovi');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="clanovi-${new Date().toISOString().slice(0, 10)}.csv"`);
-  res.send(csv);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="clanovi-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.send(buf);
 });
 
 // GET /members/:id

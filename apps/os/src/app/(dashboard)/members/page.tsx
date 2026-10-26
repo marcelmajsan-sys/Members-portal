@@ -411,7 +411,7 @@ export default function MembersPage() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `clanovi-${new Date().toISOString().slice(0, 10)}.csv`;
+              a.download = `clanovi-${new Date().toISOString().slice(0, 10)}.xlsx`;
               a.click();
               URL.revokeObjectURL(url);
             } catch {
@@ -423,7 +423,7 @@ export default function MembersPage() {
           disabled={exporting}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
         >
-          {exporting ? 'Preuzimanje...' : 'Preuzmi CSV'}
+          {exporting ? 'Preuzimanje...' : 'Preuzmi XLSX'}
         </button>
         </div>
       </div>
