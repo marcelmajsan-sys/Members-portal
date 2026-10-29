@@ -1022,9 +1022,9 @@ function TicketsSection({
         </h2>
         <p className="mt-0.5 text-sm text-gray-600">Najveće okupljanje web trgovaca u regiji</p>
         <p className="mt-1 text-xs text-gray-500">
-          Pogledaj snimke s prošle godine:{' '}
+          Pogledaj snimke s CRO Commerce 2026:{' '}
           <a
-            href="https://www.youtube.com/playlist?list=PLh0dpf63k_OPVs640lFKl2T44wK-60ff8"
+            href="https://www.youtube.com/playlist?list=PLZz1YdUjwkx4"
             target="_blank"
             rel="noopener noreferrer"
             className="font-semibold text-primary underline hover:no-underline"
