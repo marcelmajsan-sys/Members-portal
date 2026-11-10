@@ -3,6 +3,7 @@ import { DomainEvents } from '@ecommerce-hr/shared';
 import { sendEmail } from '@ecommerce-hr/email';
 import { emitEvent } from '../lib/event-bus.js';
 import { logger } from '../utils/logger.js';
+import { resolveTemplate, DEFAULT_TEMPLATES } from '../utils/resolve-template.js';
 
 export interface RenewalStats {
   expiringFound: number;
@@ -127,28 +128,56 @@ async function remindPausedWebshopAnniversaries(stats: RenewalStats): Promise<vo
   stats.anniversaryDue = due.length;
   if (due.length === 0) return;
 
-  const rows = due
-    .map(({ m }) => {
-      const name = `${m.user.firstName ?? ''} ${m.user.lastName ?? ''}`.trim() || '—';
-      const webshop = m.website ?? m.company?.website ?? '—';
-      const expiry = m.expiresAt!.toLocaleDateString('hr-HR', { timeZone: 'Europe/Zagreb' });
-      const daysSince = -daysUntilExpiry(m.expiresAt!, now);
+  // Strukturirani popis članova — ide i u HTML tablicu i u EmailLog.metadata
+  // (admin pregled na /admin/automation prikazuje za koje je članove podsjetnik poslan).
+  const memberRows = due.map(({ m }) => ({
+    memberId: m.id,
+    company: m.company?.name ?? '—',
+    webshop: m.website ?? m.company?.website ?? '—',
+    name: `${m.user.firstName ?? ''} ${m.user.lastName ?? ''}`.trim() || '—',
+    email: m.user.email,
+    expiresAt: m.expiresAt!.toISOString(),
+    daysSince: -daysUntilExpiry(m.expiresAt!, now),
+  }));
+
+  const rows = memberRows
+    .map((r) => {
+      const expiry = new Date(r.expiresAt).toLocaleDateString('hr-HR', { timeZone: 'Europe/Zagreb' });
       return `<tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(m.company?.name ?? '—')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(webshop)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(name)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(m.user.email)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(r.company)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(r.webshop)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(r.name)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(r.email)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;">${expiry}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;"><strong>Pauzirani webshop - prošlo ${daysSince} dana od isteka</strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;"><strong>Pauzirani webshop - prošlo ${r.daysSince} dana od isteka</strong></td>
       </tr>`;
     })
     .join('');
 
   const today = now.toLocaleDateString('hr-HR', { timeZone: 'Europe/Zagreb' });
-  const subject = `Pauzirani webshopovi — godišnji podsjetnik (${due.length}) · ${today}`;
+
+  // Subject + uvodni tekst dolaze iz uređivog predloška (slug 'paused_webshop_digest');
+  // 'HIDDEN' = admin ga je "obrisao" → ne šaljemo; null = nema DB retka → default iz koda.
+  const DIGEST_SLUG = 'paused_webshop_digest';
+  const digestDefault = DEFAULT_TEMPLATES.find((d) => d.slug === DIGEST_SLUG)!;
+  const resolved = await resolveTemplate(DIGEST_SLUG);
+  if (resolved === 'HIDDEN') {
+    logger.info('paused_webshop_digest predložak je skriven — godišnji podsjetnik se ne šalje');
+    return;
+  }
+  const tpl = resolved ?? digestDefault;
+  const fillVars = (s: string) =>
+    s.replace(/\{\{\s*broj\s*\}\}/g, String(due.length)).replace(/\{\{\s*datum\s*\}\}/g, today);
+  const subject = fillVars(tpl.subject);
+  const introHtml = fillVars(tpl.body)
+    .split('\n')
+    .filter(Boolean)
+    .map((p) => `<p>${escapeHtml(p)}</p>`)
+    .join('\n    ');
+
   const html = `<!DOCTYPE html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#1B365D;">
     <h2 style="color:#1B365D;">Pauzirani webshopovi — godišnji podsjetnik</h2>
-    <p>Ovim pauziranim webshopovima danas je navršeno punih 12 mjeseci (ili višekratnik) od dana isteka članstva.</p>
+    ${introHtml}
     <table style="border-collapse:collapse;width:100%;font-size:14px;">
       <thead>
         <tr style="background:#1B365D;color:#fff;text-align:left;">
@@ -164,7 +193,10 @@ async function remindPausedWebshopAnniversaries(stats: RenewalStats): Promise<vo
     </table>
   </body></html>`;
 
-  await sendEmail(ASSOCIATION_EMAIL, subject, html, { templateName: 'paused-webshop-anniversary-digest' });
+  await sendEmail(ASSOCIATION_EMAIL, subject, html, {
+    templateName: DIGEST_SLUG,
+    metadata: { memberCount: memberRows.length, members: memberRows, sentOn: today },
+  });
   stats.anniversaryEmailSent = true;
 }
 

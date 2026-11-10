@@ -106,6 +106,16 @@ export const DEFAULT_TEMPLATES: Array<{
     ctaUrl: undefined,
   },
   {
+    slug: 'paused_webshop_digest',
+    name: 'Godišnji podsjetnik udruzi — pauzirani webshopovi',
+    // Zbirni email koji ide na sandučić udruge (ne članu). Oznake: {{broj}} = koliko ih je danas
+    // na godišnjicu isteka, {{datum}} = današnji datum. Tablica članova se dodaje automatski ispod.
+    subject: 'Pauzirani webshopovi — godišnji podsjetnik ({{broj}}) · {{datum}}',
+    body: 'Ovim pauziranim webshopovima danas je navršeno punih 12 mjeseci (ili višekratnik) od dana isteka članstva.',
+    ctaLabel: undefined,
+    ctaUrl: undefined,
+  },
+  {
     slug: 'offer_step',
     name: 'Ponuda s predračunom (PDF)',
     subject: 'Obnova članstva — eCommerce Hrvatska',

@@ -139,6 +139,50 @@ const memberName = (m: {
 }): string =>
   `${m.user.firstName} ${m.user.lastName ?? ''}`.trim() || m.company?.name || m.user.email;
 
+// Godišnji podsjetnici udruzi za pauzirane webshopove (zbirni email na sandučić udruge).
+// Nije sekvenca — povijest se čita iz EmailLog (templateName), a za koje je članove poslan
+// iz EmailLog.metadata.members (upisuje renewal.service). Stari zapisi (prije metadata) se
+// i dalje prikazuju kao redak bez popisa članova. Hvata i stari templateName radi kompatibilnosti.
+export interface PausedDigestMember {
+  memberId?: string;
+  company?: string;
+  webshop?: string;
+  name?: string;
+  email?: string;
+  expiresAt?: string;
+  daysSince?: number;
+}
+export interface PausedDigestSend {
+  id: string;
+  subject: string;
+  sentAt: string;
+  status: string;
+  memberCount: number;
+  members: PausedDigestMember[];
+}
+
+export async function getPausedWebshopDigests(limit = 24): Promise<PausedDigestSend[]> {
+  const logs = await prisma.emailLog.findMany({
+    where: { templateName: { in: ['paused_webshop_digest', 'paused-webshop-anniversary-digest'] } },
+    orderBy: { sentAt: 'desc' },
+    take: limit,
+    select: { id: true, subject: true, sentAt: true, status: true, metadata: true },
+  });
+
+  return logs.map((l) => {
+    const meta = (l.metadata ?? {}) as { memberCount?: number; members?: PausedDigestMember[] };
+    const members = Array.isArray(meta.members) ? meta.members : [];
+    return {
+      id: l.id,
+      subject: l.subject,
+      sentAt: l.sentAt.toISOString(),
+      status: l.status,
+      memberCount: typeof meta.memberCount === 'number' ? meta.memberCount : members.length,
+      members,
+    };
+  });
+}
+
 export async function getSequenceAnalytics() {
   const now = new Date();
 

@@ -106,6 +106,25 @@ interface AnalyticsData {
   automations: AnalyticsAutomation[];
 }
 
+// Godišnji podsjetnici udruzi (pauzirani webshopovi) — povijest slanja + za koje članove
+interface PausedDigestMember {
+  memberId?: string;
+  company?: string;
+  webshop?: string;
+  name?: string;
+  email?: string;
+  expiresAt?: string;
+  daysSince?: number;
+}
+interface PausedDigest {
+  id: string;
+  subject: string;
+  sentAt: string;
+  status: string;
+  memberCount: number;
+  members: PausedDigestMember[];
+}
+
 const AUDIENCE_HEADERS: Record<AnalyticsMember['dateKind'], string> = {
   okida: 'Okida',
   isteklo: 'Isteklo',
@@ -255,11 +274,18 @@ export default function AutomationPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [openAuto, setOpenAuto] = useState<string | null>(null);
+  // Godišnji podsjetnici udruzi (pauzirani webshopovi)
+  const [pausedDigests, setPausedDigests] = useState<PausedDigest[]>([]);
+  const [openDigest, setOpenDigest] = useState<string | null>(null);
 
   const loadAnalytics = useCallback(async () => {
     setAnalyticsLoading(true);
-    const res = await api.get<AnalyticsData>('/api/os/sequences/analytics');
+    const [res, digestRes] = await Promise.all([
+      api.get<AnalyticsData>('/api/os/sequences/analytics'),
+      api.get<PausedDigest[]>('/api/os/sequences/paused-digests'),
+    ]);
     if (res.success && res.data) setAnalytics(res.data);
+    if (digestRes.success && digestRes.data) setPausedDigests(digestRes.data);
     setAnalyticsLoading(false);
   }, []);
 
@@ -949,6 +975,86 @@ export default function AutomationPage() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Godišnji podsjetnici udruzi — pauzirani webshopovi */}
+            <div>
+              <div className="mb-2">
+                <h2 className="text-sm font-semibold text-gray-900">Godišnji podsjetnici udruzi · pauzirani webshopovi</h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Zbirni email koji dnevni cron šalje na {`udruga@ecommerce.hr`} za pauzirane webshopove kojima je danas godišnjica isteka. Klikni za popis članova.
+                </p>
+              </div>
+              {pausedDigests.length === 0 ? (
+                <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-400">
+                  Još nije poslan nijedan godišnji podsjetnik.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pausedDigests.map((d) => {
+                    const open = openDigest === d.id;
+                    return (
+                      <div key={d.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                        <button
+                          onClick={() => setOpenDigest(open ? null : d.id)}
+                          className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-gray-50"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-medium text-gray-900">{new Date(d.sentAt).toLocaleString('hr-HR')}</span>
+                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                              <span>Članova: <b className="text-gray-600">{d.memberCount}</b></span>
+                              <span className="truncate">{d.subject}</span>
+                            </div>
+                          </div>
+                          <svg className={`h-5 w-5 flex-none text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
+                        {open && (
+                          <div className="border-t border-gray-100 bg-gray-50/60 p-4">
+                            {d.members.length === 0 ? (
+                              <p className="text-sm text-gray-400">Popis članova nije zabilježen za ovo slanje (stariji zapis).</p>
+                            ) : (
+                              <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                                <table className="w-full min-w-[640px] text-sm">
+                                  <thead>
+                                    <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
+                                      <th className="px-4 py-2 font-semibold">Tvrtka</th>
+                                      <th className="px-4 py-2 font-semibold">Webshop</th>
+                                      <th className="px-4 py-2 font-semibold">Kontakt</th>
+                                      <th className="px-4 py-2 font-semibold">Email</th>
+                                      <th className="px-4 py-2 font-semibold">Datum isteka</th>
+                                      <th className="px-4 py-2 font-semibold">Dana od isteka</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {d.members.map((m, i) => (
+                                      <tr key={`${m.memberId ?? m.email ?? i}`} className="border-t border-gray-50 hover:bg-gray-50/60">
+                                        <td className="px-4 py-2">
+                                          {m.memberId ? (
+                                            <button onClick={() => router.push(`/members/${m.memberId}`)} className="font-medium text-primary hover:underline">{m.company || '—'}</button>
+                                          ) : (
+                                            <span className="font-medium text-gray-800">{m.company || '—'}</span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-2 text-xs text-gray-500">{m.webshop || '—'}</td>
+                                        <td className="px-4 py-2 text-xs text-gray-600">{m.name || '—'}</td>
+                                        <td className="px-4 py-2 text-xs text-gray-500">{m.email || '—'}</td>
+                                        <td className="px-4 py-2 text-xs text-gray-500">{m.expiresAt ? new Date(m.expiresAt).toLocaleDateString('hr-HR') : '—'}</td>
+                                        <td className="px-4 py-2 text-xs text-gray-500">{typeof m.daysSince === 'number' ? m.daysSince : '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )

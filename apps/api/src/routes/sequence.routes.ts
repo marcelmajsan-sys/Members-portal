@@ -18,6 +18,7 @@ import {
   updateSequenceStatus,
   getSequenceLogs,
   getSequenceAnalytics,
+  getPausedWebshopDigests,
 } from '../services/sequence.service.js';
 import { testSequenceEmail } from '../services/automation-executor.js';
 import { z } from 'zod';
@@ -38,6 +39,13 @@ router.get('/', validateQuery(paginationSchema), async (req, res) => {
 // MORA biti prije '/:id' inače bi ga idParamSchema (cuid) presrela i vratila 400. OWNER-only.
 router.get('/analytics', requireRole('OWNER'), async (_req, res) => {
   const data = await getSequenceAnalytics();
+  successResponse(res, data);
+});
+
+// GET /paused-digests — povijest godišnjih podsjetnika udruzi (pauzirani webshopovi) +
+// za koje je članove svaki poslan. MORA biti prije '/:id' (cuid validacija). OWNER-only.
+router.get('/paused-digests', requireRole('OWNER'), async (_req, res) => {
+  const data = await getPausedWebshopDigests();
   successResponse(res, data);
 });
 
