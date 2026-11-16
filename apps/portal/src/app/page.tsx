@@ -413,36 +413,28 @@ export default function PortalHome() {
           )
         ) : (
           <>
-            {/* Membership card */}
-            <section className="rounded-xl border border-gray-200 bg-white p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
+            {/* Pregled članstva — stalno vidljiva traka (ključni podaci na prvu) */}
+            <section className="rounded-xl bg-primary px-5 py-4 text-white">
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+                <StripItem label="Tip članstva" value={TYPE_LABELS[profile.memberType] || profile.memberType} />
+                <StripItem label="Razina" value={TIER_LABELS[profile.memberTier] || profile.memberTier} />
                 <div>
-                  <p className="text-sm text-gray-500">Tip članstva</p>
-                  <p className="text-lg font-semibold text-gray-900">{TYPE_LABELS[profile.memberType] || profile.memberType}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Razina</p>
-                  <p className="text-lg font-semibold text-gray-900">{TIER_LABELS[profile.memberTier] || profile.memberTier}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Status</p>
-                  <span className={`mt-0.5 inline-block rounded-full px-3 py-1 text-sm font-medium ${STATUS_STYLES[profile.status] || 'bg-gray-100 text-gray-600'}`}>
+                  <p className="text-[11px] uppercase tracking-wide text-white/70">Status</p>
+                  <span className={`mt-0.5 inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_STYLES[profile.status] || 'bg-gray-100 text-gray-600'}`}>
                     {STATUS_LABELS[profile.status] || profile.status}
                   </span>
                 </div>
-              </div>
-              <div className="mt-5 grid grid-cols-2 gap-4 border-t border-gray-100 pt-5 sm:grid-cols-4">
-                <Info label="Član od" value={fmtDate(profile.joinedAt)} />
-                <Info label="Vrijedi do" value={fmtDate(profile.expiresAt)} />
-                {profile.memberNumber && <Info label="Članski broj" value={profile.memberNumber} />}
-                <Info label="Certifikat" value={profile.hasCertificate ? 'Da' : '—'} />
+                <div className="hidden flex-1 sm:block" />
+                <StripItem label="Član od" value={fmtDate(profile.joinedAt)} />
+                <StripItem label="Vrijedi do" value={fmtDate(profile.expiresAt)} />
+                {profile.memberNumber && <StripItem label="Članski broj" value={profile.memberNumber} />}
+                <StripItem label="Certifikat" value={profile.hasCertificate ? 'Da' : '—'} />
               </div>
             </section>
 
-            {/* Member info */}
-            <section className="rounded-xl border border-gray-200 bg-white p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-gray-900">Podaci o članu</h2>
+            {/* Rubrika: Podaci o članu */}
+            <Rubrika title="Podaci o članu" subtitle={profile.company.name} icon="👤">
+              <div className="mb-4 flex items-center justify-end">
                 <button
                   onClick={() => setEditing(true)}
                   className="shrink-0 rounded-md border border-gray-300 bg-gray-50 px-4 py-1.5 text-sm font-medium text-primary transition hover:bg-gray-100"
@@ -461,18 +453,34 @@ export default function PortalHome() {
                 {profile.company.email && <Info label="E-mail web trgovine" value={profile.company.email} />}
               </div>
               {profile.secondaryContact && <SecondaryContactView contact={profile.secondaryContact} />}
-            </section>
+            </Rubrika>
 
-            {/* Safe Shop pristupni podaci — email + lozinka za prijavu na Safe Shop (unosi ih administrator) */}
+            {/* Rubrika: Tjedni pregled eCommerce novosti — sadržaj uskoro */}
+            <Rubrika
+              title="Tjedni pregled eCommerce novosti"
+              subtitle="Powered by Determ"
+              icon="📰"
+              accent="gold"
+              meta={<span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">Uskoro</span>}
+            >
+              <div className="py-6 text-center">
+                <p className="text-sm font-semibold text-gray-900">Uskoro</p>
+                <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-gray-500">
+                  Ovdje ćete svaki tjedan dobivati sažetak najvažnijih eCommerce novosti u Hrvatskoj — regulativa i
+                  porezi, domaći webshopovi, strane platforme, dostava i logistika, plaćanja te kupci i trendovi.
+                </p>
+              </div>
+            </Rubrika>
+
+            {/* Rubrika: Safe Shop pristupni podaci — email + lozinka za prijavu na Safe Shop (unosi ih administrator) */}
             {(profile.safeShopEmail || profile.safeShopPassword) && (
-              <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-6">
-                <div className="mb-1 flex items-center gap-2">
-                  <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
-                  </svg>
-                  <h2 className="text-sm font-semibold text-gray-900">Safe Shop pristupni podaci</h2>
-                </div>
-                <p className="mb-4 text-xs text-gray-500">Podaci za prijavu na Safe Shop.</p>
+              <Rubrika
+                title="Safe Shop pristupni podaci"
+                subtitle="Podaci za prijavu na Safe Shop"
+                icon="🛡️"
+                accent="emerald"
+                meta={<span className="rounded-full bg-success-light px-2.5 py-0.5 text-[11px] font-medium text-success">Dostupno</span>}
+              >
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Info label="Email za prijavu" value={profile.safeShopEmail || '—'} />
                   <div>
@@ -494,14 +502,17 @@ export default function PortalHome() {
                     )}
                   </div>
                 </div>
-              </section>
+              </Rubrika>
             )}
 
-            {/* Benefiti člana (npr. Premium: eCommerce Akademija / PR objave) */}
+            {/* Rubrika: Benefiti člana (npr. Premium: eCommerce Akademija / PR objave) */}
             {perks && perks.available.length + perks.claimed.length > 0 && (
-              <section className="rounded-xl border border-gray-200 bg-white p-6">
-                <h2 className="text-sm font-semibold text-gray-900">Vaši benefiti</h2>
-                <div className="mt-4 space-y-3">
+              <Rubrika
+                title="Vaši benefiti"
+                icon="🎁"
+                meta={<span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">{perks.available.length + perks.claimed.length}</span>}
+              >
+                <div className="space-y-3">
                   {[...perks.available, ...perks.claimed].map((perk) => (
                     <div key={perk.id} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -530,7 +541,7 @@ export default function PortalHome() {
                     udruga@ecommerce.hr
                   </a>
                 </p>
-              </section>
+              </Rubrika>
             )}
 
             {/* Osobe za ulaznice (konferencija) */}
@@ -543,15 +554,18 @@ export default function PortalHome() {
               />
             )}
 
-            {/* Stručna analiza (AI) — Web trgovci: webshop (6 kategorija); Nuditelji: online prisutnost (Best Web/Copy/Marketing) */}
+            {/* Rubrika: Stručna analiza (AI) — Web trgovci: webshop; Nuditelji: online prisutnost */}
             {(profile.memberType === 'WEB_TRADER' || profile.memberType === 'SERVICE_PROVIDER') && (
-            <section className="rounded-xl border border-gray-200 bg-white p-6">
+            <Rubrika
+              title={profile.memberType === 'SERVICE_PROVIDER' ? 'Stručna analiza online prisutnosti' : 'Stručna analiza webshopa'}
+              icon="📊"
+              meta={analysis && analysis.status === 'COMPLETED' && analysis.overallScore != null
+                ? <span className="rounded-full bg-success-light px-2.5 py-0.5 text-[11px] font-semibold text-success">Ocjena {Math.round(analysis.overallScore)}</span>
+                : undefined}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    {profile.memberType === 'SERVICE_PROVIDER' ? 'Stručna analiza online prisutnosti' : 'Stručna analiza webshopa'}
-                  </h2>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="text-xs text-gray-500">
                     {profile.memberType === 'SERVICE_PROVIDER' ? (
                       <>Besplatna AI analiza vaše online prisutnosti u 3 područja žirija: Best Web, Best Copy i Best Marketing.</>
                     ) : (
@@ -775,11 +789,20 @@ export default function PortalHome() {
                     : 'Kliknite "Aktiviraj besplatnu analizu" i AI će pregledati vaš webshop te predložiti konkretna poboljšanja po 6 područja.'}
                 </p>
               )}
-            </section>
+            </Rubrika>
             )}
 
-            {/* Notifications */}
-            <Section title="Obavijesti" count={notifications.length}>
+            {/* Rubrika: Obavijesti */}
+            <Rubrika
+              title="Obavijesti"
+              icon="🔔"
+              meta={
+                <span className="flex items-center gap-2">
+                  {notifications.some((n) => !n.isRead) && <span className="h-2 w-2 rounded-full bg-primary" aria-label="Nepročitano" />}
+                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">{notifications.length}</span>
+                </span>
+              }
+            >
               {notifications.length === 0 ? (
                 <Empty>Nemate obavijesti.</Empty>
               ) : (
@@ -812,10 +835,14 @@ export default function PortalHome() {
                   </ul>
                 </>
               )}
-            </Section>
+            </Rubrika>
 
-            {/* Offers */}
-            <Section title="Ponude" count={offers.length}>
+            {/* Rubrika: Ponude */}
+            <Rubrika
+              title="Ponude"
+              icon="📄"
+              meta={offers.length ? <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">{offers.length}</span> : undefined}
+            >
               {offers.length === 0 ? (
                 <Empty>Nemate aktivnih ponuda.</Empty>
               ) : (
@@ -831,10 +858,14 @@ export default function PortalHome() {
                   ))}
                 </ul>
               )}
-            </Section>
+            </Rubrika>
 
-            {/* Email communication */}
-            <Section title="Email komunikacija" count={emails.length}>
+            {/* Rubrika: Email komunikacija */}
+            <Rubrika
+              title="Email komunikacija"
+              icon="✉️"
+              meta={emails.length ? <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">{emails.length}</span> : undefined}
+            >
               {emails.length === 0 ? (
                 <Empty>Nema zabilježene email komunikacije.</Empty>
               ) : (
@@ -857,7 +888,7 @@ export default function PortalHome() {
                   ))}
                 </ul>
               )}
-            </Section>
+            </Rubrika>
 
             {/* Reklama za eCommerce Akademiju — članovi ostvaruju 30% popusta */}
             <section className="overflow-hidden rounded-xl border border-primary/20 bg-primary/5 p-6">
@@ -1015,13 +1046,14 @@ function TicketsSection({
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6">
+    <Rubrika
+      title="CRO Commerce konferencija"
+      subtitle="Najveće okupljanje web trgovaca u regiji"
+      icon="🎟️"
+      meta={tickets.length ? <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">{tickets.length}</span> : undefined}
+    >
       <div className="mb-4 border-b border-gray-100 pb-4">
-        <h2 className="text-base font-bold uppercase tracking-wide text-primary">
-          CRO Commerce konferencija
-        </h2>
-        <p className="mt-0.5 text-sm text-gray-600">Najveće okupljanje web trgovaca u regiji</p>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="text-xs text-gray-500">
           Pogledaj snimke s CRO Commerce 2026:{' '}
           <a
             href="https://www.youtube.com/playlist?list=PLZz1YdUjwkx4"
@@ -1148,7 +1180,7 @@ function TicketsSection({
           onSaved={async () => { setModal(null); await onChanged(); }}
         />
       )}
-    </section>
+    </Rubrika>
   );
 }
 
@@ -1573,11 +1605,63 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+// Stavka u traci statusa članstva (tamna pozadina)
+function StripItem({ label, value }: { label: string; value: string }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6">
-      <h2 className="mb-4 text-sm font-semibold text-gray-900">{title} {count > 0 && <span className="text-gray-400">({count})</span>}</h2>
-      {children}
+    <div>
+      <p className="text-[11px] uppercase tracking-wide text-white/70">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+// Rubrika — sklopiva sekcija (accordion). Zadano zatvorena; sadržaj se renderira tek kad je otvorena.
+function Rubrika({
+  title,
+  subtitle,
+  icon,
+  meta,
+  accent,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  meta?: React.ReactNode;
+  accent?: 'gold' | 'emerald';
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const accentStyle =
+    accent === 'gold' ? { borderLeft: '4px solid #E8A838' } : accent === 'emerald' ? { borderLeft: '4px solid #059669' } : undefined;
+  const iconBg = accent === 'gold' ? 'bg-amber-100' : accent === 'emerald' ? 'bg-emerald-100' : 'bg-gray-100';
+  return (
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white" style={accentStyle}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-gray-50"
+      >
+        <svg
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-90 text-primary' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2.5}
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+        {icon && (
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base ${iconBg}`}>{icon}</span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-gray-900">{title}</span>
+          {subtitle && <span className="mt-0.5 block truncate text-xs text-gray-500">{subtitle}</span>}
+        </span>
+        {meta && <span className="flex shrink-0 items-center gap-2">{meta}</span>}
+      </button>
+      {open && <div className="border-t border-gray-100 px-6 pb-6 pt-5">{children}</div>}
     </section>
   );
 }
