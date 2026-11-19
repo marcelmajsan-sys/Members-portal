@@ -1055,6 +1055,9 @@ router.patch('/members/:id/status', validateParams(idParamSchema), async (req: A
   }
 
   try {
+    // Zapamti prethodni status PRIJE promjene — reaktivacija isteklog člana (EXPIRED→ACTIVE)
+    // je produženje, pa welcome email treba ići kao zahvala na produženju (ne dobrodošlica).
+    const prev = await prisma.member.findUnique({ where: { id: req.params.id as string }, select: { status: true } });
     const member = await updateMember(req.params.id as string, { status: status as 'ACTIVE' | 'PENDING' | 'SUSPENDED' | 'EXPIRED' });
 
     // Aktivacija članstva mora otključati i login: status→ACTIVE ne dira User.isActive,
@@ -1082,7 +1085,9 @@ router.patch('/members/:id/status', validateParams(idParamSchema), async (req: A
       EXPIRED: 'member.expired',
     };
     if (eventMap[status]) {
-      await emitEvent(eventMap[status], { memberId: member.id, userId: member.userId });
+      // isRenewal → welcome automatizacija šalje zahvalu na produženju umjesto dobrodošlice
+      const isRenewal = status === 'ACTIVE' && prev?.status === 'EXPIRED';
+      await emitEvent(eventMap[status], { memberId: member.id, userId: member.userId, isRenewal });
     }
 
     successResponse(res, member);

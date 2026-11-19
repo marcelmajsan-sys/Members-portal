@@ -46,17 +46,28 @@ export function buildRenewalConfirmationEmail(
   };
 }
 
+// Dobrodošlica (member.activated). Kad je riječ o PRODUŽENJU (reaktivacija isteklog
+// člana), tekst se mijenja u zahvalu na produženju — novi članovi i dalje dobivaju
+// klasičnu dobrodošlicu. Razlika dolazi iz `opts.isRenewal` (postavlja ga pozivatelj).
 export function buildWelcomeEmail(
   member: EmailMember,
+  opts?: { isRenewal?: boolean },
 ): { subject: string; html: string } {
+  const isRenewal = opts?.isRenewal === true;
+  const subject = isRenewal
+    ? 'Hvala na produženju članstva — eCommerce Hrvatska'
+    : 'Dobrodošli u eCommerce Hrvatska!';
+  const intro = isRenewal
+    ? 'Hvala vam na produženju članstva! Vaše članstvo je uspješno produženo.'
+    : 'Dobrodošli u udrugu <strong>eCommerce Hrvatska</strong>! Vaše članstvo je uspješno aktivirano.';
   return {
-    subject: 'Dobrodošli u eCommerce Hrvatska!',
+    subject,
     html: `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;">
   ${HEADER}
   <div style="padding:24px;">
     <p>Poštovani <strong>${member.user.firstName}</strong>,</p>
-    <p>Dobrodošli u udrugu <strong>eCommerce Hrvatska</strong>! Vaše članstvo je uspješno aktivirano.</p>
+    <p>${intro}</p>
     <div style="background:#F0FDF4;border-left:4px solid #16A34A;padding:16px;border-radius:4px;margin:20px 0;">
       <p style="margin:0;font-weight:bold;color:#166534;">Članstvo je aktivno</p>
       <p style="margin:4px 0 0;font-size:13px;color:#166534;">Sada imate pristup svim pogodnostima vaše razine članstva.</p>

@@ -445,9 +445,14 @@ async function resolveAndSendEmail(
     }
 
     case 'welcome': {
-      const email = buildWelcomeEmail(emailMember);
+      // Produženje članstva (reaktivacija isteklog člana) → zahvala na produženju;
+      // novi član → klasična dobrodošlica. `isRenewal` stiže u payloadu događaja.
+      const isRenewal = payload.isRenewal === true;
+      const email = buildWelcomeEmail(emailMember, { isRenewal });
       html = email.html;
-      finalSubject = subject || email.subject;
+      // Kod produženja ignoriramo konfigurirani subject automatizacije ("Dobrodošli...")
+      // da naslov ne proturječi tekstu produženja.
+      finalSubject = isRenewal ? email.subject : (subject || email.subject);
       break;
     }
 
