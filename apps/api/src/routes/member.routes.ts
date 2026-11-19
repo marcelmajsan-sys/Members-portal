@@ -65,6 +65,17 @@ router.get('/memberships', async (req: AuthRequest, res) => {
   successResponse(res, memberships);
 });
 
+// GET /announcement — globalna obavijest (traka) koju admin postavlja za sve članove.
+// Vraća se samo aktivna (isActive); inače null (portal tada ne prikazuje traku).
+router.get('/announcement', async (_req: AuthRequest, res) => {
+  const announcement = await prisma.portalAnnouncement.findFirst({
+    where: { isActive: true },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, content: true, updatedAt: true },
+  });
+  successResponse(res, announcement);
+});
+
 // GET /dashboard — member dashboard with stats
 router.get('/dashboard', async (req: AuthRequest, res) => {
   const dashboard = await getMemberDashboard(req.user!.userId, selectedMemberId(req));

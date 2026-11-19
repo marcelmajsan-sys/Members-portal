@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
@@ -69,6 +69,7 @@ interface Membership {
   id: string; memberType: string; memberTier: string; status: string;
   website: string | null; company: { name: string; website: string | null };
 }
+interface Announcement { id: string; content: string; updatedAt: string }
 
 // Aktivno članstvo (switcher webshopova) — dodaje ?memberId= na member API pozive.
 // ID se čuva u localStorageu; na učitavanju se validira protiv /api/member/memberships.
@@ -125,6 +126,32 @@ function pluralUlaznica(n: number) {
   if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) return 'ulaznice';
   return 'ulaznica';
 }
+// Renderira tekst obavijesti s inline markdown linkovima [tekst](url) u sigurne React
+// čvorove (bez dangerouslySetInnerHTML → nema XSS-a). Dozvoljeni su samo http(s)/mailto.
+function renderAnnouncement(content: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) nodes.push(content.slice(last, m.index));
+    const [, label, url] = m;
+    if (/^(https?:\/\/|mailto:)/i.test(url)) {
+      nodes.push(
+        <a key={i++} href={url} target="_blank" rel="noopener noreferrer" className="font-bold underline underline-offset-2 hover:opacity-80">
+          {label}
+        </a>,
+      );
+    } else {
+      nodes.push(label);
+    }
+    last = re.lastIndex;
+  }
+  if (last < content.length) nodes.push(content.slice(last));
+  return nodes;
+}
+
 // Kompaktni datum bez razmaka: 13.10.2026.
 function fmtDateCompact(d: string | null) {
   if (!d) return '—';
@@ -158,6 +185,9 @@ export default function PortalHome() {
   const [perks, setPerks] = useState<Perks | null>(null);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [memberId, setMemberId] = useState<string>('');
+  // Globalna obavijest (traka) koju admin postavlja za sve članove; zatvara se klikom na X.
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  const [announcementDismissed, setAnnouncementDismissed] = useState(false);
 
   // Guard
   useEffect(() => {
@@ -165,6 +195,26 @@ export default function PortalHome() {
     if (!isAuthenticated) { router.replace('/login'); return; }
     if (user && user.role !== 'MEMBER') { window.location.href = '/admin'; }
   }, [isLoading, isAuthenticated, user, router]);
+
+  // Globalna obavijest — dohvaća se jednom (nije vezana uz odabrano članstvo).
+  // Zatvaranje se pamti po `updatedAt`: admin izmjena teksta ponovno prikaže traku.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
+    api.get<Announcement | null>('/api/member/announcement').then((res) => {
+      if (res.success && res.data) {
+        setAnnouncement(res.data);
+        const dismissed = localStorage.getItem('dismissedAnnouncement');
+        setAnnouncementDismissed(dismissed === res.data.updatedAt);
+      } else {
+        setAnnouncement(null);
+      }
+    });
+  }, [isLoading, isAuthenticated, user]);
+
+  function dismissAnnouncement() {
+    if (announcement) localStorage.setItem('dismissedAnnouncement', announcement.updatedAt);
+    setAnnouncementDismissed(true);
+  }
 
   useEffect(() => {
     if (isLoading || !isAuthenticated || (user && user.role !== 'MEMBER')) return;
@@ -346,6 +396,22 @@ export default function PortalHome() {
           </span>
           <button onClick={logout} className="shrink-0 rounded-md bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wide transition hover:bg-white/30">
             Izađi
+          </button>
+        </div>
+      )}
+
+      {/* Globalna obavijest administratora — traka za sve članove, zatvara se klikom na X */}
+      {announcement && announcement.content.trim() && !announcementDismissed && (
+        <div className="flex items-start justify-between gap-3 bg-primary px-4 py-3 text-sm font-medium text-white sm:px-6">
+          <p className="flex-1 leading-relaxed">{renderAnnouncement(announcement.content.trim())}</p>
+          <button
+            onClick={dismissAnnouncement}
+            aria-label="Zatvori obavijest"
+            className="-mr-1 shrink-0 rounded-md p-1 text-white/80 transition hover:bg-white/20 hover:text-white"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
       )}

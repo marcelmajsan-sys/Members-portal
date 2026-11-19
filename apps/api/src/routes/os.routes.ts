@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { paginationSchema, idParamSchema } from '@ecommerce-hr/shared';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { validateQuery, validateParams } from '../middleware/validate.js';
+import { validate, validateQuery, validateParams } from '../middleware/validate.js';
 import { successResponse, paginatedResponse, errorResponse } from '../utils/api-response.js';
 import { getAllMembers, searchMembers, updateMember, updateMemberTier, deleteMember, renewMembership, adminUpdateMemberProfile, getMemberPerksById, setMemberBenefitUsage, buildMemberWhere, buildMemberOrderBy, type MemberFilters } from '../services/member.service.js';
 import { getDashboardStats, getDashboardAnalytics, getRecentActivity } from '../services/dashboard.service.js';
@@ -122,6 +122,30 @@ router.get('/dashboard/analytics', requireRole('OWNER'), async (_req: AuthReques
 router.get('/dashboard/activity', async (_req: AuthRequest, res) => {
   const activity = await getRecentActivity(10);
   successResponse(res, activity);
+});
+
+// ─── Globalna obavijest na portalu (traka za sve članove) ────────────────────
+// Singleton: čuva se jedan red (PortalAnnouncement). Admin ga uređuje; član ga
+// čita preko GET /api/member/announcement (vraća se samo kad je isActive).
+
+// GET /announcement — trenutna obavijest (uključujući neaktivnu, za uređivanje)
+router.get('/announcement', async (_req: AuthRequest, res) => {
+  const announcement = await prisma.portalAnnouncement.findFirst({ orderBy: { createdAt: 'asc' } });
+  successResponse(res, announcement);
+});
+
+// PUT /announcement — spremi sadržaj + uključi/isključi (OWNER)
+const announcementSchema = z.object({
+  content: z.string().trim().max(2000, 'Obavijest može imati najviše 2000 znakova'),
+  isActive: z.boolean(),
+});
+router.put('/announcement', requireRole('OWNER'), validate(announcementSchema), async (req: AuthRequest, res) => {
+  const { content, isActive } = req.body as { content: string; isActive: boolean };
+  const existing = await prisma.portalAnnouncement.findFirst({ orderBy: { createdAt: 'asc' } });
+  const announcement = existing
+    ? await prisma.portalAnnouncement.update({ where: { id: existing.id }, data: { content, isActive } })
+    : await prisma.portalAnnouncement.create({ data: { content, isActive } });
+  successResponse(res, announcement);
 });
 
 // GET /dashboard/renewals?month=2026-03

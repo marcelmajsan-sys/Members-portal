@@ -847,3 +847,15 @@ model EmailTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// Globalna obavijest (traka) na vrhu članskog portala — postavlja ju administrator
+// za SVE članove. Singleton: čuva se jedan red (zadnji aktivni se prikazuje).
+// Sadržaj je tekst s inline markdown linkovima [tekst](url) — portal ih renderira sigurno.
+// Član ju zatvori klikom na X; dismissal se pamti po `updatedAt` (uređivanje ju ponovno prikaže).
+model PortalAnnouncement {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
