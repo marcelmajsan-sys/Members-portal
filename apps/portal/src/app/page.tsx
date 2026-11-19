@@ -400,22 +400,6 @@ export default function PortalHome() {
         </div>
       )}
 
-      {/* Globalna obavijest administratora — traka za sve članove, zatvara se klikom na X */}
-      {announcement && announcement.content.trim() && !announcementDismissed && (
-        <div className="flex items-start justify-between gap-3 bg-primary px-4 py-3 text-sm font-medium text-white sm:px-6">
-          <p className="flex-1 leading-relaxed">{renderAnnouncement(announcement.content.trim())}</p>
-          <button
-            onClick={dismissAnnouncement}
-            aria-label="Zatvori obavijest"
-            className="-mr-1 shrink-0 rounded-md p-1 text-white/80 transition hover:bg-white/20 hover:text-white"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-
       {/* Header */}
       <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6">
         <img src="/logo.png" alt="eCommerce Hrvatska" className="h-8 w-auto" />
@@ -497,6 +481,22 @@ export default function PortalHome() {
                 <StripItem label="Certifikat" value={profile.hasCertificate ? 'Da' : '—'} />
               </div>
             </section>
+
+            {/* Globalna obavijest administratora — narančasta traka, centrirano, zatvara se na X */}
+            {announcement && announcement.content.trim() && !announcementDismissed && (
+              <section className="relative rounded-xl bg-amber-500 px-10 py-3 text-center text-sm font-semibold text-white">
+                <p className="leading-relaxed">{renderAnnouncement(announcement.content.trim())}</p>
+                <button
+                  onClick={dismissAnnouncement}
+                  aria-label="Zatvori obavijest"
+                  className="absolute right-2 top-2 rounded-md p-1 text-white/80 transition hover:bg-white/20 hover:text-white"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </section>
+            )}
 
             {/* Rubrika: Podaci o članu */}
             <Rubrika title="Podaci o članu" subtitle={profile.company.name} icon="👤">
