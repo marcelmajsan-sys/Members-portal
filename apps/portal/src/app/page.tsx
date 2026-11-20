@@ -956,6 +956,18 @@ export default function PortalHome() {
               )}
             </Rubrika>
 
+            {/* Članska pogodnost: CorvusPay — 30% popusta na prvih 6 mjeseci */}
+            <section className="overflow-hidden rounded-xl border border-primary/20 bg-primary/5 p-6">
+              <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">
+                Članska pogodnost · 30% popusta
+              </span>
+              <h2 className="mt-3 text-base font-bold text-primary">CorvusPay</h2>
+              <p className="mt-3 text-sm font-semibold text-gray-900">
+                Kao član Udruge ostvarujete{' '}
+                <span className="text-primary">30% popusta na prvih 6 mjeseci</span> korištenja CorvusPay usluge.
+              </p>
+            </section>
+
             {/* Reklama za eCommerce Akademiju — članovi ostvaruju 30% popusta */}
             <section className="overflow-hidden rounded-xl border border-primary/20 bg-primary/5 p-6">
               <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">
